@@ -2,23 +2,23 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 19
-- Newly booked trades: 1
-- Candidate average edge: 5.34%
-- Candidate nominal EV at 1 GBP stake: 1.01
+- Candidate price signals this scan: 21
+- Newly booked trades: 2
+- Candidate average edge: 5.31%
+- Candidate nominal EV at 1 GBP stake: 1.11
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
 
-- Total trades booked: 23
-- Trades booked last 24h: 23
-- Total paper stake deployed: 23.00
-- Total booked theoretical EV: 1.19
-- Total booked weighted edge: 5.16%
-- Open trades: 23
-- Open paper stake deployed: 23.00
-- Open booked theoretical EV: 1.19
-- Open booked weighted edge: 5.16%
+- Total trades booked: 25
+- Trades booked last 24h: 25
+- Total paper stake deployed: 25.00
+- Total booked theoretical EV: 1.25
+- Total booked weighted edge: 5.02%
+- Open trades: 25
+- Open paper stake deployed: 25.00
+- Open booked theoretical EV: 1.25
+- Open booked weighted edge: 5.02%
 
 ## Results And CLV
 
@@ -29,6 +29,8 @@
 
 ## Booked Trades
 
+- Back Draw with Betfair at 5.1 (41/10)+ | Santos v Macará | stake 1.00 | edge 4.04% | EV 0.04 | status open | starts 2026-08-13T22:00:00+00:00
+- Back Corinthians-SP with Betfair at 4.2 (16/5)+ | Rosario Central v Corinthians-SP | stake 1.00 | edge 2.67% | EV 0.03 | status open | starts 2026-08-14T00:30:00+00:00
 - Back Lincoln City with Betfair at 10.5 (19/2)+ | Middlesbrough v Lincoln City | stake 1.00 | edge 7.54% | EV 0.08 | status open | starts 2026-08-15T14:00:00+00:00
 - Back Macará with Smarkets at 10 (9/1)+ | Santos v Macará | stake 1.00 | edge 4.98% | EV 0.05 | status open | starts 2026-08-13T22:00:00+00:00
 - Back LDU Quito with Betfair at 6.6 (28/5)+ | Mirassol v LDU Quito | stake 1.00 | edge 4.23% | EV 0.04 | status open | starts 2026-08-13T22:00:00+00:00
@@ -37,6 +39,4 @@
 - Back Guyana Amazon Warriors with Betfair at 1.77 (77/100)+ | Jamaica Kingsmen v Guyana Amazon Warriors | stake 1.00 | edge 8.48% | EV 0.08 | status open | starts 2026-08-14T00:00:00+00:00
 - Back Los Angeles Sparks with Betfair at 4.3 (33/10)+ | New York Liberty v Los Angeles Sparks | stake 1.00 | edge 5.43% | EV 0.05 | status open | starts 2026-08-14T00:00:00+00:00
 - Back Draw with Betfair at 36 (35/1)+ | Australia v Bangladesh | stake 1.00 | edge 4.70% | EV 0.05 | status open | starts 2026-08-14T00:30:00+00:00
-- Back TPS Turku with Betfair at 5.3 (43/10)+ | VPS Vaasa v TPS Turku | stake 1.00 | edge 2.89% | EV 0.03 | status open | starts 2026-08-14T15:00:00+00:00
-- Back Ried with Smarkets at 6.4 (27/5)+ | LASK v Ried | stake 1.00 | edge 6.04% | EV 0.06 | status open | starts 2026-08-14T17:30:00+00:00
-- ...and 13 more
+- ...and 15 more
