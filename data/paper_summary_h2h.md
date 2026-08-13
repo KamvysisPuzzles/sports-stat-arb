@@ -2,9 +2,9 @@
 
 ## Latest Scan
 
-- New flagged opportunities: 5
+- New flagged opportunities: 2
 - Executable rows: 0
-- Newly booked trades: 2
+- Newly booked trades: 0
 - Executable liquidity found: 0.00
 - Liquidity-weighted scan edge: 0.00%
 - Scan theoretical EV: 0.00
@@ -30,11 +30,8 @@
 
 ## Opportunities
 
-- Back Connecticut Sun with Matchbook at 5.2 (21/5)+ | Connecticut Sun v Atlanta Dream | edge 4.91% | liquidity 0.00 | status not_matched | starts 2026-08-13T23:00:00+00:00
-- Back Los Angeles Sparks with Matchbook at 4.3 (33/10)+ | New York Liberty v Los Angeles Sparks | edge 4.91% | liquidity 0.00 | status not_matched | starts 2026-08-14T00:00:00+00:00
-- Back Washington Mystics with Matchbook at 3.15 (43/20)+ | Las Vegas Aces v Washington Mystics | edge 3.14% | liquidity 0.00 | status not_matched | starts 2026-08-14T02:00:00+00:00
+- Back Los Angeles Sparks with Matchbook at 4.3 (33/10)+ | New York Liberty v Los Angeles Sparks | edge 5.02% | liquidity 0.00 | status not_matched | starts 2026-08-14T00:00:00+00:00
 - Back TPS Turku with Matchbook at 5.3 (43/10)+ | VPS Vaasa v TPS Turku | edge 2.80% | liquidity 0.00 | status not_matched | starts 2026-08-14T15:00:00+00:00
-- Back Ried with Matchbook at 6.2 (26/5)+ | LASK v Ried | edge 2.55% | liquidity 0.00 | status not_matched | starts 2026-08-14T17:30:00+00:00
 
 ## Booked Trades
 
