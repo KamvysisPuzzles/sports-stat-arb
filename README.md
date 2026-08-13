@@ -126,6 +126,26 @@ sharpness-weighted consensus from all other complete books on the same event.
 Pinnacle and exchange-style books get the highest weights, stronger mainstream
 books get medium weights, and unknown books get low default weight.
 
+The scanner can also learn those weights from stored odds snapshots:
+
+```bash
+scan-exchanges \
+  --sports-profile uk-soft-edge \
+  --max-api-requests 40 \
+  --store-odds-snapshot \
+  --market-db data/market_snapshots.sqlite3
+
+scan-exchanges \
+  --market-db data/market_snapshots.sqlite3 \
+  --recompute-sharpness-weights \
+  --sharpness-weights-csv data/bookmaker_sharpness_weights.csv
+```
+
+Raw odds snapshots are stored in SQLite. Learned bookmaker weights are exported
+to a small CSV. Once enough closed-event samples exist, add
+`--use-learned-sharpness-weights` to `sharp-weighted-clv` scans to prefer the
+learned weights over the built-in heuristic weights.
+
 The default scan uses:
 
 ```text
@@ -315,6 +335,8 @@ The workflow:
 
 - Logs candidates every 2 hours.
 - Updates closing values every 2 hours.
+- Stores raw market odds snapshots for future sharpness-weight learning.
+- Recomputes learned bookmaker sharpness weights after each run.
 - Settles recent completed results every 6 hours using The Odds API scores endpoint.
 - Commits `data/paper_trades.sqlite3` and `data/paper_trades.csv` back to the repo.
 - Writes a paper-trading summary into each GitHub Actions run.

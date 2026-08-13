@@ -30,6 +30,8 @@ jobs:
       THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
       PAPER_ALERT_WEBHOOK_URL: ${{ secrets.PAPER_ALERT_WEBHOOK_URL }}
       PAPER_DB: data/paper_trades.sqlite3
+      MARKET_DB: data/market_snapshots.sqlite3
+      SHARPNESS_WEIGHTS_CSV: data/bookmaker_sharpness_weights.csv
       SPORTS_PROFILE: uk-soft-edge
       MAX_API_REQUESTS: "40"
       MAX_EDGE: "0.10"
@@ -54,7 +56,9 @@ jobs:
         run: |
           scan-exchanges \
             --paper-db "$PAPER_DB" \
+            --market-db "$MARKET_DB" \
             --paper-log \
+            --store-odds-snapshot \
             --sports-profile "$SPORTS_PROFILE" \
             --max-api-requests "$MAX_API_REQUESTS" \
             --paper-stake 1 \
@@ -78,6 +82,14 @@ jobs:
             --min-edge -999 \
             --min-reference-books 2 \
             --max-age-seconds 900
+
+      - name: Recompute sharpness weights
+        run: |
+          scan-exchanges \
+            --market-db "$MARKET_DB" \
+            --recompute-sharpness-weights \
+            --sharpness-weights-csv "$SHARPNESS_WEIGHTS_CSV" \
+            --sharpness-min-samples 25
 
       - name: Settle recent results
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'settle-results') || github.event.schedule == '30 */6 * * *' }}
@@ -125,7 +137,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/paper_trades.sqlite3 data/paper_trades.csv data/paper_summary.md
+          git add \
+            data/paper_trades.sqlite3 \
+            data/paper_trades.csv \
+            data/paper_summary.md \
+            data/market_snapshots.sqlite3 \
+            data/bookmaker_sharpness_weights.csv
           if git diff --cached --quiet; then
             echo "No paper-trade changes to commit."
           else

@@ -21,6 +21,12 @@ from exchange_scanner.paper import (
     settle_results,
     update_closing_values,
 )
+from exchange_scanner.sharpness import (
+    recompute_sharpness_weights,
+    sharpness_weight_mapping,
+    store_odds_snapshot,
+    write_sharpness_weights_csv,
+)
 from exchange_scanner.the_odds_api import (
     TheOddsApiClient,
     find_value_opportunities,
@@ -178,6 +184,16 @@ def main() -> None:
         settled = settle_paper_results(args)
         print(f"Settled {settled} paper trades.", file=sys.stderr)
         write_paper_csv(list_trades(args.paper_db))
+        return
+
+    if args.recompute_sharpness_weights:
+        weights = recompute_sharpness_weights(
+            args.market_db,
+            benchmark_bookmakers=SHARP_REFERENCE_BOOKMAKERS,
+            min_samples=args.sharpness_min_samples,
+        )
+        write_sharpness_weights_csv(weights, args.sharpness_weights_csv)
+        print(f"Recomputed {len(weights)} sharpness weights.", file=sys.stderr)
         return
 
     signals = scan_the_odds_api(args)
@@ -351,6 +367,39 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="Reuse cached Odds API responses younger than this many seconds.",
     )
+    parser.add_argument(
+        "--market-db",
+        type=Path,
+        default=Path("data/market_snapshots.sqlite3"),
+        help="SQLite database for raw odds snapshots and learned sharpness weights.",
+    )
+    parser.add_argument(
+        "--store-odds-snapshot",
+        action="store_true",
+        help="Store normalized odds rows from this scan in --market-db.",
+    )
+    parser.add_argument(
+        "--recompute-sharpness-weights",
+        action="store_true",
+        help="Recompute bookmaker sharpness weights from stored odds snapshots.",
+    )
+    parser.add_argument(
+        "--sharpness-weights-csv",
+        type=Path,
+        default=Path("data/bookmaker_sharpness_weights.csv"),
+        help="CSV path for exported learned sharpness weights.",
+    )
+    parser.add_argument(
+        "--sharpness-min-samples",
+        type=int,
+        default=25,
+        help="Minimum bookmaker/outcome samples required to publish a learned weight.",
+    )
+    parser.add_argument(
+        "--use-learned-sharpness-weights",
+        action="store_true",
+        help="Use learned weights from --market-db for weighted CLV scans when available.",
+    )
     parser.add_argument("--min-edge", type=float, default=float(os.getenv("MIN_EDGE", "0.02")))
     parser.add_argument(
         "--max-edge",
@@ -485,6 +534,9 @@ def scan_the_odds_api(args: argparse.Namespace):
                 )
             )
     prices = normalise_odds_api_events(events)
+    if getattr(args, "store_odds_snapshot", False):
+        inserted = store_odds_snapshot(args.market_db, prices)
+        print(f"Stored {inserted} odds snapshot rows.", file=sys.stderr)
     allowed_markets = {market.strip() for market in args.markets.split(",") if market.strip()}
     prices = [price for price in prices if price.market_key in allowed_markets]
     prices = _filter_prices_by_event_horizon(
@@ -493,6 +545,7 @@ def scan_the_odds_api(args: argparse.Namespace):
     )
 
     strategy = _strategy_config(args)
+    reference_weights = _reference_weights_for_scan(args, strategy, allowed_markets)
     signals = find_value_opportunities(
         prices,
         target_bookmakers=strategy["target_bookmakers"],
@@ -502,7 +555,7 @@ def scan_the_odds_api(args: argparse.Namespace):
         min_reference_books=args.min_reference_books,
         include_started=args.include_started,
         allow_target_bookmakers_as_references=strategy["allow_target_bookmakers_as_references"],
-        reference_weights=strategy["reference_weights"],
+        reference_weights=reference_weights,
     )
     if not getattr(args, "paper_update_closing", False):
         signals = _filter_signals_by_max_edge(signals, max_edge=getattr(args, "max_edge", 0.10))
@@ -513,6 +566,21 @@ def scan_the_odds_api(args: argparse.Namespace):
 
 def _strategy_config(args: argparse.Namespace):
     return STRATEGIES[getattr(args, "strategy", "uk-soft-value")]
+
+
+def _reference_weights_for_scan(args: argparse.Namespace, strategy, allowed_markets: set[str]):
+    if not getattr(args, "use_learned_sharpness_weights", False):
+        return strategy["reference_weights"]
+    learned_weights = sharpness_weight_mapping(
+        args.market_db,
+        sport_keys=set(_sport_keys(args)),
+        market_keys=allowed_markets,
+    )
+    if not learned_weights:
+        return strategy["reference_weights"]
+    merged_weights = dict(strategy["reference_weights"] or {"*": 0.20})
+    merged_weights.update(learned_weights)
+    return merged_weights
 
 
 def _filter_signals_by_max_edge(signals, *, max_edge: float):
