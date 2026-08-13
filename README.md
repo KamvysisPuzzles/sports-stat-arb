@@ -106,6 +106,26 @@ scan-exchanges \
   --unique-events
 ```
 
+Run the sharp/non-limiting CLV strategy:
+
+```bash
+scan-exchanges \
+  --strategy sharp-weighted-clv \
+  --sports-profile uk-soft-edge \
+  --max-api-requests 40 \
+  --min-edge 0.005 \
+  --max-edge 0.10 \
+  --min-reference-books 5 \
+  --max-age-seconds 900 \
+  --unique-events
+```
+
+`sharp-weighted-clv` only targets the sharper venues (`betfair`, `pinnacle`,
+`smarkets`, `matchbook`) but compares each target price against a
+sharpness-weighted consensus from all other complete books on the same event.
+Pinnacle and exchange-style books get the highest weights, stronger mainstream
+books get medium weights, and unknown books get low default weight.
+
 The default scan uses:
 
 ```text

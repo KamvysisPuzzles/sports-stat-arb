@@ -70,6 +70,7 @@ def run_backtest(
     daily_decision_time: str | None = "22:00",
     allow_rebet_same_event: bool = False,
     allow_target_bookmakers_as_references: bool = False,
+    reference_weights: dict[str, float] | None = None,
 ) -> list[BacktestBet]:
     results = load_results(results_path)
     snapshots = load_historical_snapshots(historical_odds_path)
@@ -100,6 +101,7 @@ def run_backtest(
             min_reference_books=min_reference_books,
             include_started=include_started,
             allow_target_bookmakers_as_references=allow_target_bookmakers_as_references,
+            reference_weights=reference_weights,
             now=snapshot.fetched_at,
         )
         if unique_events:
@@ -131,6 +133,7 @@ def run_backtest(
                 max_age_seconds=max_age_seconds,
                 min_reference_books=min_reference_books,
                 allow_target_bookmakers_as_references=allow_target_bookmakers_as_references,
+                reference_weights=reference_weights,
             )
             bets.append(
                 BacktestBet(
@@ -314,6 +317,7 @@ def _closing_line_for_signal(
     max_age_seconds: int,
     min_reference_books: int,
     allow_target_bookmakers_as_references: bool = False,
+    reference_weights: dict[str, float] | None = None,
 ) -> _ClosingLine:
     candidate_snapshots = [
         snapshot
@@ -334,6 +338,7 @@ def _closing_line_for_signal(
             min_reference_books=min_reference_books,
             include_started=False,
             allow_target_bookmakers_as_references=allow_target_bookmakers_as_references,
+            reference_weights=reference_weights,
             now=snapshot.fetched_at,
         )
         for closing_signal in closing_signals:

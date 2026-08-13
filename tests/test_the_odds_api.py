@@ -572,6 +572,81 @@ def test_sharp_only_value_can_use_other_target_books_as_references() -> None:
     assert betfair_signal.reference_bookmakers == ("Pinnacle", "Smarkets")
 
 
+def test_value_mode_supports_sharpness_weighted_reference_consensus() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "soccer_epl",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "betfair",
+                    "title": "Betfair",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.1},
+                                {"name": "Chelsea", "price": 1.8},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "pinnacle",
+                    "title": "Pinnacle",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.0},
+                                {"name": "Chelsea", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "soft",
+                    "title": "Soft Book",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 1.5},
+                                {"name": "Chelsea", "price": 3.0},
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+    prices = normalise_odds_api_events(events)
+    signals = find_value_opportunities(
+        prices,
+        target_bookmakers={"betfair"},
+        reference_bookmakers=None,
+        min_edge=0.04,
+        max_age_seconds=300,
+        min_reference_books=2,
+        allow_target_bookmakers_as_references=True,
+        reference_weights={"pinnacle": 1.0, "soft book": 0.0, "*": 1.0},
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )
+
+    assert len(signals) == 1
+    assert signals[0].target_bookmaker == "Betfair"
+    assert signals[0].reference_probability == pytest.approx(0.5)
+    assert signals[0].edge == pytest.approx(0.05)
+    assert signals[0].reference_bookmakers == ("Pinnacle", "Soft Book")
+
+
 def test_odds_api_client_reuses_fresh_cache(tmp_path) -> None:
     calls = 0
 

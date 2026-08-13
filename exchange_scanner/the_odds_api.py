@@ -312,6 +312,7 @@ def find_value_opportunities(
     min_reference_books: int,
     include_started: bool = False,
     allow_target_bookmakers_as_references: bool = False,
+    reference_weights: dict[str, float] | None = None,
     now: datetime | None = None,
 ) -> list[ValueSignal]:
     now = now or datetime.now(timezone.utc)
@@ -354,6 +355,7 @@ def find_value_opportunities(
                 reference_prices,
                 min_reference_books,
                 expected_outcomes=expected_outcomes,
+                reference_weights=reference_weights,
             )
             fair_probability = fair_probabilities.get(target.comparable_outcome_name)
             if fair_probability is None:
@@ -395,6 +397,7 @@ def _fair_probabilities(
     min_reference_books: int,
     *,
     expected_outcomes: int,
+    reference_weights: dict[str, float] | None = None,
 ) -> dict[str, float]:
     by_bookmaker: dict[str, dict[str, OutcomePrice]] = {}
     for price in prices:
@@ -402,21 +405,38 @@ def _fair_probabilities(
             price.comparable_outcome_name
         ] = price
 
-    normalised_probs: dict[str, list[float]] = {}
-    for bookmaker_prices in by_bookmaker.values():
+    normalised_probs: dict[str, list[tuple[float, float]]] = {}
+    for bookmaker_identity, bookmaker_prices in by_bookmaker.items():
         if len(bookmaker_prices) != expected_outcomes:
             continue
         overround = sum(1 / price.odds for price in bookmaker_prices.values())
         if overround <= 0:
             continue
+        weight = _reference_weight(bookmaker_identity, reference_weights)
         for outcome_name, price in bookmaker_prices.items():
-            normalised_probs.setdefault(outcome_name, []).append((1 / price.odds) / overround)
+            normalised_probs.setdefault(outcome_name, []).append(
+                ((1 / price.odds) / overround, weight)
+            )
 
     return {
-        outcome_name: sum(probabilities) / len(probabilities)
+        outcome_name: _weighted_average(probabilities)
         for outcome_name, probabilities in normalised_probs.items()
-        if len(probabilities) >= min_reference_books
+        if len(probabilities) >= min_reference_books and sum(weight for _, weight in probabilities) > 0
     }
+
+
+def _reference_weight(
+    bookmaker_identity: str,
+    reference_weights: dict[str, float] | None,
+) -> float:
+    if not reference_weights:
+        return 1.0
+    return reference_weights.get(bookmaker_identity, reference_weights.get("*", 1.0))
+
+
+def _weighted_average(probabilities: list[tuple[float, float]]) -> float:
+    weight_sum = sum(weight for _, weight in probabilities)
+    return sum(probability * weight for probability, weight in probabilities) / weight_sum
 
 
 def _expected_outcome_count(prices: list[OutcomePrice]) -> int:

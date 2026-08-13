@@ -53,16 +53,47 @@ SHARP_REFERENCE_BOOKMAKERS = {
     "matchbook",
 }
 
+SHARPNESS_WEIGHTS = {
+    "*": 0.20,
+    "pinnacle": 1.00,
+    "betfair": 1.00,
+    "smarkets": 0.90,
+    "matchbook": 0.90,
+    "bet365": 0.50,
+    "betfair sportsbook": 0.45,
+    "william hill": 0.40,
+    "sky bet": 0.40,
+    "paddy power": 0.40,
+    "bet victor": 0.40,
+    "betway": 0.35,
+    "boylesports": 0.35,
+    "coral": 0.35,
+    "ladbrokes": 0.35,
+    "unibet (uk)": 0.35,
+    "grosvenor": 0.30,
+    "livescore bet": 0.30,
+    "virgin bet": 0.30,
+    "888sport": 0.30,
+}
+
 STRATEGIES = {
     "uk-soft-value": {
         "target_bookmakers": UK_SOFT_BOOKMAKERS,
         "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
         "allow_target_bookmakers_as_references": False,
+        "reference_weights": None,
     },
     "sharp-only-value": {
         "target_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
         "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
         "allow_target_bookmakers_as_references": True,
+        "reference_weights": None,
+    },
+    "sharp-weighted-clv": {
+        "target_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
+        "reference_bookmakers": None,
+        "allow_target_bookmakers_as_references": True,
+        "reference_weights": SHARPNESS_WEIGHTS,
     },
 }
 
@@ -387,6 +418,7 @@ def backtest(args: argparse.Namespace) -> list[BacktestBet]:
         allow_target_bookmakers_as_references=strategy[
             "allow_target_bookmakers_as_references"
         ],
+        reference_weights=strategy["reference_weights"],
     )
 
 
@@ -470,6 +502,7 @@ def scan_the_odds_api(args: argparse.Namespace):
         min_reference_books=args.min_reference_books,
         include_started=args.include_started,
         allow_target_bookmakers_as_references=strategy["allow_target_bookmakers_as_references"],
+        reference_weights=strategy["reference_weights"],
     )
     if not getattr(args, "paper_update_closing", False):
         signals = _filter_signals_by_max_edge(signals, max_edge=getattr(args, "max_edge", 0.10))
