@@ -36,6 +36,16 @@ class PaperTrade:
     closing_edge: float | None
     result: str | None
     profit: float | None
+    matchbook_event_id: str | None
+    matchbook_market_id: str | None
+    matchbook_runner_id: str | None
+    liquidity_status: str | None
+    available_at_or_above_target: float | None
+    best_back_odds: float | None
+    best_back_available: float | None
+    best_lay_odds: float | None
+    best_lay_available: float | None
+    back_lay_spread_pct: float | None
 
     @property
     def target_clv(self) -> float | None:
@@ -71,9 +81,34 @@ def init_paper_db(path: Path) -> None:
                 closing_edge REAL,
                 result TEXT,
                 profit REAL,
+                matchbook_event_id TEXT,
+                matchbook_market_id TEXT,
+                matchbook_runner_id TEXT,
+                liquidity_status TEXT,
+                available_at_or_above_target REAL,
+                best_back_odds REAL,
+                best_back_available REAL,
+                best_lay_odds REAL,
+                best_lay_available REAL,
+                back_lay_spread_pct REAL,
                 UNIQUE(event_id, market_key, outcome_name)
             )
             """
+        )
+        _ensure_columns(
+            db,
+            {
+                "matchbook_event_id": "TEXT",
+                "matchbook_market_id": "TEXT",
+                "matchbook_runner_id": "TEXT",
+                "liquidity_status": "TEXT",
+                "available_at_or_above_target": "REAL",
+                "best_back_odds": "REAL",
+                "best_back_available": "REAL",
+                "best_lay_odds": "REAL",
+                "best_lay_available": "REAL",
+                "back_lay_spread_pct": "REAL",
+            },
         )
 
 
@@ -83,12 +118,14 @@ def log_signals(
     *,
     stake: float,
     logged_at: datetime | None = None,
+    liquidity_by_key: dict[tuple[str, str, str, str], dict[str, str]] | None = None,
 ) -> int:
     init_paper_db(path)
     logged_at = logged_at or datetime.now(timezone.utc)
     inserted = 0
     with _connect(path) as db:
         for signal in signals:
+            liquidity = (liquidity_by_key or {}).get(_signal_key(signal), {})
             cursor = db.execute(
                 """
                 INSERT OR IGNORE INTO paper_trades (
@@ -105,8 +142,18 @@ def log_signals(
                     reference_probability,
                     edge,
                     reference_bookmakers,
-                    stake
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    stake,
+                    matchbook_event_id,
+                    matchbook_market_id,
+                    matchbook_runner_id,
+                    liquidity_status,
+                    available_at_or_above_target,
+                    best_back_odds,
+                    best_back_available,
+                    best_lay_odds,
+                    best_lay_available,
+                    back_lay_spread_pct
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     logged_at.isoformat(),
@@ -123,6 +170,16 @@ def log_signals(
                     signal.edge,
                     ", ".join(signal.reference_bookmakers),
                     stake,
+                    _empty_to_none(liquidity.get("matchbook_event_id")),
+                    _empty_to_none(liquidity.get("matchbook_market_id")),
+                    _empty_to_none(liquidity.get("matchbook_runner_id")),
+                    _empty_to_none(liquidity.get("liquidity_status")),
+                    _optional_float(liquidity.get("available_at_or_above_target")),
+                    _optional_float(liquidity.get("best_back_odds")),
+                    _optional_float(liquidity.get("best_back_available")),
+                    _optional_float(liquidity.get("best_lay_odds")),
+                    _optional_float(liquidity.get("best_lay_available")),
+                    _optional_float(liquidity.get("back_lay_spread_pct")),
                 ),
             )
             inserted += cursor.rowcount
@@ -287,8 +344,24 @@ def _connect(path: Path) -> sqlite3.Connection:
     return db
 
 
+def _ensure_columns(db: sqlite3.Connection, columns: dict[str, str]) -> None:
+    existing = {row["name"] for row in db.execute("PRAGMA table_info(paper_trades)")}
+    for name, column_type in columns.items():
+        if name not in existing:
+            db.execute(f"ALTER TABLE paper_trades ADD COLUMN {name} {column_type}")
+
+
+def _signal_key(signal: ValueSignal) -> tuple[str, str, str, str]:
+    return (
+        signal.event_id.casefold(),
+        signal.market_key.casefold(),
+        signal.outcome_name.casefold(),
+        signal.target_bookmaker.casefold(),
+    )
+
+
 def _commission_rate_for_bookmaker(bookmaker: str) -> float:
-    if bookmaker.casefold() == "matchbook":
+    if bookmaker.casefold() in {"matchbook", "smarkets", "betfair"}:
         return MATCHBOOK_COMMISSION_RATE
     return 0.0
 
@@ -321,6 +394,16 @@ def _trade_from_row(row: sqlite3.Row) -> PaperTrade:
         closing_edge=_optional_float(row["closing_edge"]),
         result=row["result"],
         profit=_optional_float(row["profit"]),
+        matchbook_event_id=row["matchbook_event_id"],
+        matchbook_market_id=row["matchbook_market_id"],
+        matchbook_runner_id=row["matchbook_runner_id"],
+        liquidity_status=row["liquidity_status"],
+        available_at_or_above_target=_optional_float(row["available_at_or_above_target"]),
+        best_back_odds=_optional_float(row["best_back_odds"]),
+        best_back_available=_optional_float(row["best_back_available"]),
+        best_lay_odds=_optional_float(row["best_lay_odds"]),
+        best_lay_available=_optional_float(row["best_lay_available"]),
+        back_lay_spread_pct=_optional_float(row["back_lay_spread_pct"]),
     )
 
 
@@ -333,4 +416,8 @@ def _parse_optional_time(value: str | None) -> datetime | None:
 
 
 def _optional_float(value) -> float | None:
-    return float(value) if value is not None else None
+    return float(value) if value not in {None, ""} else None
+
+
+def _empty_to_none(value: str | None) -> str | None:
+    return value if value else None

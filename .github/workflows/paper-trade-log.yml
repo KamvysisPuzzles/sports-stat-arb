@@ -1,4 +1,4 @@
-name: Exchange CLV Paper Trading
+name: Paper Trade Log
 
 on:
   workflow_dispatch:
@@ -13,15 +13,15 @@ on:
           - update-closing
           - settle-results
   schedule:
-    - cron: "15 */4 * * *"
-    - cron: "45 */4 * * *"
-    - cron: "30 */6 * * *"
+    - cron: "0 */2 * * *"
+    - cron: "30 */2 * * *"
+    - cron: "45 */6 * * *"
 
 permissions:
   contents: write
 
 concurrency:
-  group: exchange-clv-paper-trading
+  group: paper-trade-log
   cancel-in-progress: false
 
 jobs:
@@ -30,7 +30,7 @@ jobs:
     env:
       THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
       PAPER_ALERT_WEBHOOK_URL: ${{ secrets.PAPER_ALERT_WEBHOOK_URL }}
-      EXCHANGE_CLV_DB: data/paper_trades_exchange_clv.sqlite3
+      PAPER_DB: data/paper_trades.sqlite3
       SPORTS_PROFILE: matchbook-h2h-expanded
       MAX_API_REQUESTS: "80"
       MAX_EDGE: "0.10"
@@ -50,15 +50,11 @@ jobs:
       - name: Ensure data directory
         run: mkdir -p data
 
-      - name: Paper log exchange CLV
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '15 */4 * * *' }}
+      - name: Scan exchange CLV signals
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 */2 * * *' }}
         run: |
           scan-exchanges \
             --strategy exchange-clv \
-            --paper-db "$EXCHANGE_CLV_DB" \
-            --paper-log \
-            --paper-stake 1 \
-            --paper-inserted-count-out data/latest_inserted_exchange_clv.txt \
             --sports-profile "$SPORTS_PROFILE" \
             --markets h2h \
             --max-api-requests "$MAX_API_REQUESTS" \
@@ -67,14 +63,28 @@ jobs:
             --min-reference-books 5 \
             --max-age-seconds 900 \
             --unique-bets \
-            > data/latest_opportunities_exchange_clv.csv
+            > data/latest_opportunities.csv
 
-      - name: Update closing values exchange CLV
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'update-closing') || github.event.schedule == '45 */4 * * *' }}
+      - name: Add Matchbook liquidity and log trades
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 */2 * * *' }}
+        run: |
+          python scripts/enrich_matchbook_liquidity.py \
+            --input-csv data/latest_opportunities.csv \
+            --output-csv data/latest_opportunities_with_liquidity.csv \
+            --currency GBP \
+            --minimum-liquidity 2
+          python scripts/log_exchange_paper_trades.py \
+            --paper-db "$PAPER_DB" \
+            --opportunities-csv data/latest_opportunities_with_liquidity.csv \
+            --paper-stake 1 \
+            --inserted-count-out data/latest_inserted.txt
+
+      - name: Update closing values
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'update-closing') || github.event.schedule == '30 */2 * * *' }}
         run: |
           scan-exchanges \
             --strategy exchange-clv \
-            --paper-db "$EXCHANGE_CLV_DB" \
+            --paper-db "$PAPER_DB" \
             --paper-update-closing \
             --sports-profile "$SPORTS_PROFILE" \
             --markets h2h \
@@ -84,34 +94,34 @@ jobs:
             --min-reference-books 5 \
             --max-age-seconds 900
 
-      - name: Settle recent results exchange CLV
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'settle-results') || github.event.schedule == '30 */6 * * *' }}
+      - name: Settle recent results
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'settle-results') || github.event.schedule == '45 */6 * * *' }}
         run: |
           scan-exchanges \
-            --paper-db "$EXCHANGE_CLV_DB" \
+            --paper-db "$PAPER_DB" \
             --paper-settle-results \
             --scores-days-from 3
 
-      - name: Export exchange CLV paper trades
+      - name: Export trade log
         run: |
-          scan-exchanges --paper-db "$EXCHANGE_CLV_DB" --paper-export > data/paper_trades_exchange_clv.csv
-          [ -f data/latest_opportunities_exchange_clv.csv ] || touch data/latest_opportunities_exchange_clv.csv
-          [ -f data/latest_inserted_exchange_clv.txt ] || echo 0 > data/latest_inserted_exchange_clv.txt
+          scan-exchanges --paper-db "$PAPER_DB" --paper-export > data/paper_trades.csv
+          [ -f data/latest_opportunities_with_liquidity.csv ] || touch data/latest_opportunities_with_liquidity.csv
+          [ -f data/latest_inserted.txt ] || echo 0 > data/latest_inserted.txt
 
-      - name: Build exchange CLV summary
+      - name: Build summary
         run: |
           python scripts/paper_alert_summary.py \
-            --title "Exchange CLV Paper Trading Summary" \
-            --paper-csv data/paper_trades_exchange_clv.csv \
-            --opportunities-csv data/latest_opportunities_exchange_clv.csv \
-            --new-trades-count-file data/latest_inserted_exchange_clv.txt \
+            --title "Paper Trade Log Summary" \
+            --paper-csv data/paper_trades.csv \
+            --opportunities-csv data/latest_opportunities_with_liquidity.csv \
+            --new-trades-count-file data/latest_inserted.txt \
             --opportunity-dedupe-key event-market-outcome \
             --scan-kind price \
-            --markdown-out data/paper_summary_exchange_clv.md \
-            --text-out data/paper_summary_exchange_clv.txt
-          cat data/paper_summary_exchange_clv.md >> "$GITHUB_STEP_SUMMARY"
+            --markdown-out data/paper_summary.md \
+            --text-out data/paper_summary.txt
+          cat data/paper_summary.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Send exchange CLV webhook alert
+      - name: Send webhook alert
         if: ${{ env.PAPER_ALERT_WEBHOOK_URL != '' }}
         run: |
           python - <<'PY'
@@ -120,7 +130,7 @@ jobs:
           import urllib.request
 
           webhook_url = os.environ["PAPER_ALERT_WEBHOOK_URL"]
-          text = open("data/paper_summary_exchange_clv.txt", encoding="utf-8").read()
+          text = open("data/paper_summary.txt", encoding="utf-8").read()
           payload = json.dumps({"text": text, "content": text}).encode("utf-8")
           request = urllib.request.Request(
               webhook_url,
@@ -132,14 +142,14 @@ jobs:
               print(f"Webhook response: {response.status}")
           PY
 
-      - name: Commit exchange CLV paper log
+      - name: Commit trade log
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/paper_trades_exchange_clv.sqlite3 data/paper_trades_exchange_clv.csv data/paper_summary_exchange_clv.md
+          git add data/paper_trades.sqlite3 data/paper_trades.csv data/paper_summary.md
           if git diff --cached --quiet; then
-            echo "No exchange CLV paper-trade changes to commit."
+            echo "No paper-trade changes to commit."
           else
-            git commit -m "Update exchange CLV paper trading log"
+            git commit -m "Update paper trade log"
             git push
           fi

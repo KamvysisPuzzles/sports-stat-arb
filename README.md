@@ -207,33 +207,38 @@ over many bets, the signal is more likely to be real.
 
 ## Paper Trading
 
-The deployed workflow logs candidates without placing real bets. It first scans
-for Matchbook h2h value, enriches the rows with Matchbook liquidity, then books
-only executable rows as paper trades.
+The deployed workflow logs candidates without placing real bets. It scans h2h
+prices on Matchbook, Smarkets, and Betfair Exchange, keeps only the best price
+for each event/market/outcome, enriches Matchbook rows with visible Matchbook
+liquidity when available, and logs every selected signal with a nominal `1 GBP`
+paper stake.
 
 ```bash
 scan-exchanges \
+  --strategy exchange-clv \
   --sports-profile matchbook-h2h-expanded \
   --markets h2h \
   --max-api-requests 80 \
   --min-edge 0.025 \
   --min-reference-books 5 \
   --max-age-seconds 900 \
-  --unique-events > data/latest_opportunities_h2h.csv
+  --unique-bets > data/latest_opportunities.csv
 
 python scripts/enrich_matchbook_liquidity.py \
-  --input-csv data/latest_opportunities_h2h.csv \
-  --output-csv data/latest_opportunities_h2h_with_liquidity.csv
+  --input-csv data/latest_opportunities.csv \
+  --output-csv data/latest_opportunities_with_liquidity.csv
 
-python scripts/log_matchbook_paper_trades.py \
-  --paper-db data/paper_trades_h2h.sqlite3 \
-  --opportunities-csv data/latest_opportunities_h2h_with_liquidity.csv
+python scripts/log_exchange_paper_trades.py \
+  --paper-db data/paper_trades.sqlite3 \
+  --opportunities-csv data/latest_opportunities_with_liquidity.csv \
+  --paper-stake 1
 ```
 
-The paper stake is the visible Matchbook liquidity at or above the target price.
-Rows without available liquidity are tracked in the liquidity snapshot file but
-are not booked as paper trades. The paper log only logs one trade per `event_id`
-and market, so rerunning the scanner will not re-bet the same event.
+The trade log only logs one trade per `event_id`, market, and outcome, so
+rerunning the scanner will not re-book the same bet. Smarkets and Betfair rows
+have blank liquidity fields because The Odds API does not provide their order
+book depth. Matchbook rows include available liquidity at or above the target
+price when the public Matchbook order book can be matched.
 
 Export the paper log:
 
@@ -260,8 +265,8 @@ Important paper columns:
 
 ## GitHub Actions Live Test
 
-The repository includes `.github/workflows/live-paper-trading.yml` for unattended
-paper trading.
+The repository includes `.github/workflows/paper-trade-log.yml` for unattended
+paper logging.
 
 Before enabling it, add this repository secret in GitHub:
 
@@ -269,37 +274,21 @@ Before enabling it, add this repository secret in GitHub:
 THE_ODDS_API_KEY
 ```
 
-The workflow now paper-trades the Matchbook h2h strategy:
+The workflow now keeps one combined trade log:
 
-- Scans `matchbook-h2h-expanded` h2h markets every hour.
-- Scans spreads/handicaps separately every 2 hours as an experimental bucket.
-- Logs Matchbook candidates against the sharpness-weighted reference consensus.
-- Enriches each flagged row with visible Matchbook liquidity.
-- Books executable rows using visible liquidity as the paper stake.
-- Updates closing values every 2 hours.
-- Settles recent completed results every 6 hours using The Odds API scores endpoint.
-- Commits market-specific paper databases and CSVs back to the repo.
-- Writes a paper-trading summary with visible liquidity and theoretical executable EV into each GitHub Actions run.
-
-The h2h and spreads paper tests use separate databases, CSVs, and summaries so
-their CLV and P&L evidence can be evaluated separately.
-
-The repository also includes `.github/workflows/exchange-clv-paper-trading.yml`
-as a separate CLV-only experiment for the broader exchange universe:
-
+- Scans `matchbook-h2h-expanded` h2h markets every 2 hours.
 - Targets Matchbook, Smarkets, and Betfair Exchange prices.
-- Uses the same sharpness-weighted reference consensus and `2.5%` post-fee edge
-  threshold.
+- Requires `2.5%` post-fee edge, at least 5 reference books, and at most `10%`
+  edge.
 - Books only the best price when the same event/market/outcome appears on
   multiple exchanges.
-- Stores each row with a nominal `1 GBP` paper stake because The Odds API does
-  not provide executable liquidity for Smarkets or Betfair.
-- Runs candidate logging every 4 hours, closing updates every 4 hours, and
-  result settlement every 6 hours.
-- Keeps its own database, CSV, and summary:
-  `data/paper_trades_exchange_clv.sqlite3`,
-  `data/paper_trades_exchange_clv.csv`, and
-  `data/paper_summary_exchange_clv.md`.
+- Logs a nominal `1 GBP` paper stake for each selected trade.
+- Adds visible Matchbook liquidity fields when the selected target is Matchbook.
+- Updates closing values every 2 hours.
+- Settles recent completed results every 6 hours using The Odds API scores endpoint.
+- Commits one durable SQLite database, one CSV trade log, and one summary:
+  `data/paper_trades.sqlite3`, `data/paper_trades.csv`, and
+  `data/paper_summary.md`.
 
 Optional alert webhook secret:
 
@@ -326,7 +315,7 @@ Credit estimate for the deployed wider profile:
 - Result settlement: 2 credits per sport with open trades.
 
 The deployed workflow uses the `matchbook-h2h-expanded` profile. It scans h2h
-only every hour and updates closing values every 2 hours, which keeps expected
+every 2 hours and updates closing values every 2 hours, which keeps expected
 monthly usage under the 100k-credit plan before result settlement.
 
 Sharp books are treated as a reference-price proxy, not as guaranteed truth. The
@@ -334,8 +323,8 @@ strategy requires at least 5 reference books before logging a trade, which helps
 avoid trusting a single stale or low-liquidity quote. It also excludes new
 booked opportunities above `10%` edge by default, because very large edges are
 usually stale prices, market mismatches, or unusable exchange quotes rather than
-clean value. Matchbook liquidity snapshots are stored separately so we can
-measure visible executable size over time.
+clean value. Matchbook liquidity is stored directly on trade rows when the
+selected best-price venue is Matchbook.
 
 ## If Edge Is Proven
 

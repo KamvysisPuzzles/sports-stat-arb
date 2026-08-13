@@ -829,6 +829,16 @@ def write_paper_csv(trades: list[PaperTrade]) -> None:
         "edge",
         "reference_bookmakers",
         "stake",
+        "matchbook_event_id",
+        "matchbook_market_id",
+        "matchbook_runner_id",
+        "liquidity_status",
+        "available_at_or_above_target",
+        "best_back_odds",
+        "best_back_available",
+        "best_lay_odds",
+        "best_lay_available",
+        "back_lay_spread_pct",
         "status",
         "closing_checked_at",
         "closing_target_odds",
@@ -883,6 +893,21 @@ def _paper_row(trade: PaperTrade) -> dict[str, str | float | int | bool]:
         "edge": f"{trade.edge:.4f}",
         "reference_bookmakers": trade.reference_bookmakers,
         "stake": f"{trade.stake:.2f}",
+        "matchbook_event_id": trade.matchbook_event_id or "",
+        "matchbook_market_id": trade.matchbook_market_id or "",
+        "matchbook_runner_id": trade.matchbook_runner_id or "",
+        "liquidity_status": trade.liquidity_status or "",
+        "available_at_or_above_target": _format_optional_number(
+            trade.available_at_or_above_target
+        ),
+        "best_back_odds": _format_optional_number(trade.best_back_odds, decimals=4),
+        "best_back_available": _format_optional_number(trade.best_back_available),
+        "best_lay_odds": _format_optional_number(trade.best_lay_odds, decimals=4),
+        "best_lay_available": _format_optional_number(trade.best_lay_available),
+        "back_lay_spread_pct": _format_optional_number(
+            trade.back_lay_spread_pct,
+            decimals=4,
+        ),
         "status": trade.status,
         "closing_checked_at": (
             trade.closing_checked_at.isoformat() if trade.closing_checked_at else ""
@@ -902,6 +927,10 @@ def _paper_row(trade: PaperTrade) -> dict[str, str | float | int | bool]:
         "result": trade.result or "",
         "profit": f"{trade.profit:.2f}" if trade.profit is not None else "",
     }
+
+
+def _format_optional_number(value: float | None, *, decimals: int = 2) -> str:
+    return f"{value:.{decimals}f}" if value is not None else ""
 
 
 def _recommended_value_stake(signal, args) -> float | None:

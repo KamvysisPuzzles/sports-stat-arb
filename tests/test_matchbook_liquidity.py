@@ -165,8 +165,8 @@ def test_enrich_opportunities_csv_appends_liquidity_columns(tmp_path) -> None:
     input_csv = tmp_path / "opportunities.csv"
     output_csv = tmp_path / "enriched.csv"
     input_csv.write_text(
-        "event_name,market,outcome_name,target_odds\n"
-        "Grimsby Town v Exeter City,h2h,Exeter City,4.9\n"
+        "event_name,market,outcome_name,target_bookmaker,target_odds\n"
+        "Grimsby Town v Exeter City,h2h,Exeter City,Matchbook,4.9\n"
     )
 
     enrich_opportunities_csv(
@@ -178,3 +178,22 @@ def test_enrich_opportunities_csv_appends_liquidity_columns(tmp_path) -> None:
     rows = list(csv.DictReader(output_csv.open()))
     assert rows[0]["liquidity_status"] == "available"
     assert rows[0]["available_at_or_above_target"] == "42.50"
+
+
+def test_enrich_opportunities_csv_skips_non_matchbook_targets(tmp_path) -> None:
+    input_csv = tmp_path / "opportunities.csv"
+    output_csv = tmp_path / "enriched.csv"
+    input_csv.write_text(
+        "event_name,market,outcome_name,target_bookmaker,target_odds\n"
+        "Grimsby Town v Exeter City,h2h,Exeter City,Betfair,4.9\n"
+    )
+
+    enrich_opportunities_csv(
+        opportunities_csv=input_csv,
+        output_csv=output_csv,
+        events=matchbook_events(),
+    )
+
+    rows = list(csv.DictReader(output_csv.open()))
+    assert rows[0]["liquidity_status"] == "not_applicable"
+    assert rows[0]["available_at_or_above_target"] == "0.00"

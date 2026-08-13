@@ -101,6 +101,11 @@ def enrich_opportunities_csv(
         writer = csv.DictWriter(handle, fieldnames=fieldnames + extra_fields)
         writer.writeheader()
         for row in rows:
+            output_row = dict(row)
+            if row.get("target_bookmaker", "").casefold() != "matchbook":
+                output_row.update(_liquidity_row(unavailable_liquidity("not_applicable")))
+                writer.writerow(output_row)
+                continue
             match = match_liquidity(
                 events,
                 event_name=row["event_name"],
@@ -108,9 +113,24 @@ def enrich_opportunities_csv(
                 outcome_name=row["outcome_name"],
                 target_odds=float(row["target_odds"]),
             )
-            output_row = dict(row)
             output_row.update(_liquidity_row(match))
             writer.writerow(output_row)
+
+
+def unavailable_liquidity(status: str) -> LiquidityMatch:
+    return LiquidityMatch(
+        matchbook_event_id=None,
+        matchbook_market_id=None,
+        matchbook_runner_id=None,
+        match_score=0,
+        best_back_odds=None,
+        best_back_available=0,
+        available_at_or_above_target=0,
+        best_lay_odds=None,
+        best_lay_available=0,
+        back_lay_spread_pct=None,
+        liquidity_status=status,
+    )
 
 
 def match_liquidity(

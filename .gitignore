@@ -11,3 +11,12 @@ data/bookmaker_sharpness_weights.csv
 data/matchbook_liquidity_snapshots*.csv
 data/latest_opportunities*.csv
 data/latest_inserted*.txt
+data/paper_summary_h2h.md
+data/paper_summary_spreads.md
+data/paper_summary_exchange_clv.md
+data/paper_trades_h2h.csv
+data/paper_trades_h2h.sqlite3
+data/paper_trades_spreads.csv
+data/paper_trades_spreads.sqlite3
+data/paper_trades_exchange_clv.csv
+data/paper_trades_exchange_clv.sqlite3
