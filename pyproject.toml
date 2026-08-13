@@ -22,6 +22,9 @@ dev = [
 [project.scripts]
 scan-exchanges = "exchange_scanner.cli:main"
 
+[tool.setuptools.packages.find]
+include = ["exchange_scanner*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
