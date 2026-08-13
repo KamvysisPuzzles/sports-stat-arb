@@ -57,14 +57,11 @@ jobs:
         run: |
           scan-exchanges \
             --strategy sharp-weighted-clv \
-            --paper-db "$PAPER_DB" \
             --market-db "$MARKET_DB" \
-            --paper-log \
             --store-odds-snapshot \
             --sports-profile "$SPORTS_PROFILE" \
             --markets h2h \
             --max-api-requests "$MAX_API_REQUESTS" \
-            --paper-stake 1 \
             --min-edge 0.005 \
             --max-edge "$MAX_EDGE" \
             --min-reference-books 5 \
@@ -83,6 +80,9 @@ jobs:
           python scripts/append_liquidity_snapshots.py \
             --input-csv data/latest_opportunities_with_liquidity.csv \
             --output-csv data/matchbook_liquidity_snapshots.csv
+          python scripts/log_matchbook_paper_trades.py \
+            --paper-db "$PAPER_DB" \
+            --opportunities-csv data/latest_opportunities_with_liquidity.csv
 
       - name: Update closing values
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'update-closing') || github.event.schedule == '30 */2 * * *' }}

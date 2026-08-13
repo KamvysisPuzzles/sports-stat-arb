@@ -224,22 +224,33 @@ over many bets, the signal is more likely to be real.
 
 ## Paper Trading
 
-Log nightly candidates without placing real bets:
+The deployed workflow logs candidates without placing real bets. It first scans
+for Matchbook h2h value, enriches the rows with Matchbook liquidity, then books
+only executable rows as paper trades.
 
 ```bash
 scan-exchanges \
-  --min-edge 0.02 \
-  --min-reference-books 2 \
+  --sports-profile matchbook-h2h-expanded \
+  --markets h2h \
+  --max-api-requests 80 \
+  --min-edge 0.005 \
+  --min-reference-books 5 \
   --max-age-seconds 900 \
-  --unique-events \
-  --resolve-event-pages \
-  --paper-log \
-  --paper-stake 1
+  --unique-events > data/latest_opportunities.csv
+
+python scripts/enrich_matchbook_liquidity.py \
+  --input-csv data/latest_opportunities.csv \
+  --output-csv data/latest_opportunities_with_liquidity.csv
+
+python scripts/log_matchbook_paper_trades.py \
+  --paper-db data/paper_trades.sqlite3 \
+  --opportunities-csv data/latest_opportunities_with_liquidity.csv
 ```
 
-The paper log is stored in `paper_trades.sqlite3` by default. It only logs one
-trade per `event_id` and market, so rerunning the scanner will not re-bet the
-same event.
+The paper stake is the visible Matchbook liquidity at or above the target price.
+Rows without available liquidity are tracked in the liquidity snapshot file but
+are not booked as paper trades. The paper log only logs one trade per `event_id`
+and market, so rerunning the scanner will not re-bet the same event.
 
 Export the paper log:
 
@@ -280,6 +291,7 @@ The workflow now paper-trades the Matchbook h2h strategy:
 - Scans `matchbook-h2h-expanded` h2h markets every hour.
 - Logs Matchbook candidates against the sharpness-weighted reference consensus.
 - Enriches each flagged row with visible Matchbook liquidity.
+- Books executable rows using visible liquidity as the paper stake.
 - Appends enriched rows to `data/matchbook_liquidity_snapshots.csv`.
 - Updates closing values every 2 hours.
 - Stores raw market odds snapshots for future sharpness-weight learning.
