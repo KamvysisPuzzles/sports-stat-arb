@@ -13,7 +13,7 @@ on:
           - update-closing
           - settle-results
   schedule:
-    - cron: "0 */2 * * *"
+    - cron: "0 * * * *"
     - cron: "30 */2 * * *"
     - cron: "45 */6 * * *"
 
@@ -51,7 +51,7 @@ jobs:
         run: mkdir -p data
 
       - name: Scan exchange CLV signals
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 */2 * * *' }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *' }}
         run: |
           scan-exchanges \
             --strategy exchange-clv \
@@ -66,7 +66,7 @@ jobs:
             > data/latest_opportunities.csv
 
       - name: Add Matchbook liquidity and log trades
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 */2 * * *' }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *' }}
         run: |
           python scripts/enrich_matchbook_liquidity.py \
             --input-csv data/latest_opportunities.csv \

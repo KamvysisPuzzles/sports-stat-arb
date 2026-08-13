@@ -276,7 +276,7 @@ THE_ODDS_API_KEY
 
 The workflow now keeps one combined trade log:
 
-- Scans `matchbook-h2h-expanded` h2h markets every 2 hours.
+- Scans `matchbook-h2h-expanded` h2h markets every hour.
 - Targets Matchbook, Smarkets, and Betfair Exchange prices.
 - Requires `2.5%` post-fee edge, at least 5 reference books, and at most `10%`
   edge.
@@ -315,8 +315,9 @@ Credit estimate for the deployed wider profile:
 - Result settlement: 2 credits per sport with open trades.
 
 The deployed workflow uses the `matchbook-h2h-expanded` profile. It scans h2h
-every 2 hours and updates closing values every 2 hours, which keeps expected
-monthly usage under the 100k-credit plan before result settlement.
+every hour and updates closing values every 2 hours. With the current 73-sport
+profile, base odds usage is roughly `78,840` credits per 30-day month before
+result settlement.
 
 Sharp books are treated as a reference-price proxy, not as guaranteed truth. The
 strategy requires at least 5 reference books before logging a trade, which helps
