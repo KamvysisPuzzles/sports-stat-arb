@@ -6,3 +6,7 @@
 __pycache__/
 *.pyc
 .env
+data/market_snapshots.sqlite3
+data/bookmaker_sharpness_weights.csv
+data/matchbook_liquidity_snapshots*.csv
+data/latest_opportunities*.csv

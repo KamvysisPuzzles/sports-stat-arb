@@ -72,26 +72,9 @@ Matchbook get the highest reference weights, stronger mainstream books get
 medium weights, and unknown books get low default weight. Matchbook's own price
 is excluded from the reference calculation for a Matchbook target.
 
-The scanner can also learn sharpness weights from stored odds snapshots:
-
-```bash
-scan-exchanges \
-  --sports-profile matchbook-h2h-expanded \
-  --markets h2h \
-  --max-api-requests 80 \
-  --store-odds-snapshot \
-  --market-db data/market_snapshots.sqlite3
-
-scan-exchanges \
-  --market-db data/market_snapshots.sqlite3 \
-  --recompute-sharpness-weights \
-  --sharpness-weights-csv data/bookmaker_sharpness_weights.csv
-```
-
-Raw odds snapshots are stored in SQLite. Learned bookmaker weights are exported
-to a small CSV. Once enough closed-event samples exist, add
-`--use-learned-sharpness-weights` to `sharp-weighted-clv` scans to prefer the
-learned weights over the built-in heuristic weights.
+The live workflow intentionally does not store raw odds snapshots. It only keeps
+the paper trade ledgers, exported trade CSVs, and summary markdown so the repo
+stays comfortably below GitHub's normal file-size limits.
 
 The default scan uses:
 
@@ -293,16 +276,13 @@ The workflow now paper-trades the Matchbook h2h strategy:
 - Logs Matchbook candidates against the sharpness-weighted reference consensus.
 - Enriches each flagged row with visible Matchbook liquidity.
 - Books executable rows using visible liquidity as the paper stake.
-- Appends enriched rows to market-specific liquidity snapshot CSVs.
 - Updates closing values every 2 hours.
-- Stores raw market odds snapshots for future sharpness-weight learning.
-- Recomputes learned bookmaker sharpness weights after each run.
 - Settles recent completed results every 6 hours using The Odds API scores endpoint.
 - Commits market-specific paper databases and CSVs back to the repo.
 - Writes a paper-trading summary with visible liquidity and theoretical executable EV into each GitHub Actions run.
 
-The h2h and spreads paper tests use separate databases, CSVs, liquidity snapshot
-files, and summaries so their CLV and P&L evidence can be evaluated separately.
+The h2h and spreads paper tests use separate databases, CSVs, and summaries so
+their CLV and P&L evidence can be evaluated separately.
 
 Optional alert webhook secret:
 
@@ -313,80 +293,6 @@ PAPER_ALERT_WEBHOOK_URL
 If present, the workflow posts the latest opportunities and performance summary
 to that webhook. The payload includes both `text` and `content` fields, so it
 works with many Slack-style or Discord-style endpoints.
-
-Optional Google Sheets tracker secrets:
-
-```text
-SHEETS_WEBHOOK_URL
-SHEETS_WEBHOOK_SECRET
-```
-
-If present, the workflow syncs six Google Sheets tabs after every run:
-
-- `h2h_trades`
-- `h2h_liquidity`
-- `h2h_summary`
-- `spreads_trades`
-- `spreads_liquidity`
-- `spreads_summary`
-
-The trade, liquidity, and summary tabs are replaced from the repository CSVs on
-each sync. This keeps the sheet clean and avoids duplicate rows if a workflow is
-retried.
-
-To set this up for free:
-
-1. Create a private Google Sheet.
-2. Open `Extensions` -> `Apps Script`.
-3. Paste this script, replacing `CHANGE_ME` with a random secret value:
-
-```javascript
-const WEBHOOK_SECRET = 'CHANGE_ME';
-
-function doPost(e) {
-  const payload = JSON.parse(e.postData.contents || '{}');
-  if (payload.secret !== WEBHOOK_SECRET) {
-    return ContentService.createTextOutput('unauthorized');
-  }
-
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  for (const table of payload.tables || []) {
-    replaceSheet(spreadsheet, table.name, table.headers || [], table.rows || []);
-  }
-
-  return ContentService.createTextOutput('ok');
-}
-
-function replaceSheet(spreadsheet, name, headers, rows) {
-  const sheet = spreadsheet.getSheetByName(name) || spreadsheet.insertSheet(name);
-  sheet.clearContents();
-
-  if (!headers.length) {
-    sheet.getRange(1, 1).setValue('No data yet');
-    return;
-  }
-
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  if (rows.length) {
-    const values = rows.map(row => headers.map(header => row[header] || ''));
-    writeInChunks(sheet, values, headers.length);
-  }
-  sheet.setFrozenRows(1);
-}
-
-function writeInChunks(sheet, values, width) {
-  const chunkSize = 500;
-  for (let start = 0; start < values.length; start += chunkSize) {
-    const chunk = values.slice(start, start + chunkSize);
-    sheet.getRange(start + 2, 1, chunk.length, width).setValues(chunk);
-  }
-}
-```
-
-4. Click `Deploy` -> `New deployment` -> `Web app`.
-5. Set `Execute as` to `Me` and `Who has access` to `Anyone with the link`.
-6. Copy the web app URL into the repository secret `SHEETS_WEBHOOK_URL`.
-7. Put the same random secret value into `SHEETS_WEBHOOK_SECRET`.
 
 You can also trigger it manually from the Actions tab with one of:
 
