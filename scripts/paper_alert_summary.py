@@ -10,9 +10,15 @@ def main() -> None:
     args = parse_args()
     trades = read_csv(args.paper_csv)
     opportunities = read_csv(args.opportunities_csv) if args.opportunities_csv.exists() else []
+    new_trades_count = read_count(args.new_trades_count_file)
 
-    markdown = build_markdown(trades, opportunities, title=args.title)
-    text = build_text(trades, opportunities)
+    markdown = build_markdown(
+        trades,
+        opportunities,
+        title=args.title,
+        new_trades_count=new_trades_count,
+    )
+    text = build_text(trades, opportunities, new_trades_count=new_trades_count)
     args.markdown_out.write_text(markdown)
     args.text_out.write_text(text)
 
@@ -22,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--title", default="Live Paper Trading Summary")
     parser.add_argument("--paper-csv", type=Path, required=True)
     parser.add_argument("--opportunities-csv", type=Path, required=True)
+    parser.add_argument("--new-trades-count-file", type=Path)
     parser.add_argument("--markdown-out", type=Path, required=True)
     parser.add_argument("--text-out", type=Path, required=True)
     return parser.parse_args()
@@ -34,11 +41,21 @@ def read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
+def read_count(path: Path | None) -> int | None:
+    if not path or not path.exists():
+        return None
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except ValueError:
+        return None
+
+
 def build_markdown(
     trades: list[dict[str, str]],
     opportunities: list[dict[str, str]],
     *,
     title: str = "Live Paper Trading Summary",
+    new_trades_count: int | None = None,
 ) -> str:
     now = datetime.now(timezone.utc)
     open_trades = [row for row in trades if row.get("status") == "open"]
@@ -65,8 +82,13 @@ def build_markdown(
     lines = [
         f"# {title}",
         "",
-        f"- New opportunities this run: {len(opportunities)}",
+        f"- Flagged opportunities this run: {len(opportunities)}",
         f"- Matchbook executable rows: {len(available_opportunities)}",
+        (
+            f"- New trades booked this run: {new_trades_count}"
+            if new_trades_count is not None
+            else "- New trades booked this run: unknown"
+        ),
         f"- Visible Matchbook liquidity: {visible_liquidity:.2f}",
         f"- Liquidity-weighted edge: {liquidity_weighted_edge:.2%}",
         f"- Theoretical executable EV: {executable_ev:.2f}",
@@ -99,8 +121,20 @@ def build_markdown(
     return "\n".join(lines)
 
 
-def build_text(trades: list[dict[str, str]], opportunities: list[dict[str, str]]) -> str:
-    return "\n".join(line.lstrip("# ").lstrip("- ") for line in build_markdown(trades, opportunities).splitlines())
+def build_text(
+    trades: list[dict[str, str]],
+    opportunities: list[dict[str, str]],
+    *,
+    new_trades_count: int | None = None,
+) -> str:
+    return "\n".join(
+        line.lstrip("# ").lstrip("- ")
+        for line in build_markdown(
+            trades,
+            opportunities,
+            new_trades_count=new_trades_count,
+        ).splitlines()
+    )
 
 
 def _float(value: str | None) -> float:

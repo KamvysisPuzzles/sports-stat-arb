@@ -76,7 +76,8 @@ jobs:
             --minimum-liquidity 2
           python scripts/log_matchbook_paper_trades.py \
             --paper-db "$H2H_PAPER_DB" \
-            --opportunities-csv data/latest_opportunities_h2h_with_liquidity.csv
+            --opportunities-csv data/latest_opportunities_h2h_with_liquidity.csv \
+            --inserted-count-out data/latest_inserted_h2h.txt
 
       - name: Paper log spreads
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '30 */2 * * *' }}
@@ -103,7 +104,8 @@ jobs:
             --minimum-liquidity 2
           python scripts/log_matchbook_paper_trades.py \
             --paper-db "$SPREADS_PAPER_DB" \
-            --opportunities-csv data/latest_opportunities_spreads_with_liquidity.csv
+            --opportunities-csv data/latest_opportunities_spreads_with_liquidity.csv \
+            --inserted-count-out data/latest_inserted_spreads.txt
 
       - name: Update closing values h2h
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'update-closing') || github.event.schedule == '30 */2 * * *' }}
@@ -153,6 +155,8 @@ jobs:
           scan-exchanges --paper-db "$SPREADS_PAPER_DB" --paper-export > data/paper_trades_spreads.csv
           [ -f data/latest_opportunities_h2h_with_liquidity.csv ] || touch data/latest_opportunities_h2h_with_liquidity.csv
           [ -f data/latest_opportunities_spreads_with_liquidity.csv ] || touch data/latest_opportunities_spreads_with_liquidity.csv
+          [ -f data/latest_inserted_h2h.txt ] || echo 0 > data/latest_inserted_h2h.txt
+          [ -f data/latest_inserted_spreads.txt ] || echo 0 > data/latest_inserted_spreads.txt
 
       - name: Build alert summary
         run: |
@@ -160,12 +164,14 @@ jobs:
             --title "Matchbook h2h Paper Trading Summary" \
             --paper-csv data/paper_trades_h2h.csv \
             --opportunities-csv data/latest_opportunities_h2h_with_liquidity.csv \
+            --new-trades-count-file data/latest_inserted_h2h.txt \
             --markdown-out data/paper_summary_h2h.md \
             --text-out data/paper_summary_h2h.txt
           python scripts/paper_alert_summary.py \
             --title "Matchbook spreads Paper Trading Summary" \
             --paper-csv data/paper_trades_spreads.csv \
             --opportunities-csv data/latest_opportunities_spreads_with_liquidity.csv \
+            --new-trades-count-file data/latest_inserted_spreads.txt \
             --markdown-out data/paper_summary_spreads.md \
             --text-out data/paper_summary_spreads.txt
           cat data/paper_summary_h2h.md >> "$GITHUB_STEP_SUMMARY"

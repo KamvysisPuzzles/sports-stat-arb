@@ -13,6 +13,8 @@ def main() -> None:
         opportunities_csv=args.opportunities_csv,
         min_liquidity=args.min_liquidity,
     )
+    if args.inserted_count_out:
+        args.inserted_count_out.write_text(f"{inserted}\n", encoding="utf-8")
     print(f"Logged {inserted} executable Matchbook paper trades.")
 
 
@@ -23,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--paper-db", type=Path, required=True)
     parser.add_argument("--opportunities-csv", type=Path, required=True)
     parser.add_argument("--min-liquidity", type=float, default=0.01)
+    parser.add_argument("--inserted-count-out", type=Path)
     return parser.parse_args()
 
 
