@@ -1,15 +1,15 @@
 # Live Paper Trading Summary
 
 - New opportunities this run: 3
-- Total trades: 13
-- Open trades: 13
+- Total trades: 14
+- Open trades: 14
 - Settled trades: 0
 - Settled profit: 0.00
 - Settled ROI: 0.00%
-- Beat closing line: 0.00% (0/0)
+- Beat closing line: 23.08% (3/13)
 
 ## Opportunities
 
-- Back Londrina with Bet Victor at 4.8 (19/5)+ | Sport Recife v Londrina | edge 8.37% | starts 2026-08-14T23:30:00+00:00
-- Back Kyoto Purple Sanga with Paddy Power at 2.9 (19/10)+ | Kawasaki Frontale v Kyoto Purple Sanga | edge 6.69% | starts 2026-08-15T10:00:00+00:00
-- Back Sri Lanka with Bet Victor at 5 (4/1)+ | Sri Lanka v India | edge 4.38% | starts 2026-08-15T04:30:00+00:00
+- Back Zhejiang with Grosvenor at 3.15 (43/20)+ | Zhejiang v Chengdu Rongcheng FC | edge 4.80% | starts 2026-08-15T11:35:00+00:00
+- Back Sri Lanka with Grosvenor at 5.5 (9/2)+ | Sri Lanka v India | edge 3.56% | starts 2026-08-15T04:30:00+00:00
+- Back Draw with Bet Victor at 3.9 (29/10)+ | Ljungskile SK v Östers IF | edge 2.36% | starts 2026-08-15T11:00:00+00:00
