@@ -33,6 +33,7 @@ jobs:
       PAPER_ALERT_WEBHOOK_URL: ${{ secrets.PAPER_ALERT_WEBHOOK_URL }}
       PAPER_DB: data/paper_trades.sqlite3
       SPORTS_PROFILE: uk-soft-edge
+      MAX_API_REQUESTS: "40"
 
     steps:
       - uses: actions/checkout@v4
@@ -76,6 +77,7 @@ jobs:
             --paper-db "$PAPER_DB" \
             --paper-log \
             --sports-profile "$SPORTS_PROFILE" \
+            --max-api-requests "$MAX_API_REQUESTS" \
             --paper-stake 1 \
             --min-edge 0.02 \
             --min-reference-books 2 \
@@ -91,6 +93,7 @@ jobs:
             --paper-db "$PAPER_DB" \
             --paper-update-closing \
             --sports-profile "$SPORTS_PROFILE" \
+            --max-api-requests "$MAX_API_REQUESTS" \
             --max-event-days 7 \
             --min-edge -999 \
             --min-reference-books 2 \
