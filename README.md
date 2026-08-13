@@ -86,6 +86,7 @@ Run the default UK soft-book value scan:
 ```bash
 scan-exchanges \
   --min-edge 0.02 \
+  --max-edge 0.10 \
   --min-reference-books 2 \
   --max-age-seconds 900 \
   --unique-events \
@@ -333,6 +334,10 @@ events where exchange liquidity is thin.
 
 Sharp books are treated as a reference-price proxy, not as guaranteed truth. The
 strategy requires at least 2 reference books before logging a trade, which helps
-avoid trusting a single stale or low-liquidity quote. If the live test produces
-too many weak candidates, raise `--min-reference-books` or `--min-edge` before
-adding more leagues.
+avoid trusting a single stale or low-liquidity quote. It also excludes new
+booked opportunities above `10%` edge by default, because very large edges are
+usually stale prices, market mismatches, or unusable exchange quotes rather than
+clean value. Betfair remains a sharp reference, but exchange back prices with a
+very wide available back/lay spread are filtered before they can distort the
+reference fair price. If the live test produces too many weak candidates, raise
+`--min-reference-books` or `--min-edge` before adding more leagues.

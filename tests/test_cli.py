@@ -14,6 +14,7 @@ from exchange_scanner.cli import (
     UK_SOFT_BOOKMAKERS,
     _american_odds,
     _filter_prices_by_event_horizon,
+    _filter_signals_by_max_edge,
     _fractional_odds,
     _recommended_value_stake,
     _sport_keys,
@@ -120,6 +121,39 @@ def test_unique_event_signals_keeps_highest_edge_per_event() -> None:
     unique = _unique_event_signals([first, second, third])
 
     assert unique == [first, third]
+
+
+def test_filter_signals_by_max_edge_excludes_suspicious_high_edges() -> None:
+    clean = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Book A",
+        target_odds=2.1,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.05,
+        reference_bookmakers=("Pinnacle", "Betfair"),
+    )
+    suspicious = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-2",
+        event_name="Liverpool v Everton",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Everton",
+        target_bookmaker="Book A",
+        target_odds=3.0,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.5,
+        reference_bookmakers=("Pinnacle", "Betfair"),
+    )
+
+    assert _filter_signals_by_max_edge([suspicious, clean], max_edge=0.10) == [clean]
 
 
 def test_filter_prices_by_event_horizon_excludes_events_more_than_two_days_out() -> None:
@@ -252,7 +286,7 @@ def test_scan_uses_uk_soft_targets_against_sharp_references(tmp_path) -> None:
                                 {
                                     "key": "h2h",
                                     "outcomes": [
-                                        {"name": "Arsenal", "price": 2.3},
+                                        {"name": "Arsenal", "price": 2.1},
                                         {"name": "Chelsea", "price": 1.8},
                                     ],
                                 }
@@ -266,8 +300,8 @@ def test_scan_uses_uk_soft_targets_against_sharp_references(tmp_path) -> None:
                                 {
                                     "key": "h2h",
                                     "outcomes": [
-                                        {"name": "Arsenal", "price": 1.5},
-                                        {"name": "Chelsea", "price": 10.0},
+                                        {"name": "Arsenal", "price": 2.0},
+                                        {"name": "Chelsea", "price": 2.0},
                                     ],
                                 }
                             ],
@@ -308,7 +342,7 @@ def test_scan_uses_uk_soft_targets_against_sharp_references(tmp_path) -> None:
     args = Namespace(
         fixtures=fixture,
         markets="h2h",
-        min_edge=0.05,
+        min_edge=0.02,
         max_age_seconds=999999999,
         min_reference_books=2,
         include_started=False,

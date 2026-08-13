@@ -32,6 +32,7 @@ jobs:
       PAPER_DB: data/paper_trades.sqlite3
       SPORTS_PROFILE: uk-soft-edge
       MAX_API_REQUESTS: "40"
+      MAX_EDGE: "0.10"
 
     steps:
       - uses: actions/checkout@v4
@@ -58,6 +59,7 @@ jobs:
             --max-api-requests "$MAX_API_REQUESTS" \
             --paper-stake 1 \
             --min-edge 0.02 \
+            --max-edge "$MAX_EDGE" \
             --min-reference-books 2 \
             --max-age-seconds 900 \
             --unique-events \

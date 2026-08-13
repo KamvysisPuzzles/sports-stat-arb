@@ -322,6 +322,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--min-edge", type=float, default=float(os.getenv("MIN_EDGE", "0.02")))
     parser.add_argument(
+        "--max-edge",
+        type=float,
+        default=float(os.getenv("MAX_EDGE", "0.10")),
+        help="Maximum value edge to book. Use a negative value to disable the cap.",
+    )
+    parser.add_argument(
         "--bankroll",
         type=float,
         default=float(os.getenv("BANKROLL", "0")),
@@ -465,6 +471,8 @@ def scan_the_odds_api(args: argparse.Namespace):
         include_started=args.include_started,
         allow_target_bookmakers_as_references=strategy["allow_target_bookmakers_as_references"],
     )
+    if not getattr(args, "paper_update_closing", False):
+        signals = _filter_signals_by_max_edge(signals, max_edge=getattr(args, "max_edge", 0.10))
     if getattr(args, "unique_events", False):
         return _unique_event_signals(signals)
     return signals
@@ -472,6 +480,12 @@ def scan_the_odds_api(args: argparse.Namespace):
 
 def _strategy_config(args: argparse.Namespace):
     return STRATEGIES[getattr(args, "strategy", "uk-soft-value")]
+
+
+def _filter_signals_by_max_edge(signals, *, max_edge: float):
+    if max_edge < 0:
+        return signals
+    return [signal for signal in signals if signal.edge <= max_edge]
 
 
 def _unique_event_signals(signals):

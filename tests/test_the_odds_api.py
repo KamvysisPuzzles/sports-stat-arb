@@ -52,6 +52,48 @@ def test_h2h_winners_from_scores_handles_wins_and_draws() -> None:
     assert winners == {"event-1": "Arsenal", "event-2": "Draw"}
 
 
+def test_normalise_odds_api_events_skips_wide_exchange_back_prices() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "soccer_epl",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "betfair_ex_uk",
+                    "title": "Betfair",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.02},
+                                {"name": "Chelsea", "price": 2.0},
+                                {"name": "Draw", "price": 1.14},
+                            ],
+                        },
+                        {
+                            "key": "h2h_lay",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.08},
+                                {"name": "Chelsea", "price": 2.1},
+                                {"name": "Draw", "price": 44.0},
+                            ],
+                        },
+                    ],
+                }
+            ],
+        }
+    ]
+
+    prices = normalise_odds_api_events(events)
+
+    assert [price.outcome_name for price in prices] == ["Arsenal", "Chelsea"]
+    assert {price.market_key for price in prices} == {"h2h"}
+
+
 def test_filters_stale_prices() -> None:
     events = [
         {

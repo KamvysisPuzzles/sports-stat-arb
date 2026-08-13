@@ -12,6 +12,7 @@ from urllib.parse import quote_plus
 import httpx
 
 THE_ODDS_API_BASE = "https://api.the-odds-api.com/v4"
+MAX_EXCHANGE_BACK_LAY_SPREAD = 0.25
 
 BOOKMAKER_URLS = {
     "bet365": "https://www.bet365.com/",
@@ -238,8 +239,15 @@ def normalise_odds_api_events(events: list[dict[str, Any]]) -> list[OutcomePrice
 
         for bookmaker in event.get("bookmakers", []):
             last_update = _parse_time(bookmaker["last_update"])
+            rejected_exchange_backs = _wide_exchange_back_markets(bookmaker)
             for market in bookmaker.get("markets", []):
+                if market.get("key") == "h2h_lay":
+                    continue
                 for outcome in market.get("outcomes", []):
+                    outcome_name = outcome["name"]
+                    point = outcome.get("point")
+                    if (market["key"], outcome_name, point) in rejected_exchange_backs:
+                        continue
                     prices.append(
                         OutcomePrice(
                             bookmaker_key=bookmaker["key"],
@@ -250,13 +258,48 @@ def normalise_odds_api_events(events: list[dict[str, Any]]) -> list[OutcomePrice
                             commence_time=commence_time,
                             market_key=market["key"],
                             market_name=market["key"],
-                            outcome_name=outcome["name"],
-                            point=outcome.get("point"),
+                            outcome_name=outcome_name,
+                            point=point,
                             odds=float(outcome["price"]),
                             last_update=last_update,
                         )
                     )
     return prices
+
+
+def _wide_exchange_back_markets(bookmaker: dict[str, Any]) -> set[tuple[str, str, float | None]]:
+    markets = bookmaker.get("markets", [])
+    lay_by_outcome: dict[tuple[str, str, float | None], float] = {}
+    for market in markets:
+        if not str(market.get("key", "")).endswith("_lay"):
+            continue
+        back_market_key = str(market["key"]).removesuffix("_lay")
+        for outcome in market.get("outcomes", []):
+            lay_by_outcome[(back_market_key, outcome["name"], outcome.get("point"))] = float(
+                outcome["price"]
+            )
+
+    rejected: set[tuple[str, str, float | None]] = set()
+    for market in markets:
+        market_key = str(market.get("key", ""))
+        if market_key.endswith("_lay"):
+            continue
+        for outcome in market.get("outcomes", []):
+            key = (market_key, outcome["name"], outcome.get("point"))
+            lay_odds = lay_by_outcome.get(key)
+            if lay_odds is None:
+                continue
+            back_odds = float(outcome["price"])
+            if _exchange_spread(back_odds, lay_odds) > MAX_EXCHANGE_BACK_LAY_SPREAD:
+                rejected.add(key)
+    return rejected
+
+
+def _exchange_spread(back_odds: float, lay_odds: float) -> float:
+    if back_odds <= 1 or lay_odds <= 1:
+        return float("inf")
+    midpoint = (back_odds + lay_odds) / 2
+    return (lay_odds - back_odds) / midpoint
 
 
 def find_value_opportunities(
