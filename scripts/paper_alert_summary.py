@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -37,6 +37,7 @@ def build_markdown(trades: list[dict[str, str]], opportunities: list[dict[str, s
     now = datetime.now(timezone.utc)
     open_trades = [row for row in trades if row.get("status") == "open"]
     settled = [row for row in trades if row.get("status") == "settled"]
+    trades_last_24h = [row for row in trades if _logged_within(row, now, timedelta(hours=24))]
     clv_rows = [row for row in trades if row.get("target_clv") and _trade_has_closed(row, now)]
     beat_close = [row for row in clv_rows if row.get("beat_closing_line") == "True"]
     profit = sum(float(row.get("profit") or 0) for row in settled)
@@ -64,6 +65,7 @@ def build_markdown(trades: list[dict[str, str]], opportunities: list[dict[str, s
         f"- Liquidity-weighted edge: {liquidity_weighted_edge:.2%}",
         f"- Theoretical executable EV: {executable_ev:.2f}",
         f"- Total trades: {len(trades)}",
+        f"- Trades logged last 24h: {len(trades_last_24h)}",
         f"- Open trades: {len(open_trades)}",
         f"- Settled trades: {len(settled)}",
         f"- Settled profit: {profit:.2f}",
@@ -112,6 +114,16 @@ def _trade_has_closed(row: dict[str, str], now: datetime) -> bool:
     if commence_time.tzinfo is None:
         commence_time = commence_time.replace(tzinfo=timezone.utc)
     return commence_time <= now
+
+
+def _logged_within(row: dict[str, str], now: datetime, window: timedelta) -> bool:
+    try:
+        logged_at = datetime.fromisoformat(row.get("logged_at", ""))
+    except ValueError:
+        return False
+    if logged_at.tzinfo is None:
+        logged_at = logged_at.replace(tzinfo=timezone.utc)
+    return now - window <= logged_at <= now
 
 
 if __name__ == "__main__":
