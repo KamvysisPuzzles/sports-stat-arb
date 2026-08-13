@@ -11,7 +11,7 @@ def main() -> None:
     trades = read_csv(args.paper_csv)
     opportunities = read_csv(args.opportunities_csv) if args.opportunities_csv.exists() else []
 
-    markdown = build_markdown(trades, opportunities)
+    markdown = build_markdown(trades, opportunities, title=args.title)
     text = build_text(trades, opportunities)
     args.markdown_out.write_text(markdown)
     args.text_out.write_text(text)
@@ -19,6 +19,7 @@ def main() -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--title", default="Live Paper Trading Summary")
     parser.add_argument("--paper-csv", type=Path, required=True)
     parser.add_argument("--opportunities-csv", type=Path, required=True)
     parser.add_argument("--markdown-out", type=Path, required=True)
@@ -33,7 +34,12 @@ def read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def build_markdown(trades: list[dict[str, str]], opportunities: list[dict[str, str]]) -> str:
+def build_markdown(
+    trades: list[dict[str, str]],
+    opportunities: list[dict[str, str]],
+    *,
+    title: str = "Live Paper Trading Summary",
+) -> str:
     now = datetime.now(timezone.utc)
     open_trades = [row for row in trades if row.get("status") == "open"]
     settled = [row for row in trades if row.get("status") == "settled"]
@@ -57,7 +63,7 @@ def build_markdown(trades: list[dict[str, str]], opportunities: list[dict[str, s
     liquidity_weighted_edge = executable_ev / visible_liquidity if visible_liquidity else 0.0
 
     lines = [
-        "# Live Paper Trading Summary",
+        f"# {title}",
         "",
         f"- New opportunities this run: {len(opportunities)}",
         f"- Matchbook executable rows: {len(available_opportunities)}",

@@ -236,15 +236,15 @@ scan-exchanges \
   --min-edge 0.005 \
   --min-reference-books 5 \
   --max-age-seconds 900 \
-  --unique-events > data/latest_opportunities.csv
+  --unique-events > data/latest_opportunities_h2h.csv
 
 python scripts/enrich_matchbook_liquidity.py \
-  --input-csv data/latest_opportunities.csv \
-  --output-csv data/latest_opportunities_with_liquidity.csv
+  --input-csv data/latest_opportunities_h2h.csv \
+  --output-csv data/latest_opportunities_h2h_with_liquidity.csv
 
 python scripts/log_matchbook_paper_trades.py \
-  --paper-db data/paper_trades.sqlite3 \
-  --opportunities-csv data/latest_opportunities_with_liquidity.csv
+  --paper-db data/paper_trades_h2h.sqlite3 \
+  --opportunities-csv data/latest_opportunities_h2h_with_liquidity.csv
 ```
 
 The paper stake is the visible Matchbook liquidity at or above the target price.
@@ -289,16 +289,20 @@ THE_ODDS_API_KEY
 The workflow now paper-trades the Matchbook h2h strategy:
 
 - Scans `matchbook-h2h-expanded` h2h markets every hour.
+- Scans totals separately every 2 hours as an experimental bucket.
 - Logs Matchbook candidates against the sharpness-weighted reference consensus.
 - Enriches each flagged row with visible Matchbook liquidity.
 - Books executable rows using visible liquidity as the paper stake.
-- Appends enriched rows to `data/matchbook_liquidity_snapshots.csv`.
+- Appends enriched rows to market-specific liquidity snapshot CSVs.
 - Updates closing values every 2 hours.
 - Stores raw market odds snapshots for future sharpness-weight learning.
 - Recomputes learned bookmaker sharpness weights after each run.
 - Settles recent completed results every 6 hours using The Odds API scores endpoint.
-- Commits `data/paper_trades.sqlite3` and `data/paper_trades.csv` back to the repo.
+- Commits market-specific paper databases and CSVs back to the repo.
 - Writes a paper-trading summary with visible liquidity and theoretical executable EV into each GitHub Actions run.
+
+The h2h and totals paper tests use separate databases, CSVs, liquidity snapshot
+files, and summaries so their CLV and P&L evidence can be evaluated separately.
 
 Optional alert webhook secret:
 

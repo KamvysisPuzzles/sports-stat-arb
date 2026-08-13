@@ -30,7 +30,8 @@ jobs:
     env:
       THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
       PAPER_ALERT_WEBHOOK_URL: ${{ secrets.PAPER_ALERT_WEBHOOK_URL }}
-      PAPER_DB: data/paper_trades.sqlite3
+      H2H_PAPER_DB: data/paper_trades_h2h.sqlite3
+      TOTALS_PAPER_DB: data/paper_trades_totals.sqlite3
       MARKET_DB: data/market_snapshots.sqlite3
       SHARPNESS_WEIGHTS_CSV: data/bookmaker_sharpness_weights.csv
       SPORTS_PROFILE: matchbook-h2h-expanded
@@ -52,7 +53,7 @@ jobs:
       - name: Ensure data directory
         run: mkdir -p data
 
-      - name: Paper log
+      - name: Paper log h2h
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *' }}
         run: |
           scan-exchanges \
@@ -67,32 +68,79 @@ jobs:
             --min-reference-books 5 \
             --max-age-seconds 900 \
             --unique-events \
-            > data/latest_opportunities.csv
+            > data/latest_opportunities_h2h.csv
 
-      - name: Enrich Matchbook liquidity
+      - name: Enrich Matchbook liquidity h2h
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *' }}
         run: |
           python scripts/enrich_matchbook_liquidity.py \
-            --input-csv data/latest_opportunities.csv \
-            --output-csv data/latest_opportunities_with_liquidity.csv \
+            --input-csv data/latest_opportunities_h2h.csv \
+            --output-csv data/latest_opportunities_h2h_with_liquidity.csv \
             --currency GBP \
             --minimum-liquidity 2
           python scripts/append_liquidity_snapshots.py \
-            --input-csv data/latest_opportunities_with_liquidity.csv \
-            --output-csv data/matchbook_liquidity_snapshots.csv
+            --input-csv data/latest_opportunities_h2h_with_liquidity.csv \
+            --output-csv data/matchbook_liquidity_snapshots_h2h.csv
           python scripts/log_matchbook_paper_trades.py \
-            --paper-db "$PAPER_DB" \
-            --opportunities-csv data/latest_opportunities_with_liquidity.csv
+            --paper-db "$H2H_PAPER_DB" \
+            --opportunities-csv data/latest_opportunities_h2h_with_liquidity.csv
 
-      - name: Update closing values
+      - name: Paper log totals
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '30 */2 * * *' }}
+        run: |
+          scan-exchanges \
+            --strategy sharp-weighted-clv \
+            --market-db "$MARKET_DB" \
+            --store-odds-snapshot \
+            --sports-profile "$SPORTS_PROFILE" \
+            --markets totals \
+            --max-api-requests "$MAX_API_REQUESTS" \
+            --min-edge 0.005 \
+            --max-edge "$MAX_EDGE" \
+            --min-reference-books 5 \
+            --max-age-seconds 900 \
+            --unique-events \
+            > data/latest_opportunities_totals.csv
+
+      - name: Enrich Matchbook liquidity totals
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '30 */2 * * *' }}
+        run: |
+          python scripts/enrich_matchbook_liquidity.py \
+            --input-csv data/latest_opportunities_totals.csv \
+            --output-csv data/latest_opportunities_totals_with_liquidity.csv \
+            --currency GBP \
+            --minimum-liquidity 2
+          python scripts/append_liquidity_snapshots.py \
+            --input-csv data/latest_opportunities_totals_with_liquidity.csv \
+            --output-csv data/matchbook_liquidity_snapshots_totals.csv
+          python scripts/log_matchbook_paper_trades.py \
+            --paper-db "$TOTALS_PAPER_DB" \
+            --opportunities-csv data/latest_opportunities_totals_with_liquidity.csv
+
+      - name: Update closing values h2h
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'update-closing') || github.event.schedule == '30 */2 * * *' }}
         run: |
           scan-exchanges \
             --strategy sharp-weighted-clv \
-            --paper-db "$PAPER_DB" \
+            --paper-db "$H2H_PAPER_DB" \
             --paper-update-closing \
             --sports-profile "$SPORTS_PROFILE" \
             --markets h2h \
+            --max-api-requests "$MAX_API_REQUESTS" \
+            --max-event-days 7 \
+            --min-edge -999 \
+            --min-reference-books 5 \
+            --max-age-seconds 900
+
+      - name: Update closing values totals
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'update-closing') || github.event.schedule == '30 */2 * * *' }}
+        run: |
+          scan-exchanges \
+            --strategy sharp-weighted-clv \
+            --paper-db "$TOTALS_PAPER_DB" \
+            --paper-update-closing \
+            --sports-profile "$SPORTS_PROFILE" \
+            --markets totals \
             --max-api-requests "$MAX_API_REQUESTS" \
             --max-event-days 7 \
             --min-edge -999 \
@@ -111,22 +159,38 @@ jobs:
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'settle-results') || github.event.schedule == '30 */6 * * *' }}
         run: |
           scan-exchanges \
-            --paper-db "$PAPER_DB" \
+            --paper-db "$H2H_PAPER_DB" \
+            --paper-settle-results \
+            --scores-days-from 3
+          scan-exchanges \
+            --paper-db "$TOTALS_PAPER_DB" \
             --paper-settle-results \
             --scores-days-from 3
 
       - name: Export paper trades CSV
         run: |
-          scan-exchanges --paper-db "$PAPER_DB" --paper-export > data/paper_trades.csv
+          scan-exchanges --paper-db "$H2H_PAPER_DB" --paper-export > data/paper_trades_h2h.csv
+          scan-exchanges --paper-db "$TOTALS_PAPER_DB" --paper-export > data/paper_trades_totals.csv
+          [ -f data/latest_opportunities_h2h_with_liquidity.csv ] || touch data/latest_opportunities_h2h_with_liquidity.csv
+          [ -f data/latest_opportunities_totals_with_liquidity.csv ] || touch data/latest_opportunities_totals_with_liquidity.csv
 
       - name: Build alert summary
         run: |
           python scripts/paper_alert_summary.py \
-            --paper-csv data/paper_trades.csv \
-            --opportunities-csv data/latest_opportunities_with_liquidity.csv \
-            --markdown-out data/paper_summary.md \
-            --text-out data/paper_summary.txt
-          cat data/paper_summary.md >> "$GITHUB_STEP_SUMMARY"
+            --title "Matchbook h2h Paper Trading Summary" \
+            --paper-csv data/paper_trades_h2h.csv \
+            --opportunities-csv data/latest_opportunities_h2h_with_liquidity.csv \
+            --markdown-out data/paper_summary_h2h.md \
+            --text-out data/paper_summary_h2h.txt
+          python scripts/paper_alert_summary.py \
+            --title "Matchbook totals Paper Trading Summary" \
+            --paper-csv data/paper_trades_totals.csv \
+            --opportunities-csv data/latest_opportunities_totals_with_liquidity.csv \
+            --markdown-out data/paper_summary_totals.md \
+            --text-out data/paper_summary_totals.txt
+          cat data/paper_summary_h2h.md >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          cat data/paper_summary_totals.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Send webhook alert
         if: ${{ env.PAPER_ALERT_WEBHOOK_URL != '' }}
@@ -137,7 +201,11 @@ jobs:
           import urllib.request
 
           webhook_url = os.environ["PAPER_ALERT_WEBHOOK_URL"]
-          text = open("data/paper_summary.txt", encoding="utf-8").read()
+          text = (
+              open("data/paper_summary_h2h.txt", encoding="utf-8").read()
+              + "\n\n"
+              + open("data/paper_summary_totals.txt", encoding="utf-8").read()
+          )
           payload = json.dumps({"text": text, "content": text}).encode("utf-8")
           request = urllib.request.Request(
               webhook_url,
@@ -153,13 +221,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            data/paper_trades.sqlite3 \
-            data/paper_trades.csv \
-            data/paper_summary.md
+          git add data/paper_trades_h2h.sqlite3 data/paper_trades_h2h.csv data/paper_summary_h2h.md
+          git add data/paper_trades_totals.sqlite3 data/paper_trades_totals.csv data/paper_summary_totals.md
           [ -f data/market_snapshots.sqlite3 ] && git add data/market_snapshots.sqlite3
           [ -f data/bookmaker_sharpness_weights.csv ] && git add data/bookmaker_sharpness_weights.csv
-          [ -f data/matchbook_liquidity_snapshots.csv ] && git add data/matchbook_liquidity_snapshots.csv
+          [ -f data/matchbook_liquidity_snapshots_h2h.csv ] && git add data/matchbook_liquidity_snapshots_h2h.csv
+          [ -f data/matchbook_liquidity_snapshots_totals.csv ] && git add data/matchbook_liquidity_snapshots_totals.csv
           if git diff --cached --quiet; then
             echo "No paper-trade changes to commit."
           else
