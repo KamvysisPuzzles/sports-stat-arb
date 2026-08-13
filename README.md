@@ -335,3 +335,34 @@ booked opportunities above `10%` edge by default, because very large edges are
 usually stale prices, market mismatches, or unusable exchange quotes rather than
 clean value. Matchbook liquidity snapshots are stored separately so we can
 measure visible executable size over time.
+
+## If Edge Is Proven
+
+Once the paper test shows enough positive CLV after fees, the next objective is
+to scale from a research system into a controlled execution system targeting
+about `100 GBP/day` in theoretical EV.
+
+Planned next steps:
+
+1. Add Kelly and portfolio sizing.
+   Live execution should size each trade as the smaller of the Kelly-derived
+   stake, the configured risk cap, and the maximum available exchange liquidity
+   at an acceptable price.
+
+2. Add more execution venues.
+   Smarkets is the next likely exchange to add. Betfair is also attractive
+   because of its deeper liquidity, if API access is worth the setup cost.
+   BETDAQ can be reviewed later as an incremental venue.
+
+3. Test markets beyond h2h.
+   Spreads/handicaps and totals are the first candidates, followed by selected
+   soccer secondary markets such as draw no bet, both teams to score, double
+   chance, and to qualify. Each market needs exact line matching, liquidity
+   tracking, and separate CLV validation before any live execution.
+
+Scaling target:
+
+```text
+daily theoretical EV = sum(executable_liquidity * after-fee edge)
+target = 100 GBP/day
+```
