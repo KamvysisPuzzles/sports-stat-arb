@@ -67,6 +67,12 @@ def build_markdown(
     staked = sum(float(row.get("stake") or 0) for row in settled)
     roi = profit / staked if staked else 0.0
     beat_close_rate = len(beat_close) / len(clv_rows) if clv_rows else 0.0
+    booked_stake = sum(_float(row.get("stake")) for row in trades)
+    open_stake = sum(_float(row.get("stake")) for row in open_trades)
+    booked_ev = sum(_float(row.get("stake")) * _float(row.get("edge")) for row in trades)
+    open_ev = sum(_float(row.get("stake")) * _float(row.get("edge")) for row in open_trades)
+    booked_weighted_edge = booked_ev / booked_stake if booked_stake else 0.0
+    open_weighted_edge = open_ev / open_stake if open_stake else 0.0
     available_opportunities = [
         row for row in opportunities if row.get("liquidity_status") == "available"
     ]
@@ -94,7 +100,13 @@ def build_markdown(
         f"- Theoretical executable EV: {executable_ev:.2f}",
         f"- Total trades: {len(trades)}",
         f"- Trades logged last 24h: {len(trades_last_24h)}",
+        f"- Total paper stake deployed: {booked_stake:.2f}",
+        f"- Total booked theoretical EV: {booked_ev:.2f}",
+        f"- Total booked weighted edge: {booked_weighted_edge:.2%}",
         f"- Open trades: {len(open_trades)}",
+        f"- Open paper stake deployed: {open_stake:.2f}",
+        f"- Open booked theoretical EV: {open_ev:.2f}",
+        f"- Open booked weighted edge: {open_weighted_edge:.2%}",
         f"- Settled trades: {len(settled)}",
         f"- Settled profit: {profit:.2f}",
         f"- Settled ROI: {roi:.2%}",
@@ -117,6 +129,27 @@ def build_markdown(
         )
         if len(opportunities) > 10:
             lines.append(f"- ...and {len(opportunities) - 10} more")
+        lines.append("")
+    if trades:
+        lines.extend(["## Booked Trades", ""])
+        lines.extend(
+            [
+                (
+                    f"- {row.get('bet_to_place', '') or _fallback_bet(row)} | "
+                    f"{row.get('event_name', '')} | stake {_float(row.get('stake')):.2f} | "
+                    f"edge {_float(row.get('edge')):.2%} | "
+                    f"EV {_float(row.get('stake')) * _float(row.get('edge')):.2f} | "
+                    f"status {row.get('status', '')} | starts {row.get('commence_time', '')}"
+                )
+                for row in sorted(
+                    trades,
+                    key=lambda item: item.get("logged_at", ""),
+                    reverse=True,
+                )[:10]
+            ]
+        )
+        if len(trades) > 10:
+            lines.append(f"- ...and {len(trades) - 10} more")
         lines.append("")
     return "\n".join(lines)
 
@@ -142,6 +175,13 @@ def _float(value: str | None) -> float:
         return float(value or 0)
     except ValueError:
         return 0.0
+
+
+def _fallback_bet(row: dict[str, str]) -> str:
+    outcome = row.get("outcome_name", "")
+    bookmaker = row.get("target_bookmaker", "")
+    odds = row.get("target_odds", "")
+    return f"Back {outcome} with {bookmaker} at {odds}".strip()
 
 
 def _trade_has_closed(row: dict[str, str], now: datetime) -> bool:
