@@ -1,0 +1,8 @@
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.odds-api-cache/
+__pycache__/
+*.pyc
+.env

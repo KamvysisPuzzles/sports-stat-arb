@@ -1,0 +1,44 @@
+[
+  {
+    "id": "event-1",
+    "sport_key": "soccer_epl",
+    "sport_title": "EPL",
+    "commence_time": "2026-08-12T15:00:00Z",
+    "home_team": "Arsenal",
+    "away_team": "Chelsea",
+    "bookmakers": [
+      {
+        "key": "book_a",
+        "title": "Book A",
+        "last_update": "2026-08-12T12:00:00Z",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-08-12T12:00:00Z",
+            "outcomes": [
+              { "name": "Arsenal", "price": 2.4 },
+              { "name": "Draw", "price": 3.4 },
+              { "name": "Chelsea", "price": 3.7 }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "book_b",
+        "title": "Book B",
+        "last_update": "2026-08-12T12:00:00Z",
+        "markets": [
+          {
+            "key": "h2h",
+            "last_update": "2026-08-12T12:00:00Z",
+            "outcomes": [
+              { "name": "Arsenal", "price": 2.25 },
+              { "name": "Draw", "price": 3.8 },
+              { "name": "Chelsea", "price": 3.9 }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

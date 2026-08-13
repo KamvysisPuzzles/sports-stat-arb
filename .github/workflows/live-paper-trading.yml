@@ -1,0 +1,95 @@
+name: Live Paper Trading
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "paper-log, update-closing, or settle-results"
+        required: true
+        default: "paper-log"
+        type: choice
+        options:
+          - paper-log
+          - update-closing
+          - settle-results
+  schedule:
+    - cron: "0 22 * * *"
+    - cron: "0 */2 * * *"
+    - cron: "30 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live-paper-trading
+  cancel-in-progress: false
+
+jobs:
+  paper:
+    runs-on: ubuntu-latest
+    env:
+      THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
+      PAPER_DB: data/paper_trades.sqlite3
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Ensure data directory
+        run: mkdir -p data
+
+      - name: Nightly paper log
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log' || github.event.schedule == '0 22 * * *' }}
+        run: |
+          scan-exchanges \
+            --paper-db "$PAPER_DB" \
+            --paper-log \
+            --paper-stake 1 \
+            --min-edge 0.02 \
+            --min-reference-books 2 \
+            --max-age-seconds 900 \
+            --unique-events \
+            --resolve-event-pages
+
+      - name: Update closing values
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'update-closing' || github.event.schedule == '0 */2 * * *' }}
+        run: |
+          scan-exchanges \
+            --paper-db "$PAPER_DB" \
+            --paper-update-closing \
+            --max-event-days 7 \
+            --min-edge -999 \
+            --min-reference-books 2 \
+            --max-age-seconds 900
+
+      - name: Settle recent results
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'settle-results' || github.event.schedule == '30 */6 * * *' }}
+        run: |
+          scan-exchanges \
+            --paper-db "$PAPER_DB" \
+            --paper-settle-results \
+            --scores-days-from 3
+
+      - name: Export paper trades CSV
+        run: |
+          scan-exchanges --paper-db "$PAPER_DB" --paper-export > data/paper_trades.csv
+
+      - name: Commit updated paper log
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/paper_trades.sqlite3 data/paper_trades.csv
+          if git diff --cached --quiet; then
+            echo "No paper-trade changes to commit."
+          else
+            git commit -m "Update live paper trading log"
+            git push
+          fi
