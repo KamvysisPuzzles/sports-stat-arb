@@ -28,6 +28,7 @@ from exchange_scanner.sharpness import (
     write_sharpness_weights_csv,
 )
 from exchange_scanner.the_odds_api import (
+    MATCHBOOK_COMMISSION_RATE,
     TheOddsApiClient,
     find_value_opportunities,
     h2h_winners_from_scores,
@@ -86,24 +87,31 @@ SHARPNESS_WEIGHTS = {
     "888sport": 0.30,
 }
 
+MATCHBOOK_COMMISSION_RATES = {
+    "matchbook": MATCHBOOK_COMMISSION_RATE,
+}
+
 STRATEGIES = {
     "uk-soft-value": {
         "target_bookmakers": UK_SOFT_BOOKMAKERS,
         "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
         "allow_target_bookmakers_as_references": False,
         "reference_weights": None,
+        "target_commission_rates": None,
     },
     "sharp-only-value": {
         "target_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
         "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
         "allow_target_bookmakers_as_references": True,
         "reference_weights": None,
+        "target_commission_rates": None,
     },
     "sharp-weighted-clv": {
         "target_bookmakers": MATCHBOOK_TARGET_BOOKMAKERS,
         "reference_bookmakers": None,
         "allow_target_bookmakers_as_references": True,
         "reference_weights": SHARPNESS_WEIGHTS,
+        "target_commission_rates": MATCHBOOK_COMMISSION_RATES,
     },
 }
 
@@ -472,6 +480,7 @@ def backtest(args: argparse.Namespace) -> list[BacktestBet]:
             "allow_target_bookmakers_as_references"
         ],
         reference_weights=strategy["reference_weights"],
+        target_commission_rates=strategy["target_commission_rates"],
     )
 
 
@@ -560,6 +569,7 @@ def scan_the_odds_api(args: argparse.Namespace):
         include_started=args.include_started,
         allow_target_bookmakers_as_references=strategy["allow_target_bookmakers_as_references"],
         reference_weights=reference_weights,
+        target_commission_rates=strategy["target_commission_rates"],
     )
     if not getattr(args, "paper_update_closing", False):
         signals = _filter_signals_by_max_edge(signals, max_edge=getattr(args, "max_edge", 0.10))
@@ -632,6 +642,7 @@ def write_value_csv(signals, args) -> None:
         "bet_to_place",
         "target_bookmaker",
         "target_odds",
+        "target_effective_odds",
         "target_odds_fractional",
         "target_odds_american",
         "target_implied_probability",
@@ -659,6 +670,7 @@ def write_value_csv(signals, args) -> None:
         resolution = _resolve_value_event_page(signal, args)
         row = signal.as_dict()
         row["edge"] = f"{row['edge']:.4f}"
+        row["target_effective_odds"] = f"{row['target_effective_odds']:.4f}"
         row["reference_fair_odds"] = f"{row['reference_fair_odds']:.4f}"
         row["reference_probability"] = f"{row['reference_probability']:.4f}"
         row["min_acceptable_odds"] = f"{row['min_acceptable_odds']:.4f}"
@@ -852,7 +864,7 @@ def _paper_row(trade: PaperTrade) -> dict[str, str | float | int | bool]:
 def _recommended_value_stake(signal, args) -> float | None:
     if args.bankroll <= 0 or signal.target_odds <= 1:
         return None
-    full_kelly_fraction = signal.edge / (signal.target_odds - 1)
+    full_kelly_fraction = signal.edge / (signal.effective_odds - 1)
     if full_kelly_fraction <= 0:
         return None
     fractional_kelly = args.bankroll * full_kelly_fraction * args.kelly_fraction

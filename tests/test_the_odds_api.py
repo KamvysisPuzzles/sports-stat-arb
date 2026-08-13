@@ -9,6 +9,7 @@ from exchange_scanner.the_odds_api import (
     TheOddsApiClient,
     TheOddsApiError,
     bookmaker_url,
+    effective_decimal_odds,
     find_value_opportunities,
     h2h_winners_from_scores,
     normalise_odds_api_events,
@@ -263,6 +264,89 @@ def test_finds_target_value_against_devigged_reference_market() -> None:
     assert signals[0].edge > 0.1
     assert signals[0].as_dict()["copy_search"] == "Arsenal v Chelsea Arsenal"
     assert signals[0].as_dict()["min_acceptable_odds"] == 2.3
+
+
+def test_value_mode_can_apply_target_book_commission_to_edge() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "soccer_epl",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "matchbook",
+                    "title": "Matchbook",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 4.03},
+                                {"name": "Chelsea", "price": 1.2},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "pinnacle",
+                    "title": "Pinnacle",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 4.0},
+                                {"name": "Chelsea", "price": 1.3333333333},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "smarkets",
+                    "title": "Smarkets",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 4.0},
+                                {"name": "Chelsea", "price": 1.3333333333},
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+    prices = normalise_odds_api_events(events)
+    signals_without_commission = find_value_opportunities(
+        prices,
+        target_bookmakers={"matchbook"},
+        reference_bookmakers={"pinnacle", "smarkets"},
+        min_edge=0.0,
+        max_age_seconds=300,
+        min_reference_books=2,
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )
+    signals_with_commission = find_value_opportunities(
+        prices,
+        target_bookmakers={"matchbook"},
+        reference_bookmakers={"pinnacle", "smarkets"},
+        min_edge=0.0,
+        max_age_seconds=300,
+        min_reference_books=2,
+        target_commission_rates={"matchbook": 0.02},
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )
+
+    assert effective_decimal_odds(4.0, 0.02) == pytest.approx(3.94)
+    assert signals_without_commission[0].target_odds == pytest.approx(4.03)
+    assert signals_without_commission[0].effective_odds == pytest.approx(4.03)
+    assert signals_without_commission[0].edge == pytest.approx(0.0075)
+    assert signals_with_commission == []
 
 
 def test_value_mode_counts_duplicate_reference_titles_once() -> None:

@@ -5,7 +5,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from exchange_scanner.the_odds_api import ValueSignal
+from exchange_scanner.the_odds_api import (
+    MATCHBOOK_COMMISSION_RATE,
+    ValueSignal,
+    effective_decimal_odds,
+)
 
 
 @dataclass(frozen=True)
@@ -171,7 +175,11 @@ def update_closing_values(
             )
             if signal is None:
                 continue
-            closing_edge = (trade.target_odds / signal.reference_fair_odds) - 1
+            closing_effective_odds = effective_decimal_odds(
+                trade.target_odds,
+                _commission_rate_for_bookmaker(trade.target_bookmaker),
+            )
+            closing_edge = (closing_effective_odds / signal.reference_fair_odds) - 1
             cursor = db.execute(
                 """
                 UPDATE paper_trades
@@ -208,7 +216,11 @@ def settle_results(
             if winner is None:
                 continue
             won = winner.casefold() == trade.outcome_name.casefold()
-            profit = trade.stake * (trade.target_odds - 1) if won else -trade.stake
+            effective_odds = effective_decimal_odds(
+                trade.target_odds,
+                _commission_rate_for_bookmaker(trade.target_bookmaker),
+            )
+            profit = trade.stake * (effective_odds - 1) if won else -trade.stake
             cursor = db.execute(
                 """
                 UPDATE paper_trades
@@ -264,6 +276,12 @@ def _connect(path: Path) -> sqlite3.Connection:
     db = sqlite3.connect(path)
     db.row_factory = sqlite3.Row
     return db
+
+
+def _commission_rate_for_bookmaker(bookmaker: str) -> float:
+    if bookmaker.casefold() == "matchbook":
+        return MATCHBOOK_COMMISSION_RATE
+    return 0.0
 
 
 def _trade_from_row(row: sqlite3.Row) -> PaperTrade:

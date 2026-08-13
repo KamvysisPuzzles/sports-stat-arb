@@ -13,6 +13,7 @@ import httpx
 
 THE_ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 MAX_EXCHANGE_BACK_LAY_SPREAD = 0.25
+MATCHBOOK_COMMISSION_RATE = 0.02
 
 BOOKMAKER_URLS = {
     "bet365": "https://www.bet365.com/",
@@ -73,6 +74,11 @@ class ValueSignal:
     reference_probability: float
     edge: float
     reference_bookmakers: tuple[str, ...]
+    target_effective_odds: float | None = None
+
+    @property
+    def effective_odds(self) -> float:
+        return self.target_effective_odds or self.target_odds
 
     def as_dict(self) -> dict[str, str | float]:
         return {
@@ -84,6 +90,7 @@ class ValueSignal:
             "outcome_name": self.outcome_name,
             "target_bookmaker": self.target_bookmaker,
             "target_odds": self.target_odds,
+            "target_effective_odds": self.effective_odds,
             "reference_fair_odds": self.reference_fair_odds,
             "reference_probability": self.reference_probability,
             "edge": self.edge,
@@ -313,6 +320,7 @@ def find_value_opportunities(
     include_started: bool = False,
     allow_target_bookmakers_as_references: bool = False,
     reference_weights: dict[str, float] | None = None,
+    target_commission_rates: dict[str, float] | None = None,
     now: datetime | None = None,
 ) -> list[ValueSignal]:
     now = now or datetime.now(timezone.utc)
@@ -361,7 +369,11 @@ def find_value_opportunities(
             if fair_probability is None:
                 continue
 
-            edge = (target.odds * fair_probability) - 1
+            target_effective_odds = effective_decimal_odds(
+                target.odds,
+                _target_commission_rate(target, target_commission_rates),
+            )
+            edge = (target_effective_odds * fair_probability) - 1
             if edge >= min_edge:
                 references = tuple(
                     sorted(
@@ -382,6 +394,7 @@ def find_value_opportunities(
                         outcome_name=target.comparable_outcome_name,
                         target_bookmaker=target.bookmaker_title,
                         target_odds=target.odds,
+                        target_effective_odds=target_effective_odds,
                         reference_fair_odds=1 / fair_probability,
                         reference_probability=fair_probability,
                         edge=edge,
@@ -390,6 +403,28 @@ def find_value_opportunities(
                 )
 
     return sorted(signals, key=lambda signal: signal.edge, reverse=True)
+
+
+def effective_decimal_odds(decimal_odds: float, commission_rate: float = 0.0) -> float:
+    if commission_rate <= 0:
+        return decimal_odds
+    if commission_rate >= 1:
+        raise ValueError("commission_rate must be below 1")
+    if decimal_odds <= 1:
+        return decimal_odds
+    return 1 + ((decimal_odds - 1) * (1 - commission_rate))
+
+
+def _target_commission_rate(
+    price: OutcomePrice,
+    commission_rates: dict[str, float] | None,
+) -> float:
+    if not commission_rates:
+        return 0.0
+    for key in (_bookmaker_identity(price), price.bookmaker_key.lower()):
+        if key in commission_rates:
+            return commission_rates[key]
+    return commission_rates.get("*", 0.0)
 
 
 def _fair_probabilities(
