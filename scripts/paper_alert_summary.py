@@ -73,8 +73,9 @@ def build_markdown(
     open_ev = sum(_float(row.get("stake")) * _float(row.get("edge")) for row in open_trades)
     booked_weighted_edge = booked_ev / booked_stake if booked_stake else 0.0
     open_weighted_edge = open_ev / open_stake if open_stake else 0.0
+    unbooked_opportunities = _exclude_booked_opportunities(opportunities, trades)
     available_opportunities = [
-        row for row in opportunities if row.get("liquidity_status") == "available"
+        row for row in unbooked_opportunities if row.get("liquidity_status") == "available"
     ]
     visible_liquidity = sum(
         _float(row.get("available_at_or_above_target")) for row in available_opportunities
@@ -90,7 +91,7 @@ def build_markdown(
         [
             "## Latest Scan",
             "",
-            f"- Flagged opportunities: {len(opportunities)}",
+            f"- New flagged opportunities: {len(unbooked_opportunities)}",
             f"- Executable rows: {len(available_opportunities)}",
             (
                 f"- Newly booked trades: {new_trades_count}"
@@ -122,7 +123,7 @@ def build_markdown(
             "",
         ]
     )
-    if opportunities:
+    if unbooked_opportunities:
         lines.extend(["## Opportunities", ""])
         lines.extend(
             [
@@ -133,11 +134,11 @@ def build_markdown(
                     f"status {row.get('liquidity_status', '')} | "
                     f"starts {row.get('commence_time', '')}"
                 )
-                for row in opportunities[:10]
+                for row in unbooked_opportunities[:10]
             ]
         )
-        if len(opportunities) > 10:
-            lines.append(f"- ...and {len(opportunities) - 10} more")
+        if len(unbooked_opportunities) > 10:
+            lines.append(f"- ...and {len(unbooked_opportunities) - 10} more")
         lines.append("")
     if trades:
         lines.extend(["## Booked Trades", ""])
@@ -197,6 +198,26 @@ def _format_clv_line(rate: float | None, wins: int, total: int) -> str:
     if total == 0:
         return "- Beat closing line: pending (0 closed trades with CLV)"
     return f"- Beat closing line: {rate:.2%} ({wins}/{total})"
+
+
+def _exclude_booked_opportunities(
+    opportunities: list[dict[str, str]],
+    trades: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    booked_keys = {
+        (_normalize(row.get("event_id")), _normalize(row.get("market") or row.get("market_key")))
+        for row in trades
+    }
+    return [
+        row
+        for row in opportunities
+        if (_normalize(row.get("event_id")), _normalize(row.get("market") or row.get("market_key")))
+        not in booked_keys
+    ]
+
+
+def _normalize(value: str | None) -> str:
+    return (value or "").casefold()
 
 
 def _trade_has_closed(row: dict[str, str], now: datetime) -> bool:
