@@ -2,12 +2,13 @@
 
 ## Latest Scan
 
-- New flagged opportunities: 2
-- Executable rows: 0
+- Candidate rows this scan: 0
+- Unbooked opportunities shown: 0
+- Executable unbooked rows: 0
 - Newly booked trades: 0
-- Executable liquidity found: 0.00
-- Liquidity-weighted scan edge: 0.00%
-- Scan theoretical EV: 0.00
+- Executable unbooked liquidity found: 0.00
+- Liquidity-weighted unbooked scan edge: 0.00%
+- Unbooked scan theoretical EV: 0.00
 
 ## Paper Portfolio
 
@@ -27,11 +28,6 @@
 - Settled profit: 0.00
 - Settled ROI: 0.00%
 - Beat closing line: pending (0 closed trades with CLV)
-
-## Opportunities
-
-- Back Los Angeles Sparks with Matchbook at 4.3 (33/10)+ | New York Liberty v Los Angeles Sparks | edge 5.02% | liquidity 0.00 | status not_matched | starts 2026-08-14T00:00:00+00:00
-- Back TPS Turku with Matchbook at 5.3 (43/10)+ | VPS Vaasa v TPS Turku | edge 2.80% | liquidity 0.00 | status not_matched | starts 2026-08-14T15:00:00+00:00
 
 ## Booked Trades
 

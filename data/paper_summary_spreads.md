@@ -2,12 +2,13 @@
 
 ## Latest Scan
 
-- New flagged opportunities: 0
-- Executable rows: 0
+- Candidate rows this scan: 0
+- Unbooked opportunities shown: 0
+- Executable unbooked rows: 0
 - Newly booked trades: 0
-- Executable liquidity found: 0.00
-- Liquidity-weighted scan edge: 0.00%
-- Scan theoretical EV: 0.00
+- Executable unbooked liquidity found: 0.00
+- Liquidity-weighted unbooked scan edge: 0.00%
+- Unbooked scan theoretical EV: 0.00
 
 ## Paper Portfolio
 
