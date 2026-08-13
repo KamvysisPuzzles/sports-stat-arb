@@ -30,9 +30,9 @@
 
 ## Opportunities
 
+- Back Connecticut Sun with Matchbook at 5.2 (21/5)+ | Connecticut Sun v Atlanta Dream | edge 4.91% | liquidity 0.00 | status not_matched | starts 2026-08-13T23:00:00+00:00
 - Back Los Angeles Sparks with Matchbook at 4.3 (33/10)+ | New York Liberty v Los Angeles Sparks | edge 4.91% | liquidity 0.00 | status not_matched | starts 2026-08-14T00:00:00+00:00
-- Back Connecticut Sun with Matchbook at 5.2 (21/5)+ | Connecticut Sun v Atlanta Dream | edge 4.88% | liquidity 0.00 | status not_matched | starts 2026-08-13T23:00:00+00:00
-- Back Washington Mystics with Matchbook at 3.15 (43/20)+ | Las Vegas Aces v Washington Mystics | edge 3.43% | liquidity 0.00 | status not_matched | starts 2026-08-14T02:00:00+00:00
+- Back Washington Mystics with Matchbook at 3.15 (43/20)+ | Las Vegas Aces v Washington Mystics | edge 3.14% | liquidity 0.00 | status not_matched | starts 2026-08-14T02:00:00+00:00
 - Back TPS Turku with Matchbook at 5.3 (43/10)+ | VPS Vaasa v TPS Turku | edge 2.85% | liquidity 0.00 | status not_matched | starts 2026-08-14T15:00:00+00:00
 
 ## Booked Trades
