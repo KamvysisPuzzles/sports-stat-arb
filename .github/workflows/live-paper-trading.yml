@@ -30,6 +30,8 @@ jobs:
     env:
       THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
       PAPER_ALERT_WEBHOOK_URL: ${{ secrets.PAPER_ALERT_WEBHOOK_URL }}
+      SHEETS_WEBHOOK_URL: ${{ secrets.SHEETS_WEBHOOK_URL }}
+      SHEETS_WEBHOOK_SECRET: ${{ secrets.SHEETS_WEBHOOK_SECRET }}
       H2H_PAPER_DB: data/paper_trades_h2h.sqlite3
       SPREADS_PAPER_DB: data/paper_trades_spreads.sqlite3
       MARKET_DB: data/market_snapshots.sqlite3
@@ -216,6 +218,10 @@ jobs:
           with urllib.request.urlopen(request, timeout=15) as response:
               print(f"Webhook response: {response.status}")
           PY
+
+      - name: Sync Google Sheets tracker
+        if: ${{ env.SHEETS_WEBHOOK_URL != '' }}
+        run: python scripts/post_sheets_webhook.py
 
       - name: Commit updated paper log
         run: |

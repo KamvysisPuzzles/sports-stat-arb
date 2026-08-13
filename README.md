@@ -314,6 +314,80 @@ If present, the workflow posts the latest opportunities and performance summary
 to that webhook. The payload includes both `text` and `content` fields, so it
 works with many Slack-style or Discord-style endpoints.
 
+Optional Google Sheets tracker secrets:
+
+```text
+SHEETS_WEBHOOK_URL
+SHEETS_WEBHOOK_SECRET
+```
+
+If present, the workflow syncs six Google Sheets tabs after every run:
+
+- `h2h_trades`
+- `h2h_liquidity`
+- `h2h_summary`
+- `spreads_trades`
+- `spreads_liquidity`
+- `spreads_summary`
+
+The trade, liquidity, and summary tabs are replaced from the repository CSVs on
+each sync. This keeps the sheet clean and avoids duplicate rows if a workflow is
+retried.
+
+To set this up for free:
+
+1. Create a private Google Sheet.
+2. Open `Extensions` -> `Apps Script`.
+3. Paste this script, replacing `CHANGE_ME` with a random secret value:
+
+```javascript
+const WEBHOOK_SECRET = 'CHANGE_ME';
+
+function doPost(e) {
+  const payload = JSON.parse(e.postData.contents || '{}');
+  if (payload.secret !== WEBHOOK_SECRET) {
+    return ContentService.createTextOutput('unauthorized');
+  }
+
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  for (const table of payload.tables || []) {
+    replaceSheet(spreadsheet, table.name, table.headers || [], table.rows || []);
+  }
+
+  return ContentService.createTextOutput('ok');
+}
+
+function replaceSheet(spreadsheet, name, headers, rows) {
+  const sheet = spreadsheet.getSheetByName(name) || spreadsheet.insertSheet(name);
+  sheet.clearContents();
+
+  if (!headers.length) {
+    sheet.getRange(1, 1).setValue('No data yet');
+    return;
+  }
+
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  if (rows.length) {
+    const values = rows.map(row => headers.map(header => row[header] || ''));
+    writeInChunks(sheet, values, headers.length);
+  }
+  sheet.setFrozenRows(1);
+}
+
+function writeInChunks(sheet, values, width) {
+  const chunkSize = 500;
+  for (let start = 0; start < values.length; start += chunkSize) {
+    const chunk = values.slice(start, start + chunkSize);
+    sheet.getRange(start + 2, 1, chunk.length, width).setValues(chunk);
+  }
+}
+```
+
+4. Click `Deploy` -> `New deployment` -> `Web app`.
+5. Set `Execute as` to `Me` and `Who has access` to `Anyone with the link`.
+6. Copy the web app URL into the repository secret `SHEETS_WEBHOOK_URL`.
+7. Put the same random secret value into `SHEETS_WEBHOOK_SECRET`.
+
 You can also trigger it manually from the Actions tab with one of:
 
 ```text
