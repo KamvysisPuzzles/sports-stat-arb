@@ -289,7 +289,7 @@ THE_ODDS_API_KEY
 The workflow now paper-trades the Matchbook h2h strategy:
 
 - Scans `matchbook-h2h-expanded` h2h markets every hour.
-- Scans totals separately every 2 hours as an experimental bucket.
+- Scans spreads/handicaps separately every 2 hours as an experimental bucket.
 - Logs Matchbook candidates against the sharpness-weighted reference consensus.
 - Enriches each flagged row with visible Matchbook liquidity.
 - Books executable rows using visible liquidity as the paper stake.
@@ -301,7 +301,7 @@ The workflow now paper-trades the Matchbook h2h strategy:
 - Commits market-specific paper databases and CSVs back to the repo.
 - Writes a paper-trading summary with visible liquidity and theoretical executable EV into each GitHub Actions run.
 
-The h2h and totals paper tests use separate databases, CSVs, liquidity snapshot
+The h2h and spreads paper tests use separate databases, CSVs, liquidity snapshot
 files, and summaries so their CLV and P&L evidence can be evaluated separately.
 
 Optional alert webhook secret:
