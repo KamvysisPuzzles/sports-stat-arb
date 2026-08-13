@@ -53,6 +53,19 @@ SHARP_REFERENCE_BOOKMAKERS = {
     "matchbook",
 }
 
+STRATEGIES = {
+    "uk-soft-value": {
+        "target_bookmakers": UK_SOFT_BOOKMAKERS,
+        "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
+        "allow_target_bookmakers_as_references": False,
+    },
+    "sharp-only-value": {
+        "target_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
+        "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
+        "allow_target_bookmakers_as_references": True,
+    },
+}
+
 SPORT_PROFILES = {
     "uk-soft-edge-core": [
         "soccer_efl_champ",
@@ -155,7 +168,13 @@ def main() -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Find UK soft-book value bets against sharp reference prices."
+        description="Find value bets against sharper reference prices."
+    )
+    parser.add_argument(
+        "--strategy",
+        choices=sorted(STRATEGIES),
+        default="uk-soft-value",
+        help="Value strategy to run. Default keeps the UK soft-book strategy.",
     )
     parser.add_argument("--fixtures", type=Path, help="Read quotes from a local JSON fixture.")
     parser.add_argument(
@@ -343,11 +362,12 @@ def backtest(args: argparse.Namespace) -> list[BacktestBet]:
         raise SystemExit("--backtest requires --results")
 
     allowed_markets = {market.strip() for market in args.markets.split(",") if market.strip()}
+    strategy = _strategy_config(args)
     return run_backtest(
         historical_odds_path=args.historical_odds,
         results_path=args.results,
-        target_bookmakers=UK_SOFT_BOOKMAKERS,
-        reference_bookmakers=SHARP_REFERENCE_BOOKMAKERS,
+        target_bookmakers=strategy["target_bookmakers"],
+        reference_bookmakers=strategy["reference_bookmakers"],
         markets=allowed_markets,
         min_edge=args.min_edge,
         max_age_seconds=args.max_age_seconds,
@@ -358,6 +378,9 @@ def backtest(args: argparse.Namespace) -> list[BacktestBet]:
         stake=args.backtest_stake,
         daily_decision_time=args.backtest_daily_time or None,
         allow_rebet_same_event=args.allow_rebet_same_event,
+        allow_target_bookmakers_as_references=strategy[
+            "allow_target_bookmakers_as_references"
+        ],
     )
 
 
@@ -431,18 +454,24 @@ def scan_the_odds_api(args: argparse.Namespace):
         max_event_days=getattr(args, "max_event_days", 2.0),
     )
 
+    strategy = _strategy_config(args)
     signals = find_value_opportunities(
         prices,
-        target_bookmakers=UK_SOFT_BOOKMAKERS,
-        reference_bookmakers=SHARP_REFERENCE_BOOKMAKERS,
+        target_bookmakers=strategy["target_bookmakers"],
+        reference_bookmakers=strategy["reference_bookmakers"],
         min_edge=args.min_edge,
         max_age_seconds=args.max_age_seconds,
         min_reference_books=args.min_reference_books,
         include_started=args.include_started,
+        allow_target_bookmakers_as_references=strategy["allow_target_bookmakers_as_references"],
     )
     if getattr(args, "unique_events", False):
         return _unique_event_signals(signals)
     return signals
+
+
+def _strategy_config(args: argparse.Namespace):
+    return STRATEGIES[getattr(args, "strategy", "uk-soft-value")]
 
 
 def _unique_event_signals(signals):

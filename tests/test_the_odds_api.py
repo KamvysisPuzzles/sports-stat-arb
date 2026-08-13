@@ -455,6 +455,81 @@ def test_odds_api_error_does_not_include_api_key() -> None:
     assert exc_info.value.__cause__ is None
 
 
+def test_sharp_only_value_can_use_other_target_books_as_references() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "soccer_epl",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "betfair",
+                    "title": "Betfair",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.2},
+                                {"name": "Chelsea", "price": 1.8},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "pinnacle",
+                    "title": "Pinnacle",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.0},
+                                {"name": "Chelsea", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "smarkets",
+                    "title": "Smarkets",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.0},
+                                {"name": "Chelsea", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+    prices = normalise_odds_api_events(events)
+    signals = find_value_opportunities(
+        prices,
+        target_bookmakers={"betfair", "pinnacle", "smarkets"},
+        reference_bookmakers={"betfair", "pinnacle", "smarkets"},
+        min_edge=0.05,
+        max_age_seconds=300,
+        min_reference_books=2,
+        allow_target_bookmakers_as_references=True,
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )
+
+    betfair_signal = next(
+        signal
+        for signal in signals
+        if signal.target_bookmaker == "Betfair" and signal.outcome_name == "Arsenal"
+    )
+    assert betfair_signal.reference_bookmakers == ("Pinnacle", "Smarkets")
+
+
 def test_odds_api_client_reuses_fresh_cache(tmp_path) -> None:
     calls = 0
 

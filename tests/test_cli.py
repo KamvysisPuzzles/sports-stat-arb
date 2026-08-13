@@ -10,6 +10,7 @@ from exchange_scanner.bookmaker_links import EventPageResolution
 from exchange_scanner.cli import (
     SHARP_REFERENCE_BOOKMAKERS,
     SPORT_PROFILES,
+    STRATEGIES,
     UK_SOFT_BOOKMAKERS,
     _american_odds,
     _filter_prices_by_event_horizon,
@@ -37,6 +38,13 @@ def test_sharp_profile_adds_reference_books() -> None:
         "smarkets",
         "matchbook",
     }
+
+
+def test_sharp_only_strategy_is_separate_from_soft_book_strategy() -> None:
+    assert STRATEGIES["uk-soft-value"]["target_bookmakers"] == UK_SOFT_BOOKMAKERS
+    assert STRATEGIES["sharp-only-value"]["target_bookmakers"] == SHARP_REFERENCE_BOOKMAKERS
+    assert STRATEGIES["sharp-only-value"]["reference_bookmakers"] == SHARP_REFERENCE_BOOKMAKERS
+    assert STRATEGIES["sharp-only-value"]["allow_target_bookmakers_as_references"] is True
 
 
 def test_uk_soft_edge_sports_profile_excludes_headline_major_leagues() -> None:

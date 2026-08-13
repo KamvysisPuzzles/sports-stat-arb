@@ -5,9 +5,9 @@ comparing their prices with sharper reference books and exchanges.
 
 It does not place bets.
 
-## Strategy
+## Strategies
 
-The scanner:
+The default `uk-soft-value` strategy:
 
 1. Fetches odds from The Odds API.
 2. Treats UK soft books as target bookmakers.
@@ -21,6 +21,18 @@ edge = target_odds * reference_probability - 1
 
 The CSV tells you what to bet in `bet_to_place`, including decimal and UK
 fractional odds.
+
+There is also an experimental `sharp-only-value` strategy. It only targets
+sharper/non-soft venues and compares each price against the other sharp venues:
+
+```text
+target books: betfair, smarkets, matchbook, pinnacle
+reference books: the other sharp venues on the same event
+```
+
+This is designed to reduce soft-book limiting risk. The tradeoff is that edges
+should be smaller, and The Odds API does not expose exchange liquidity, so a
+displayed price may not be available for meaningful stake.
 
 ## Included Books
 
@@ -78,6 +90,19 @@ scan-exchanges \
   --max-age-seconds 900 \
   --unique-events \
   --resolve-event-pages
+```
+
+Run the separate sharp-only strategy:
+
+```bash
+scan-exchanges \
+  --strategy sharp-only-value \
+  --sports-profile uk-soft-edge \
+  --max-api-requests 40 \
+  --min-edge 0.005 \
+  --min-reference-books 2 \
+  --max-age-seconds 900 \
+  --unique-events
 ```
 
 The default scan uses:

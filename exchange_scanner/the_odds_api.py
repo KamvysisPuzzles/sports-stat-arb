@@ -268,6 +268,7 @@ def find_value_opportunities(
     max_age_seconds: int,
     min_reference_books: int,
     include_started: bool = False,
+    allow_target_bookmakers_as_references: bool = False,
     now: datetime | None = None,
 ) -> list[ValueSignal]:
     now = now or datetime.now(timezone.utc)
@@ -287,22 +288,30 @@ def find_value_opportunities(
         target_prices = _best_target_prices(
             price for price in market_prices if _bookmaker_matches(price, target_bookmakers)
         )
-        reference_prices = [
+        base_reference_prices = [
             price
             for price in market_prices
-            if not _bookmaker_matches(price, target_bookmakers)
+            if (
+                allow_target_bookmakers_as_references
+                or not _bookmaker_matches(price, target_bookmakers)
+            )
             and (reference_bookmakers is None or _bookmaker_matches(price, reference_bookmakers))
         ]
-        if not target_prices or not reference_prices:
+        if not target_prices or not base_reference_prices:
             continue
 
         expected_outcomes = _expected_outcome_count(market_prices)
-        fair_probabilities = _fair_probabilities(
-            reference_prices,
-            min_reference_books,
-            expected_outcomes=expected_outcomes,
-        )
         for target in target_prices:
+            reference_prices = [
+                price
+                for price in base_reference_prices
+                if _bookmaker_identity(price) != _bookmaker_identity(target)
+            ]
+            fair_probabilities = _fair_probabilities(
+                reference_prices,
+                min_reference_books,
+                expected_outcomes=expected_outcomes,
+            )
             fair_probability = fair_probabilities.get(target.comparable_outcome_name)
             if fair_probability is None:
                 continue
