@@ -1,1 +1,64 @@
 bookmaker_identity,bookmaker_title,sport_key,market_key,sample_count,avg_abs_error,avg_squared_error,weight,updated_at
+betonline.ag,BetOnline.ag,baseball_mlb,h2h,28,0.062500,0.003941,0.197600,2026-08-13T17:30:06.536359+00:00
+marathon bet,Marathon Bet,baseball_mlb,h2h,28,0.062500,0.003936,0.197600,2026-08-13T17:30:06.536359+00:00
+casumo,Casumo,baseball_mlb,h2h,28,0.062500,0.003950,0.197600,2026-08-13T17:30:06.536359+00:00
+livescore bet,LiveScore Bet,baseball_mlb,h2h,28,0.062500,0.003950,0.197600,2026-08-13T17:30:06.536359+00:00
+leovegas (se),LeoVegas (SE),baseball_mlb,h2h,28,0.062500,0.003950,0.197600,2026-08-13T17:30:06.536359+00:00
+virgin bet,Virgin Bet,baseball_mlb,h2h,28,0.062500,0.003950,0.197600,2026-08-13T17:30:06.536359+00:00
+gtbets,GTbets,baseball_mlb,h2h,28,0.062500,0.003953,0.197600,2026-08-13T17:30:06.536359+00:00
+paddy power,Paddy Power,baseball_mlb,h2h,28,0.062500,0.003971,0.197600,2026-08-13T17:30:06.536359+00:00
+betway,Betway,baseball_mlb,h2h,28,0.062500,0.003943,0.197600,2026-08-13T17:30:06.536359+00:00
+winamax (fr),Winamax (FR),baseball_mlb,h2h,28,0.062500,0.003944,0.197600,2026-08-13T17:30:06.536359+00:00
+boylesports,BoyleSports,baseball_mlb,h2h,28,0.062500,0.003967,0.197600,2026-08-13T17:30:06.536359+00:00
+grosvenor,Grosvenor,baseball_mlb,h2h,28,0.062500,0.003947,0.197600,2026-08-13T17:30:06.536359+00:00
+betsson,Betsson,baseball_mlb,h2h,28,0.062500,0.004008,0.197600,2026-08-13T17:30:06.536359+00:00
+nordic bet,Nordic Bet,baseball_mlb,h2h,28,0.062500,0.004008,0.197600,2026-08-13T17:30:06.536359+00:00
+888sport,888sport,baseball_mlb,h2h,28,0.062500,0.004007,0.197600,2026-08-13T17:30:06.536359+00:00
+unibet (fr),Unibet (FR),baseball_mlb,h2h,28,0.062500,0.003941,0.197600,2026-08-13T17:30:06.536359+00:00
+unibet (uk),Unibet (UK),baseball_mlb,h2h,28,0.062500,0.003954,0.197600,2026-08-13T17:30:06.536359+00:00
+smarkets,Smarkets,baseball_mlb,h2h,28,0.062500,0.003933,0.197600,2026-08-13T17:30:06.536359+00:00
+betclic (fr),Betclic (FR),baseball_mlb,h2h,28,0.062500,0.003943,0.197600,2026-08-13T17:30:06.536359+00:00
+1xbet,1xBet,baseball_mlb,h2h,28,0.062500,0.003940,0.197600,2026-08-13T17:30:06.536359+00:00
+winamax (de),Winamax (DE),baseball_mlb,h2h,28,0.062500,0.003935,0.197600,2026-08-13T17:30:06.536359+00:00
+unibet (se),Unibet (SE),baseball_mlb,h2h,28,0.062500,0.003950,0.197600,2026-08-13T17:30:06.536359+00:00
+leovegas,LeoVegas,baseball_mlb,h2h,28,0.062500,0.003945,0.197600,2026-08-13T17:30:06.536359+00:00
+tipico,Tipico,baseball_mlb,h2h,28,0.062500,0.003949,0.197600,2026-08-13T17:30:06.536359+00:00
+mybookie.ag,MyBookie.ag,baseball_mlb,h2h,28,0.062500,0.003930,0.197600,2026-08-13T17:30:06.536359+00:00
+coral,Coral,baseball_mlb,h2h,28,0.062500,0.003925,0.197600,2026-08-13T17:30:06.536359+00:00
+ladbrokes,Ladbrokes,baseball_mlb,h2h,28,0.062500,0.003925,0.197600,2026-08-13T17:30:06.536359+00:00
+matchbook,Matchbook,baseball_mlb,h2h,28,0.062500,0.003922,0.197600,2026-08-13T17:30:06.536359+00:00
+pinnacle,Pinnacle,baseball_mlb,h2h,28,0.062500,0.003931,0.197600,2026-08-13T17:30:06.536359+00:00
+coolbet,Coolbet,baseball_mlb,h2h,28,0.062500,0.003946,0.197600,2026-08-13T17:30:06.536359+00:00
+unibet (nl),Unibet (NL),baseball_mlb,h2h,28,0.062500,0.003949,0.197600,2026-08-13T17:30:06.536359+00:00
+betfair sportsbook,Betfair Sportsbook,baseball_mlb,h2h,26,0.062500,0.003989,0.197600,2026-08-13T17:30:06.536359+00:00
+betano (uk),Betano (UK),baseball_mlb,h2h,28,0.062500,0.004003,0.197600,2026-08-13T17:30:06.536359+00:00
+bet victor,Bet Victor,baseball_mlb,h2h,28,0.062500,0.004003,0.197600,2026-08-13T17:30:06.536359+00:00
+betfair,Betfair,baseball_mlb,h2h,28,0.187458,0.035339,0.072552,2026-08-13T17:30:06.536359+00:00
+pinnacle,Pinnacle,tennis_atp_cincinnati_open,h2h,32,0.004326,0.000059,1.000000,2026-08-13T17:30:06.536359+00:00
+betonline.ag,BetOnline.ag,tennis_atp_cincinnati_open,h2h,32,0.008225,0.000117,0.786066,2026-08-13T17:30:06.536359+00:00
+betway,Betway,tennis_atp_cincinnati_open,h2h,32,0.008604,0.000125,0.770044,2026-08-13T17:30:06.536359+00:00
+nordic bet,Nordic Bet,tennis_atp_cincinnati_open,h2h,32,0.008985,0.000106,0.754603,2026-08-13T17:30:06.536359+00:00
+boylesports,BoyleSports,tennis_atp_cincinnati_open,h2h,32,0.011923,0.000173,0.653477,2026-08-13T17:30:06.536359+00:00
+ladbrokes,Ladbrokes,tennis_atp_cincinnati_open,h2h,32,0.013374,0.000224,0.612889,2026-08-13T17:30:06.536359+00:00
+coral,Coral,tennis_atp_cincinnati_open,h2h,32,0.013374,0.000224,0.612889,2026-08-13T17:30:06.536359+00:00
+gtbets,GTbets,tennis_atp_cincinnati_open,h2h,32,0.018009,0.000363,0.511474,2026-08-13T17:30:06.536359+00:00
+pinnacle,Pinnacle,tennis_wta_cincinnati_open,h2h,76,0.004935,0.000307,0.959232,2026-08-13T17:30:06.536359+00:00
+888sport,888sport,tennis_wta_cincinnati_open,h2h,48,0.005049,0.000037,0.951964,2026-08-13T17:30:06.536359+00:00
+coolbet,Coolbet,tennis_wta_cincinnati_open,h2h,48,0.005327,0.000035,0.934680,2026-08-13T17:30:06.536359+00:00
+betonline.ag,BetOnline.ag,tennis_wta_cincinnati_open,h2h,72,0.009184,0.000363,0.746758,2026-08-13T17:30:06.536359+00:00
+1xbet,1xBet,tennis_wta_cincinnati_open,h2h,48,0.009204,0.000130,0.745985,2026-08-13T17:30:06.536359+00:00
+marathon bet,Marathon Bet,tennis_wta_cincinnati_open,h2h,70,0.010099,0.000269,0.712757,2026-08-13T17:30:06.536359+00:00
+unibet (se),Unibet (SE),tennis_wta_cincinnati_open,h2h,48,0.011263,0.000174,0.673737,2026-08-13T17:30:06.536359+00:00
+grosvenor,Grosvenor,tennis_wta_cincinnati_open,h2h,48,0.011263,0.000174,0.673737,2026-08-13T17:30:06.536359+00:00
+unibet (nl),Unibet (NL),tennis_wta_cincinnati_open,h2h,48,0.011263,0.000174,0.673737,2026-08-13T17:30:06.536359+00:00
+leovegas (se),LeoVegas (SE),tennis_wta_cincinnati_open,h2h,48,0.011263,0.000174,0.673737,2026-08-13T17:30:06.536359+00:00
+casumo,Casumo,tennis_wta_cincinnati_open,h2h,48,0.011263,0.000174,0.673737,2026-08-13T17:30:06.536359+00:00
+livescore bet,LiveScore Bet,tennis_wta_cincinnati_open,h2h,48,0.012181,0.000188,0.645876,2026-08-13T17:30:06.536359+00:00
+virgin bet,Virgin Bet,tennis_wta_cincinnati_open,h2h,48,0.012181,0.000188,0.645876,2026-08-13T17:30:06.536359+00:00
+pmu (fr),PMU (FR),tennis_wta_cincinnati_open,h2h,48,0.012320,0.000199,0.641833,2026-08-13T17:30:06.536359+00:00
+nordic bet,Nordic Bet,tennis_wta_cincinnati_open,h2h,72,0.012765,0.000366,0.629287,2026-08-13T17:30:06.536359+00:00
+betway,Betway,tennis_wta_cincinnati_open,h2h,76,0.014841,0.000552,0.576714,2026-08-13T17:30:06.536359+00:00
+coral,Coral,tennis_wta_cincinnati_open,h2h,76,0.016445,0.001017,0.541719,2026-08-13T17:30:06.536359+00:00
+ladbrokes,Ladbrokes,tennis_wta_cincinnati_open,h2h,76,0.016463,0.001047,0.541348,2026-08-13T17:30:06.536359+00:00
+gtbets,GTbets,tennis_wta_cincinnati_open,h2h,72,0.017571,0.000656,0.519601,2026-08-13T17:30:06.536359+00:00
+boylesports,BoyleSports,tennis_wta_cincinnati_open,h2h,76,0.018264,0.000859,0.506854,2026-08-13T17:30:06.536359+00:00
