@@ -299,3 +299,15 @@ Credit estimate for the default profile:
 
 If the workflow starts finding many trades, consider narrowing the schedule or
 sports profile to control quota usage.
+
+The deployed workflow uses the wider `uk-soft-edge` profile. This intentionally
+adds more lower-tier football, cricket, WNBA, AFL, CFL, and NFL preseason
+markets than `uk-soft-edge-core`. Wider coverage should create more paper
+trades, but it also means the sharp-reference price can be noisier on niche
+events where exchange liquidity is thin.
+
+Sharp books are treated as a reference-price proxy, not as guaranteed truth. The
+strategy requires at least 2 reference books before logging a trade, which helps
+avoid trusting a single stale or low-liquidity quote. If the live test produces
+too many weak candidates, raise `--min-reference-books` or `--min-edge` before
+adding more leagues.
