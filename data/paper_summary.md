@@ -2,23 +2,23 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 22
-- Newly booked trades: 22
-- Candidate average edge: 5.06%
-- Candidate nominal EV at 1 GBP stake: 1.11
+- Candidate price signals this scan: 19
+- Newly booked trades: 1
+- Candidate average edge: 5.34%
+- Candidate nominal EV at 1 GBP stake: 1.01
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
 
-- Total trades booked: 22
-- Trades booked last 24h: 22
-- Total paper stake deployed: 22.00
-- Total booked theoretical EV: 1.11
-- Total booked weighted edge: 5.06%
-- Open trades: 22
-- Open paper stake deployed: 22.00
-- Open booked theoretical EV: 1.11
-- Open booked weighted edge: 5.06%
+- Total trades booked: 23
+- Trades booked last 24h: 23
+- Total paper stake deployed: 23.00
+- Total booked theoretical EV: 1.19
+- Total booked weighted edge: 5.16%
+- Open trades: 23
+- Open paper stake deployed: 23.00
+- Open booked theoretical EV: 1.19
+- Open booked weighted edge: 5.16%
 
 ## Results And CLV
 
@@ -29,6 +29,7 @@
 
 ## Booked Trades
 
+- Back Lincoln City with Betfair at 10.5 (19/2)+ | Middlesbrough v Lincoln City | stake 1.00 | edge 7.54% | EV 0.08 | status open | starts 2026-08-15T14:00:00+00:00
 - Back Macará with Smarkets at 10 (9/1)+ | Santos v Macará | stake 1.00 | edge 4.98% | EV 0.05 | status open | starts 2026-08-13T22:00:00+00:00
 - Back LDU Quito with Betfair at 6.6 (28/5)+ | Mirassol v LDU Quito | stake 1.00 | edge 4.23% | EV 0.04 | status open | starts 2026-08-13T22:00:00+00:00
 - Back Olimpia Asunción with Smarkets at 5.6 (23/5)+ | Vasco da Gama v Olimpia Asunción | stake 1.00 | edge 2.70% | EV 0.03 | status open | starts 2026-08-13T22:00:00+00:00
@@ -38,5 +39,4 @@
 - Back Draw with Betfair at 36 (35/1)+ | Australia v Bangladesh | stake 1.00 | edge 4.70% | EV 0.05 | status open | starts 2026-08-14T00:30:00+00:00
 - Back TPS Turku with Betfair at 5.3 (43/10)+ | VPS Vaasa v TPS Turku | stake 1.00 | edge 2.89% | EV 0.03 | status open | starts 2026-08-14T15:00:00+00:00
 - Back Ried with Smarkets at 6.4 (27/5)+ | LASK v Ried | stake 1.00 | edge 6.04% | EV 0.06 | status open | starts 2026-08-14T17:30:00+00:00
-- Back Çorum FK with Smarkets at 15.5 (29/2)+ | Galatasaray v Çorum FK | stake 1.00 | edge 8.01% | EV 0.08 | status open | starts 2026-08-14T18:30:00+00:00
-- ...and 12 more
+- ...and 13 more
