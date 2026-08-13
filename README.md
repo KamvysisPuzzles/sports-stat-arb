@@ -267,10 +267,21 @@ THE_ODDS_API_KEY
 
 The workflow:
 
-- Logs nightly candidates at `22:00` UTC.
+- Logs nightly candidates at `20:00` UK time.
 - Updates closing values every 2 hours.
 - Settles recent completed results every 6 hours using The Odds API scores endpoint.
 - Commits `data/paper_trades.sqlite3` and `data/paper_trades.csv` back to the repo.
+- Writes a paper-trading summary into each GitHub Actions run.
+
+Optional alert webhook secret:
+
+```text
+PAPER_ALERT_WEBHOOK_URL
+```
+
+If present, the workflow posts the latest opportunities and performance summary
+to that webhook. The payload includes both `text` and `content` fields, so it
+works with many Slack-style or Discord-style endpoints.
 
 You can also trigger it manually from the Actions tab with one of:
 
