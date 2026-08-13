@@ -63,7 +63,7 @@ jobs:
             --sports-profile "$SPORTS_PROFILE" \
             --markets h2h \
             --max-api-requests "$MAX_API_REQUESTS" \
-            --min-edge 0.005 \
+            --min-edge 0.025 \
             --max-edge "$MAX_EDGE" \
             --min-reference-books 5 \
             --max-age-seconds 900 \
@@ -95,7 +95,7 @@ jobs:
             --sports-profile "$SPORTS_PROFILE" \
             --markets totals \
             --max-api-requests "$MAX_API_REQUESTS" \
-            --min-edge 0.005 \
+            --min-edge 0.025 \
             --max-edge "$MAX_EDGE" \
             --min-reference-books 5 \
             --max-age-seconds 900 \
