@@ -71,7 +71,7 @@ def init_paper_db(path: Path) -> None:
                 closing_edge REAL,
                 result TEXT,
                 profit REAL,
-                UNIQUE(event_id, market_key)
+                UNIQUE(event_id, market_key, outcome_name)
             )
             """
         )

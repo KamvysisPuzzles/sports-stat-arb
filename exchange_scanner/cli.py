@@ -46,6 +46,13 @@ MATCHBOOK_TARGET_BOOKMAKERS = {
     "matchbook",
 }
 
+EXCHANGE_CLV_TARGET_BOOKMAKERS = {
+    "matchbook",
+    "smarkets",
+    "betfair_ex_uk",
+    "betfair_ex_eu",
+}
+
 SHARPNESS_WEIGHTS = {
     "*": 0.20,
     "pinnacle": 1.00,
@@ -73,6 +80,14 @@ MATCHBOOK_COMMISSION_RATES = {
     "matchbook": MATCHBOOK_COMMISSION_RATE,
 }
 
+EXCHANGE_CLV_COMMISSION_RATES = {
+    "matchbook": MATCHBOOK_COMMISSION_RATE,
+    "smarkets": 0.02,
+    "betfair": 0.02,
+    "betfair_ex_uk": 0.02,
+    "betfair_ex_eu": 0.02,
+}
+
 STRATEGIES = {
     "sharp-weighted-clv": {
         "target_bookmakers": MATCHBOOK_TARGET_BOOKMAKERS,
@@ -80,6 +95,13 @@ STRATEGIES = {
         "allow_target_bookmakers_as_references": True,
         "reference_weights": SHARPNESS_WEIGHTS,
         "target_commission_rates": MATCHBOOK_COMMISSION_RATES,
+    },
+    "exchange-clv": {
+        "target_bookmakers": EXCHANGE_CLV_TARGET_BOOKMAKERS,
+        "reference_bookmakers": None,
+        "allow_target_bookmakers_as_references": True,
+        "reference_weights": SHARPNESS_WEIGHTS,
+        "target_commission_rates": EXCHANGE_CLV_COMMISSION_RATES,
     },
 }
 
@@ -208,6 +230,8 @@ def main() -> None:
 
     if args.paper_log:
         inserted = log_signals(args.paper_db, signals, stake=args.paper_stake)
+        if args.paper_inserted_count_out:
+            args.paper_inserted_count_out.write_text(f"{inserted}\n", encoding="utf-8")
         print(f"Logged {inserted} new paper trades.", file=sys.stderr)
 
     if args.output == "json":
@@ -243,6 +267,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=1.0,
         help="Flat paper stake stored for each logged trade.",
+    )
+    parser.add_argument(
+        "--paper-inserted-count-out",
+        type=Path,
+        help="Optional file path to write the number of newly inserted paper trades.",
     )
     parser.add_argument(
         "--paper-export",
@@ -346,6 +375,11 @@ def parse_args() -> argparse.Namespace:
         "--unique-events",
         action="store_true",
         help="For value mode, return only the highest-edge signal per event.",
+    )
+    parser.add_argument(
+        "--unique-bets",
+        action="store_true",
+        help="For value mode, return only the best price per event/market/outcome.",
     )
     parser.add_argument(
         "--max-api-requests",
@@ -566,6 +600,8 @@ def scan_the_odds_api(args: argparse.Namespace):
         signals = _filter_signals_by_max_edge(signals, max_edge=getattr(args, "max_edge", 0.10))
     if getattr(args, "unique_events", False):
         return _unique_event_signals(signals)
+    if getattr(args, "unique_bets", False):
+        return _unique_bet_signals(signals)
     return signals
 
 
@@ -601,6 +637,22 @@ def _unique_event_signals(signals):
         if key not in best_by_event:
             best_by_event[key] = signal
     return list(best_by_event.values())
+
+
+def _unique_bet_signals(signals):
+    best_by_bet = {}
+    for signal in signals:
+        key = (signal.event_id, signal.market_key, signal.outcome_name.casefold())
+        existing = best_by_bet.get(key)
+        if existing is None or _better_signal_price(signal, existing):
+            best_by_bet[key] = signal
+    return sorted(best_by_bet.values(), key=lambda signal: signal.edge, reverse=True)
+
+
+def _better_signal_price(candidate, existing) -> bool:
+    if candidate.effective_odds != existing.effective_odds:
+        return candidate.effective_odds > existing.effective_odds
+    return candidate.edge > existing.edge
 
 
 def _filter_prices_by_event_horizon(prices, *, max_event_days: float, now: datetime | None = None):

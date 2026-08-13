@@ -17,8 +17,16 @@ def main() -> None:
         opportunities,
         title=args.title,
         new_trades_count=new_trades_count,
+        opportunity_dedupe_key=args.opportunity_dedupe_key,
+        scan_kind=args.scan_kind,
     )
-    text = build_text(trades, opportunities, new_trades_count=new_trades_count)
+    text = build_text(
+        trades,
+        opportunities,
+        new_trades_count=new_trades_count,
+        opportunity_dedupe_key=args.opportunity_dedupe_key,
+        scan_kind=args.scan_kind,
+    )
     args.markdown_out.write_text(markdown)
     args.text_out.write_text(text)
 
@@ -29,6 +37,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--paper-csv", type=Path, required=True)
     parser.add_argument("--opportunities-csv", type=Path, required=True)
     parser.add_argument("--new-trades-count-file", type=Path)
+    parser.add_argument(
+        "--opportunity-dedupe-key",
+        choices=["event-market", "event-market-outcome"],
+        default="event-market",
+        help="How to decide whether a latest-scan opportunity is already booked.",
+    )
+    parser.add_argument(
+        "--scan-kind",
+        choices=["liquidity", "price"],
+        default="liquidity",
+        help="Use price for CLV-only scans without executable-liquidity data.",
+    )
     parser.add_argument("--markdown-out", type=Path, required=True)
     parser.add_argument("--text-out", type=Path, required=True)
     return parser.parse_args()
@@ -56,6 +76,8 @@ def build_markdown(
     *,
     title: str = "Live Paper Trading Summary",
     new_trades_count: int | None = None,
+    opportunity_dedupe_key: str = "event-market",
+    scan_kind: str = "liquidity",
 ) -> str:
     now = datetime.now(timezone.utc)
     open_trades = [row for row in trades if row.get("status") == "open"]
@@ -73,34 +95,28 @@ def build_markdown(
     open_ev = sum(_float(row.get("stake")) * _float(row.get("edge")) for row in open_trades)
     booked_weighted_edge = booked_ev / booked_stake if booked_stake else 0.0
     open_weighted_edge = open_ev / open_stake if open_stake else 0.0
-    unbooked_opportunities = _exclude_booked_opportunities(opportunities, trades)
+    unbooked_opportunities = _exclude_booked_opportunities(
+        opportunities,
+        trades,
+        dedupe_key=opportunity_dedupe_key,
+    )
     available_opportunities = [
         row for row in unbooked_opportunities if row.get("liquidity_status") == "available"
     ]
-    visible_liquidity = sum(
-        _float(row.get("available_at_or_above_target")) for row in available_opportunities
+    scan_lines = _scan_summary_lines(
+        opportunities=opportunities,
+        unbooked_opportunities=unbooked_opportunities,
+        available_opportunities=available_opportunities,
+        new_trades_count=new_trades_count,
+        scan_kind=scan_kind,
     )
-    executable_ev = sum(
-        _float(row.get("available_at_or_above_target")) * _float(row.get("edge"))
-        for row in available_opportunities
-    )
-    liquidity_weighted_edge = executable_ev / visible_liquidity if visible_liquidity else 0.0
 
     lines = [f"# {title}", ""]
     lines.extend(
         [
             "## Latest Scan",
             "",
-            f"- New flagged opportunities: {len(unbooked_opportunities)}",
-            f"- Executable rows: {len(available_opportunities)}",
-            (
-                f"- Newly booked trades: {new_trades_count}"
-                if new_trades_count is not None
-                else "- Newly booked trades: unknown"
-            ),
-            f"- Executable liquidity found: {visible_liquidity:.2f}",
-            f"- Liquidity-weighted scan edge: {liquidity_weighted_edge:.2%}",
-            f"- Scan theoretical EV: {executable_ev:.2f}",
+            *scan_lines,
             "",
             "## Paper Portfolio",
             "",
@@ -169,6 +185,8 @@ def build_text(
     opportunities: list[dict[str, str]],
     *,
     new_trades_count: int | None = None,
+    opportunity_dedupe_key: str = "event-market",
+    scan_kind: str = "liquidity",
 ) -> str:
     return "\n".join(
         line.lstrip("# ").lstrip("- ")
@@ -176,6 +194,8 @@ def build_text(
             trades,
             opportunities,
             new_trades_count=new_trades_count,
+            opportunity_dedupe_key=opportunity_dedupe_key,
+            scan_kind=scan_kind,
         ).splitlines()
     )
 
@@ -194,6 +214,49 @@ def _fallback_bet(row: dict[str, str]) -> str:
     return f"Back {outcome} with {bookmaker} at {odds}".strip()
 
 
+def _scan_summary_lines(
+    *,
+    opportunities: list[dict[str, str]],
+    unbooked_opportunities: list[dict[str, str]],
+    available_opportunities: list[dict[str, str]],
+    new_trades_count: int | None,
+    scan_kind: str,
+) -> list[str]:
+    new_trades_line = (
+        f"- Newly booked trades: {new_trades_count}"
+        if new_trades_count is not None
+        else "- Newly booked trades: unknown"
+    )
+    if scan_kind == "price":
+        nominal_ev = sum(_float(row.get("edge")) for row in opportunities)
+        average_edge = nominal_ev / len(opportunities) if opportunities else 0.0
+        return [
+            f"- Candidate price signals this scan: {len(opportunities)}",
+            new_trades_line,
+            f"- Candidate average edge: {average_edge:.2%}",
+            f"- Candidate nominal EV at 1 GBP stake: {nominal_ev:.2f}",
+            f"- Unbooked price signals shown below: {len(unbooked_opportunities)}",
+        ]
+
+    visible_liquidity = sum(
+        _float(row.get("available_at_or_above_target")) for row in available_opportunities
+    )
+    executable_ev = sum(
+        _float(row.get("available_at_or_above_target")) * _float(row.get("edge"))
+        for row in available_opportunities
+    )
+    liquidity_weighted_edge = executable_ev / visible_liquidity if visible_liquidity else 0.0
+    return [
+        f"- Candidate rows this scan: {len(opportunities)}",
+        f"- Unbooked opportunities shown: {len(unbooked_opportunities)}",
+        f"- Executable unbooked rows: {len(available_opportunities)}",
+        new_trades_line,
+        f"- Executable unbooked liquidity found: {visible_liquidity:.2f}",
+        f"- Liquidity-weighted unbooked scan edge: {liquidity_weighted_edge:.2%}",
+        f"- Unbooked scan theoretical EV: {executable_ev:.2f}",
+    ]
+
+
 def _format_clv_line(rate: float | None, wins: int, total: int) -> str:
     if total == 0:
         return "- Beat closing line: pending (0 closed trades with CLV)"
@@ -203,17 +266,25 @@ def _format_clv_line(rate: float | None, wins: int, total: int) -> str:
 def _exclude_booked_opportunities(
     opportunities: list[dict[str, str]],
     trades: list[dict[str, str]],
+    *,
+    dedupe_key: str,
 ) -> list[dict[str, str]]:
-    booked_keys = {
-        (_normalize(row.get("event_id")), _normalize(row.get("market") or row.get("market_key")))
-        for row in trades
-    }
+    booked_keys = {_opportunity_key(row, dedupe_key=dedupe_key) for row in trades}
     return [
         row
         for row in opportunities
-        if (_normalize(row.get("event_id")), _normalize(row.get("market") or row.get("market_key")))
-        not in booked_keys
+        if _opportunity_key(row, dedupe_key=dedupe_key) not in booked_keys
     ]
+
+
+def _opportunity_key(row: dict[str, str], *, dedupe_key: str) -> tuple[str, ...]:
+    key = (
+        _normalize(row.get("event_id")),
+        _normalize(row.get("market") or row.get("market_key")),
+    )
+    if dedupe_key == "event-market-outcome":
+        return (*key, _normalize(row.get("outcome_name")))
+    return key
 
 
 def _normalize(value: str | None) -> str:

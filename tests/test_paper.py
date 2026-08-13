@@ -36,7 +36,7 @@ def signal(
     )
 
 
-def test_log_signals_dedupes_same_event_market(tmp_path) -> None:
+def test_log_signals_dedupes_same_event_market_outcome(tmp_path) -> None:
     db_path = tmp_path / "paper.sqlite3"
 
     assert log_signals(db_path, [signal()], stake=10) == 1
@@ -46,6 +46,31 @@ def test_log_signals_dedupes_same_event_market(tmp_path) -> None:
     assert len(trades) == 1
     assert trades[0].event_id == "event-1"
     assert trades[0].stake == 10
+
+
+def test_log_signals_allows_different_outcomes_on_same_event(tmp_path) -> None:
+    db_path = tmp_path / "paper.sqlite3"
+
+    assert log_signals(db_path, [signal()], stake=10) == 1
+    assert log_signals(db_path, [signal(edge=0.08, target_odds=3.5)], stake=10) == 0
+    draw_signal = signal(target_odds=4.0, reference_fair_odds=3.5, edge=0.1)
+    draw_signal = ValueSignal(
+        sport_key=draw_signal.sport_key,
+        event_id=draw_signal.event_id,
+        event_name=draw_signal.event_name,
+        commence_time=draw_signal.commence_time,
+        market_key=draw_signal.market_key,
+        outcome_name="Draw",
+        target_bookmaker=draw_signal.target_bookmaker,
+        target_odds=draw_signal.target_odds,
+        reference_fair_odds=draw_signal.reference_fair_odds,
+        reference_probability=draw_signal.reference_probability,
+        edge=draw_signal.edge,
+        reference_bookmakers=draw_signal.reference_bookmakers,
+    )
+
+    assert log_signals(db_path, [draw_signal], stake=10) == 1
+    assert len(list_trades(db_path)) == 2
 
 
 def test_update_closing_values_tracks_clv_and_closing_edge(tmp_path) -> None:

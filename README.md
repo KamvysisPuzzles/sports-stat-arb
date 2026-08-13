@@ -284,6 +284,23 @@ The workflow now paper-trades the Matchbook h2h strategy:
 The h2h and spreads paper tests use separate databases, CSVs, and summaries so
 their CLV and P&L evidence can be evaluated separately.
 
+The repository also includes `.github/workflows/exchange-clv-paper-trading.yml`
+as a separate CLV-only experiment for the broader exchange universe:
+
+- Targets Matchbook, Smarkets, and Betfair Exchange prices.
+- Uses the same sharpness-weighted reference consensus and `2.5%` post-fee edge
+  threshold.
+- Books only the best price when the same event/market/outcome appears on
+  multiple exchanges.
+- Stores each row with a nominal `1 GBP` paper stake because The Odds API does
+  not provide executable liquidity for Smarkets or Betfair.
+- Runs candidate logging every 4 hours, closing updates every 4 hours, and
+  result settlement every 6 hours.
+- Keeps its own database, CSV, and summary:
+  `data/paper_trades_exchange_clv.sqlite3`,
+  `data/paper_trades_exchange_clv.csv`, and
+  `data/paper_summary_exchange_clv.md`.
+
 Optional alert webhook secret:
 
 ```text

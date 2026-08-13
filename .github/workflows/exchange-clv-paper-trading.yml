@@ -1,0 +1,145 @@
+name: Exchange CLV Paper Trading
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "paper-log, update-closing, or settle-results"
+        required: true
+        default: "paper-log"
+        type: choice
+        options:
+          - paper-log
+          - update-closing
+          - settle-results
+  schedule:
+    - cron: "15 */4 * * *"
+    - cron: "45 */4 * * *"
+    - cron: "30 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: exchange-clv-paper-trading
+  cancel-in-progress: false
+
+jobs:
+  paper:
+    runs-on: ubuntu-latest
+    env:
+      THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
+      PAPER_ALERT_WEBHOOK_URL: ${{ secrets.PAPER_ALERT_WEBHOOK_URL }}
+      EXCHANGE_CLV_DB: data/paper_trades_exchange_clv.sqlite3
+      SPORTS_PROFILE: matchbook-h2h-expanded
+      MAX_API_REQUESTS: "80"
+      MAX_EDGE: "0.10"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Ensure data directory
+        run: mkdir -p data
+
+      - name: Paper log exchange CLV
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '15 */4 * * *' }}
+        run: |
+          scan-exchanges \
+            --strategy exchange-clv \
+            --paper-db "$EXCHANGE_CLV_DB" \
+            --paper-log \
+            --paper-stake 1 \
+            --paper-inserted-count-out data/latest_inserted_exchange_clv.txt \
+            --sports-profile "$SPORTS_PROFILE" \
+            --markets h2h \
+            --max-api-requests "$MAX_API_REQUESTS" \
+            --min-edge 0.025 \
+            --max-edge "$MAX_EDGE" \
+            --min-reference-books 5 \
+            --max-age-seconds 900 \
+            --unique-bets \
+            > data/latest_opportunities_exchange_clv.csv
+
+      - name: Update closing values exchange CLV
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'update-closing') || github.event.schedule == '45 */4 * * *' }}
+        run: |
+          scan-exchanges \
+            --strategy exchange-clv \
+            --paper-db "$EXCHANGE_CLV_DB" \
+            --paper-update-closing \
+            --sports-profile "$SPORTS_PROFILE" \
+            --markets h2h \
+            --max-api-requests "$MAX_API_REQUESTS" \
+            --max-event-days 7 \
+            --min-edge -999 \
+            --min-reference-books 5 \
+            --max-age-seconds 900
+
+      - name: Settle recent results exchange CLV
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'settle-results') || github.event.schedule == '30 */6 * * *' }}
+        run: |
+          scan-exchanges \
+            --paper-db "$EXCHANGE_CLV_DB" \
+            --paper-settle-results \
+            --scores-days-from 3
+
+      - name: Export exchange CLV paper trades
+        run: |
+          scan-exchanges --paper-db "$EXCHANGE_CLV_DB" --paper-export > data/paper_trades_exchange_clv.csv
+          [ -f data/latest_opportunities_exchange_clv.csv ] || touch data/latest_opportunities_exchange_clv.csv
+          [ -f data/latest_inserted_exchange_clv.txt ] || echo 0 > data/latest_inserted_exchange_clv.txt
+
+      - name: Build exchange CLV summary
+        run: |
+          python scripts/paper_alert_summary.py \
+            --title "Exchange CLV Paper Trading Summary" \
+            --paper-csv data/paper_trades_exchange_clv.csv \
+            --opportunities-csv data/latest_opportunities_exchange_clv.csv \
+            --new-trades-count-file data/latest_inserted_exchange_clv.txt \
+            --opportunity-dedupe-key event-market-outcome \
+            --scan-kind price \
+            --markdown-out data/paper_summary_exchange_clv.md \
+            --text-out data/paper_summary_exchange_clv.txt
+          cat data/paper_summary_exchange_clv.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Send exchange CLV webhook alert
+        if: ${{ env.PAPER_ALERT_WEBHOOK_URL != '' }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          webhook_url = os.environ["PAPER_ALERT_WEBHOOK_URL"]
+          text = open("data/paper_summary_exchange_clv.txt", encoding="utf-8").read()
+          payload = json.dumps({"text": text, "content": text}).encode("utf-8")
+          request = urllib.request.Request(
+              webhook_url,
+              data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(request, timeout=15) as response:
+              print(f"Webhook response: {response.status}")
+          PY
+
+      - name: Commit exchange CLV paper log
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/paper_trades_exchange_clv.sqlite3 data/paper_trades_exchange_clv.csv data/paper_summary_exchange_clv.md
+          if git diff --cached --quiet; then
+            echo "No exchange CLV paper-trade changes to commit."
+          else
+            git commit -m "Update exchange CLV paper trading log"
+            git push
+          fi

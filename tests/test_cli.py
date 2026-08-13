@@ -8,6 +8,7 @@ import pytest
 
 from exchange_scanner.bookmaker_links import EventPageResolution
 from exchange_scanner.cli import (
+    EXCHANGE_CLV_TARGET_BOOKMAKERS,
     MATCHBOOK_TARGET_BOOKMAKERS,
     SHARP_REFERENCE_BOOKMAKERS,
     SHARPNESS_WEIGHTS,
@@ -19,6 +20,7 @@ from exchange_scanner.cli import (
     _fractional_odds,
     _recommended_value_stake,
     _sport_keys,
+    _unique_bet_signals,
     _unique_event_signals,
     scan_the_odds_api,
     write_value_csv,
@@ -42,7 +44,22 @@ def test_sharp_weighted_clv_targets_sharp_books_against_weighted_all_book_consen
     assert strategy["reference_bookmakers"] is None
     assert strategy["allow_target_bookmakers_as_references"] is True
     assert strategy["reference_weights"] == SHARPNESS_WEIGHTS
-    assert set(STRATEGIES) == {"sharp-weighted-clv"}
+    assert set(STRATEGIES) == {"exchange-clv", "sharp-weighted-clv"}
+
+
+def test_exchange_clv_targets_available_exchange_books() -> None:
+    strategy = STRATEGIES["exchange-clv"]
+
+    assert strategy["target_bookmakers"] == EXCHANGE_CLV_TARGET_BOOKMAKERS
+    assert strategy["target_bookmakers"] == {
+        "matchbook",
+        "smarkets",
+        "betfair_ex_uk",
+        "betfair_ex_eu",
+    }
+    assert strategy["reference_bookmakers"] is None
+    assert strategy["allow_target_bookmakers_as_references"] is True
+    assert strategy["target_commission_rates"]["betfair"] == pytest.approx(0.02)
 
 
 def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None:
@@ -117,6 +134,57 @@ def test_unique_event_signals_keeps_highest_edge_per_event() -> None:
     unique = _unique_event_signals([first, second, third])
 
     assert unique == [first, third]
+
+
+def test_unique_bet_signals_keeps_best_price_for_same_bet() -> None:
+    lower_price = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Smarkets",
+        target_odds=2.1,
+        target_effective_odds=2.078,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.039,
+        reference_bookmakers=("Pinnacle", "Betfair"),
+    )
+    best_price = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Betfair",
+        target_odds=2.2,
+        target_effective_odds=2.176,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.088,
+        reference_bookmakers=("Pinnacle", "Smarkets"),
+    )
+    different_outcome = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Draw",
+        target_bookmaker="Matchbook",
+        target_odds=4.0,
+        reference_fair_odds=3.7,
+        reference_probability=0.2703,
+        edge=0.081,
+        reference_bookmakers=("Pinnacle", "Betfair"),
+    )
+
+    unique = _unique_bet_signals([lower_price, best_price, different_outcome])
+
+    assert unique == [best_price, different_outcome]
 
 
 def test_filter_signals_by_max_edge_excludes_suspicious_high_edges() -> None:
