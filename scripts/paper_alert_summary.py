@@ -41,11 +41,26 @@ def build_markdown(trades: list[dict[str, str]], opportunities: list[dict[str, s
     staked = sum(float(row.get("stake") or 0) for row in settled)
     roi = profit / staked if staked else 0.0
     beat_close_rate = len(beat_close) / len(clv_rows) if clv_rows else 0.0
+    available_opportunities = [
+        row for row in opportunities if row.get("liquidity_status") == "available"
+    ]
+    visible_liquidity = sum(
+        _float(row.get("available_at_or_above_target")) for row in available_opportunities
+    )
+    executable_ev = sum(
+        _float(row.get("available_at_or_above_target")) * _float(row.get("edge"))
+        for row in available_opportunities
+    )
+    liquidity_weighted_edge = executable_ev / visible_liquidity if visible_liquidity else 0.0
 
     lines = [
         "# Live Paper Trading Summary",
         "",
         f"- New opportunities this run: {len(opportunities)}",
+        f"- Matchbook executable rows: {len(available_opportunities)}",
+        f"- Visible Matchbook liquidity: {visible_liquidity:.2f}",
+        f"- Liquidity-weighted edge: {liquidity_weighted_edge:.2%}",
+        f"- Theoretical executable EV: {executable_ev:.2f}",
         f"- Total trades: {len(trades)}",
         f"- Open trades: {len(open_trades)}",
         f"- Settled trades: {len(settled)}",
@@ -60,7 +75,10 @@ def build_markdown(trades: list[dict[str, str]], opportunities: list[dict[str, s
             [
                 (
                     f"- {row.get('bet_to_place', '')} | {row.get('event_name', '')} | "
-                    f"edge {float(row.get('edge') or 0):.2%} | starts {row.get('commence_time', '')}"
+                    f"edge {_float(row.get('edge')):.2%} | "
+                    f"liquidity {_float(row.get('available_at_or_above_target')):.2f} | "
+                    f"status {row.get('liquidity_status', '')} | "
+                    f"starts {row.get('commence_time', '')}"
                 )
                 for row in opportunities[:10]
             ]
@@ -73,6 +91,13 @@ def build_markdown(trades: list[dict[str, str]], opportunities: list[dict[str, s
 
 def build_text(trades: list[dict[str, str]], opportunities: list[dict[str, str]]) -> str:
     return "\n".join(line.lstrip("# ").lstrip("- ") for line in build_markdown(trades, opportunities).splitlines())
+
+
+def _float(value: str | None) -> float:
+    try:
+        return float(value or 0)
+    except ValueError:
+        return 0.0
 
 
 if __name__ == "__main__":

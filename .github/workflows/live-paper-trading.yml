@@ -13,7 +13,8 @@ on:
           - update-closing
           - settle-results
   schedule:
-    - cron: "0 */2 * * *"
+    - cron: "0 * * * *"
+    - cron: "30 */2 * * *"
     - cron: "30 */6 * * *"
 
 permissions:
@@ -32,8 +33,8 @@ jobs:
       PAPER_DB: data/paper_trades.sqlite3
       MARKET_DB: data/market_snapshots.sqlite3
       SHARPNESS_WEIGHTS_CSV: data/bookmaker_sharpness_weights.csv
-      SPORTS_PROFILE: uk-soft-edge
-      MAX_API_REQUESTS: "40"
+      SPORTS_PROFILE: matchbook-h2h-expanded
+      MAX_API_REQUESTS: "80"
       MAX_EDGE: "0.10"
 
     steps:
@@ -52,35 +53,50 @@ jobs:
         run: mkdir -p data
 
       - name: Paper log
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 */2 * * *' }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *' }}
         run: |
           scan-exchanges \
+            --strategy sharp-weighted-clv \
             --paper-db "$PAPER_DB" \
             --market-db "$MARKET_DB" \
             --paper-log \
             --store-odds-snapshot \
             --sports-profile "$SPORTS_PROFILE" \
+            --markets h2h \
             --max-api-requests "$MAX_API_REQUESTS" \
             --paper-stake 1 \
-            --min-edge 0.02 \
+            --min-edge 0.005 \
             --max-edge "$MAX_EDGE" \
-            --min-reference-books 2 \
+            --min-reference-books 5 \
             --max-age-seconds 900 \
             --unique-events \
-            --resolve-event-pages \
             > data/latest_opportunities.csv
 
+      - name: Enrich Matchbook liquidity
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *' }}
+        run: |
+          python scripts/enrich_matchbook_liquidity.py \
+            --input-csv data/latest_opportunities.csv \
+            --output-csv data/latest_opportunities_with_liquidity.csv \
+            --currency GBP \
+            --minimum-liquidity 2
+          python scripts/append_liquidity_snapshots.py \
+            --input-csv data/latest_opportunities_with_liquidity.csv \
+            --output-csv data/matchbook_liquidity_snapshots.csv
+
       - name: Update closing values
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'update-closing') || github.event.schedule == '0 */2 * * *' }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'update-closing') || github.event.schedule == '30 */2 * * *' }}
         run: |
           scan-exchanges \
+            --strategy sharp-weighted-clv \
             --paper-db "$PAPER_DB" \
             --paper-update-closing \
             --sports-profile "$SPORTS_PROFILE" \
+            --markets h2h \
             --max-api-requests "$MAX_API_REQUESTS" \
             --max-event-days 7 \
             --min-edge -999 \
-            --min-reference-books 2 \
+            --min-reference-books 5 \
             --max-age-seconds 900
 
       - name: Recompute sharpness weights
@@ -107,7 +123,7 @@ jobs:
         run: |
           python scripts/paper_alert_summary.py \
             --paper-csv data/paper_trades.csv \
-            --opportunities-csv data/latest_opportunities.csv \
+            --opportunities-csv data/latest_opportunities_with_liquidity.csv \
             --markdown-out data/paper_summary.md \
             --text-out data/paper_summary.txt
           cat data/paper_summary.md >> "$GITHUB_STEP_SUMMARY"
@@ -140,9 +156,10 @@ jobs:
           git add \
             data/paper_trades.sqlite3 \
             data/paper_trades.csv \
-            data/paper_summary.md \
-            data/market_snapshots.sqlite3 \
-            data/bookmaker_sharpness_weights.csv
+            data/paper_summary.md
+          [ -f data/market_snapshots.sqlite3 ] && git add data/market_snapshots.sqlite3
+          [ -f data/bookmaker_sharpness_weights.csv ] && git add data/bookmaker_sharpness_weights.csv
+          [ -f data/matchbook_liquidity_snapshots.csv ] && git add data/matchbook_liquidity_snapshots.csv
           if git diff --cached --quiet; then
             echo "No paper-trade changes to commit."
           else

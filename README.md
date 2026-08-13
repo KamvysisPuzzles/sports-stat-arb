@@ -333,15 +333,18 @@ Before enabling it, add this repository secret in GitHub:
 THE_ODDS_API_KEY
 ```
 
-The workflow:
+The workflow now paper-trades the Matchbook h2h strategy:
 
-- Logs candidates every 2 hours.
+- Scans `matchbook-h2h-expanded` h2h markets every hour.
+- Logs Matchbook candidates against the sharpness-weighted reference consensus.
+- Enriches each flagged row with visible Matchbook liquidity.
+- Appends enriched rows to `data/matchbook_liquidity_snapshots.csv`.
 - Updates closing values every 2 hours.
 - Stores raw market odds snapshots for future sharpness-weight learning.
 - Recomputes learned bookmaker sharpness weights after each run.
 - Settles recent completed results every 6 hours using The Odds API scores endpoint.
 - Commits `data/paper_trades.sqlite3` and `data/paper_trades.csv` back to the repo.
-- Writes a paper-trading summary into each GitHub Actions run.
+- Writes a paper-trading summary with visible liquidity and theoretical executable EV into each GitHub Actions run.
 
 Optional alert webhook secret:
 
