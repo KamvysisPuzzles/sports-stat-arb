@@ -66,7 +66,7 @@ def build_markdown(
     profit = sum(float(row.get("profit") or 0) for row in settled)
     staked = sum(float(row.get("stake") or 0) for row in settled)
     roi = profit / staked if staked else 0.0
-    beat_close_rate = len(beat_close) / len(clv_rows) if clv_rows else 0.0
+    beat_close_rate = len(beat_close) / len(clv_rows) if clv_rows else None
     booked_stake = sum(_float(row.get("stake")) for row in trades)
     open_stake = sum(_float(row.get("stake")) for row in open_trades)
     booked_ev = sum(_float(row.get("stake")) * _float(row.get("edge")) for row in trades)
@@ -85,34 +85,43 @@ def build_markdown(
     )
     liquidity_weighted_edge = executable_ev / visible_liquidity if visible_liquidity else 0.0
 
-    lines = [
-        f"# {title}",
-        "",
-        f"- Flagged opportunities this run: {len(opportunities)}",
-        f"- Matchbook executable rows: {len(available_opportunities)}",
-        (
-            f"- New trades booked this run: {new_trades_count}"
-            if new_trades_count is not None
-            else "- New trades booked this run: unknown"
-        ),
-        f"- Visible Matchbook liquidity: {visible_liquidity:.2f}",
-        f"- Liquidity-weighted edge: {liquidity_weighted_edge:.2%}",
-        f"- Theoretical executable EV: {executable_ev:.2f}",
-        f"- Total trades: {len(trades)}",
-        f"- Trades logged last 24h: {len(trades_last_24h)}",
-        f"- Total paper stake deployed: {booked_stake:.2f}",
-        f"- Total booked theoretical EV: {booked_ev:.2f}",
-        f"- Total booked weighted edge: {booked_weighted_edge:.2%}",
-        f"- Open trades: {len(open_trades)}",
-        f"- Open paper stake deployed: {open_stake:.2f}",
-        f"- Open booked theoretical EV: {open_ev:.2f}",
-        f"- Open booked weighted edge: {open_weighted_edge:.2%}",
-        f"- Settled trades: {len(settled)}",
-        f"- Settled profit: {profit:.2f}",
-        f"- Settled ROI: {roi:.2%}",
-        f"- Beat closing line: {beat_close_rate:.2%} ({len(beat_close)}/{len(clv_rows)})",
-        "",
-    ]
+    lines = [f"# {title}", ""]
+    lines.extend(
+        [
+            "## Latest Scan",
+            "",
+            f"- Flagged opportunities: {len(opportunities)}",
+            f"- Executable rows: {len(available_opportunities)}",
+            (
+                f"- Newly booked trades: {new_trades_count}"
+                if new_trades_count is not None
+                else "- Newly booked trades: unknown"
+            ),
+            f"- Executable liquidity found: {visible_liquidity:.2f}",
+            f"- Liquidity-weighted scan edge: {liquidity_weighted_edge:.2%}",
+            f"- Scan theoretical EV: {executable_ev:.2f}",
+            "",
+            "## Paper Portfolio",
+            "",
+            f"- Total trades booked: {len(trades)}",
+            f"- Trades booked last 24h: {len(trades_last_24h)}",
+            f"- Total paper stake deployed: {booked_stake:.2f}",
+            f"- Total booked theoretical EV: {booked_ev:.2f}",
+            f"- Total booked weighted edge: {booked_weighted_edge:.2%}",
+            f"- Open trades: {len(open_trades)}",
+            f"- Open paper stake deployed: {open_stake:.2f}",
+            f"- Open booked theoretical EV: {open_ev:.2f}",
+            f"- Open booked weighted edge: {open_weighted_edge:.2%}",
+            "",
+            "## Results And CLV",
+            "",
+            f"- Settled trades: {len(settled)}",
+            f"- Settled profit: {profit:.2f}",
+            f"- Settled ROI: {roi:.2%}",
+            _format_clv_line(beat_close_rate, len(beat_close), len(clv_rows)),
+            "",
+        ]
+    )
     if opportunities:
         lines.extend(["## Opportunities", ""])
         lines.extend(
@@ -182,6 +191,12 @@ def _fallback_bet(row: dict[str, str]) -> str:
     bookmaker = row.get("target_bookmaker", "")
     odds = row.get("target_odds", "")
     return f"Back {outcome} with {bookmaker} at {odds}".strip()
+
+
+def _format_clv_line(rate: float | None, wins: int, total: int) -> str:
+    if total == 0:
+        return "- Beat closing line: pending (0 closed trades with CLV)"
+    return f"- Beat closing line: {rate:.2%} ({wins}/{total})"
 
 
 def _trade_has_closed(row: dict[str, str], now: datetime) -> bool:
