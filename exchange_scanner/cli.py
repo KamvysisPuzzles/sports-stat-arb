@@ -59,6 +59,10 @@ SHARP_REFERENCE_BOOKMAKERS = {
     "matchbook",
 }
 
+MATCHBOOK_TARGET_BOOKMAKERS = {
+    "matchbook",
+}
+
 SHARPNESS_WEIGHTS = {
     "*": 0.20,
     "pinnacle": 1.00,
@@ -96,7 +100,7 @@ STRATEGIES = {
         "reference_weights": None,
     },
     "sharp-weighted-clv": {
-        "target_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
+        "target_bookmakers": MATCHBOOK_TARGET_BOOKMAKERS,
         "reference_bookmakers": None,
         "allow_target_bookmakers_as_references": True,
         "reference_weights": SHARPNESS_WEIGHTS,

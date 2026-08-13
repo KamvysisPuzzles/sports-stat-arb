@@ -106,7 +106,7 @@ scan-exchanges \
   --unique-events
 ```
 
-Run the sharp/non-limiting CLV strategy:
+Run the Matchbook-only CLV strategy:
 
 ```bash
 scan-exchanges \
@@ -120,11 +120,12 @@ scan-exchanges \
   --unique-events
 ```
 
-`sharp-weighted-clv` only targets the sharper venues (`betfair`, `pinnacle`,
-`smarkets`, `matchbook`) but compares each target price against a
-sharpness-weighted consensus from all other complete books on the same event.
-Pinnacle and exchange-style books get the highest weights, stronger mainstream
-books get medium weights, and unknown books get low default weight.
+`sharp-weighted-clv` only targets Matchbook for potential execution, but
+compares each Matchbook price against a sharpness-weighted consensus from all
+other complete books on the same event. Pinnacle, Betfair, Smarkets, and
+Matchbook get the highest reference weights, stronger mainstream books get
+medium weights, and unknown books get low default weight. Matchbook's own price
+is excluded from the reference calculation for a Matchbook target.
 
 The scanner can also learn those weights from stored odds snapshots:
 

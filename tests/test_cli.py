@@ -8,6 +8,7 @@ import pytest
 
 from exchange_scanner.bookmaker_links import EventPageResolution
 from exchange_scanner.cli import (
+    MATCHBOOK_TARGET_BOOKMAKERS,
     SHARP_REFERENCE_BOOKMAKERS,
     SHARPNESS_WEIGHTS,
     SPORT_PROFILES,
@@ -52,7 +53,7 @@ def test_sharp_only_strategy_is_separate_from_soft_book_strategy() -> None:
 def test_sharp_weighted_clv_targets_sharp_books_against_weighted_all_book_consensus() -> None:
     strategy = STRATEGIES["sharp-weighted-clv"]
 
-    assert strategy["target_bookmakers"] == SHARP_REFERENCE_BOOKMAKERS
+    assert strategy["target_bookmakers"] == MATCHBOOK_TARGET_BOOKMAKERS
     assert strategy["reference_bookmakers"] is None
     assert strategy["allow_target_bookmakers_as_references"] is True
     assert strategy["reference_weights"] == SHARPNESS_WEIGHTS
