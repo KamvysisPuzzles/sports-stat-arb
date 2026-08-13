@@ -233,9 +233,18 @@ def settle_results(
     return settled
 
 
-def paper_summary(trades: list[PaperTrade]) -> dict[str, float | int]:
-    clv_trades = [trade for trade in trades if trade.target_clv is not None]
-    edge_trades = [trade for trade in trades if trade.closing_edge is not None]
+def paper_summary(
+    trades: list[PaperTrade],
+    *,
+    now: datetime | None = None,
+) -> dict[str, float | int]:
+    now = now or datetime.now(timezone.utc)
+    clv_trades = [
+        trade for trade in trades if trade.target_clv is not None and _trade_has_closed(trade, now)
+    ]
+    edge_trades = [
+        trade for trade in trades if trade.closing_edge is not None and _trade_has_closed(trade, now)
+    ]
     settled_trades = [trade for trade in trades if trade.status == "settled"]
     beat_close = sum(1 for trade in clv_trades if trade.target_clv and trade.target_clv > 0)
     positive_close_edge = sum(
@@ -282,6 +291,10 @@ def _commission_rate_for_bookmaker(bookmaker: str) -> float:
     if bookmaker.casefold() == "matchbook":
         return MATCHBOOK_COMMISSION_RATE
     return 0.0
+
+
+def _trade_has_closed(trade: PaperTrade, now: datetime) -> bool:
+    return trade.status == "settled" or trade.commence_time <= now
 
 
 def _trade_from_row(row: sqlite3.Row) -> PaperTrade:

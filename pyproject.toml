@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "uk-value-bet-scanner"
+name = "matchbook-clv-scanner"
 version = "0.1.0"
-description = "Find UK soft-book value bets against sharp reference prices."
+description = "Paper-trade Matchbook h2h value bets against weighted reference prices."
 requires-python = ">=3.9"
 dependencies = [
     "httpx>=0.27.0",

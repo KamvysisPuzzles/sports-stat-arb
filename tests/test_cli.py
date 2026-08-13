@@ -13,7 +13,6 @@ from exchange_scanner.cli import (
     SHARPNESS_WEIGHTS,
     SPORT_PROFILES,
     STRATEGIES,
-    UK_SOFT_BOOKMAKERS,
     _american_odds,
     _filter_prices_by_event_horizon,
     _filter_signals_by_max_edge,
@@ -27,13 +26,6 @@ from exchange_scanner.cli import (
 from exchange_scanner.the_odds_api import ValueSignal
 
 
-def test_uk_soft_bookmaker_set_includes_core_books() -> None:
-    assert "skybet" in UK_SOFT_BOOKMAKERS
-    assert "paddypower" in UK_SOFT_BOOKMAKERS
-    assert "bet365" in UK_SOFT_BOOKMAKERS
-    assert "williamhill" in UK_SOFT_BOOKMAKERS
-
-
 def test_sharp_profile_adds_reference_books() -> None:
     assert SHARP_REFERENCE_BOOKMAKERS == {
         "pinnacle",
@@ -43,13 +35,6 @@ def test_sharp_profile_adds_reference_books() -> None:
     }
 
 
-def test_sharp_only_strategy_is_separate_from_soft_book_strategy() -> None:
-    assert STRATEGIES["uk-soft-value"]["target_bookmakers"] == UK_SOFT_BOOKMAKERS
-    assert STRATEGIES["sharp-only-value"]["target_bookmakers"] == SHARP_REFERENCE_BOOKMAKERS
-    assert STRATEGIES["sharp-only-value"]["reference_bookmakers"] == SHARP_REFERENCE_BOOKMAKERS
-    assert STRATEGIES["sharp-only-value"]["allow_target_bookmakers_as_references"] is True
-
-
 def test_sharp_weighted_clv_targets_sharp_books_against_weighted_all_book_consensus() -> None:
     strategy = STRATEGIES["sharp-weighted-clv"]
 
@@ -57,19 +42,7 @@ def test_sharp_weighted_clv_targets_sharp_books_against_weighted_all_book_consen
     assert strategy["reference_bookmakers"] is None
     assert strategy["allow_target_bookmakers_as_references"] is True
     assert strategy["reference_weights"] == SHARPNESS_WEIGHTS
-
-
-def test_uk_soft_edge_sports_profile_excludes_headline_major_leagues() -> None:
-    sports = SPORT_PROFILES["uk-soft-edge"]
-
-    assert "soccer_epl" not in sports
-    assert "soccer_spain_la_liga" not in sports
-    assert "soccer_efl_champ" in sports
-    assert "basketball_wnba" in sports
-
-
-def test_uk_soft_core_profile_stays_under_default_request_cap() -> None:
-    assert len(SPORT_PROFILES["uk-soft-edge-core"]) <= 25
+    assert set(STRATEGIES) == {"sharp-weighted-clv"}
 
 
 def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None:
@@ -86,7 +59,7 @@ def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None
 
 def test_sports_profile_combines_with_explicit_sports_without_duplicates() -> None:
     args = Namespace(
-        sports_profile="uk-soft-edge",
+        sports_profile="matchbook-h2h-expanded",
         sports="soccer_efl_champ,soccer_epl",
         sport="football",
     )
@@ -289,7 +262,7 @@ def test_recommended_value_stake_uses_capped_fractional_kelly() -> None:
     assert _recommended_value_stake(signal, args) == pytest.approx(5.0)
 
 
-def test_scan_uses_uk_soft_targets_against_sharp_references(tmp_path) -> None:
+def test_scan_uses_matchbook_target_against_weighted_reference_consensus(tmp_path) -> None:
     fixture = tmp_path / "odds.json"
     fixture.write_text(
         json.dumps(
@@ -302,8 +275,8 @@ def test_scan_uses_uk_soft_targets_against_sharp_references(tmp_path) -> None:
                     "commence_time": "2027-08-12T15:00:00Z",
                     "bookmakers": [
                         {
-                            "key": "betway",
-                            "title": "Betway",
+                            "key": "matchbook",
+                            "title": "Matchbook",
                             "last_update": "2026-08-12T12:00:00Z",
                             "markets": [
                                 {
@@ -351,8 +324,8 @@ def test_scan_uses_uk_soft_targets_against_sharp_references(tmp_path) -> None:
                                 {
                                     "key": "h2h",
                                     "outcomes": [
-                                        {"name": "Arsenal", "price": 100.0},
-                                        {"name": "Chelsea", "price": 1.01},
+                                        {"name": "Arsenal", "price": 2.0},
+                                        {"name": "Chelsea", "price": 2.0},
                                     ],
                                 }
                             ],
@@ -376,9 +349,9 @@ def test_scan_uses_uk_soft_targets_against_sharp_references(tmp_path) -> None:
     signals = scan_the_odds_api(args)
 
     assert len(signals) == 1
-    assert signals[0].target_bookmaker == "Betway"
+    assert signals[0].target_bookmaker == "Matchbook"
     assert signals[0].outcome_name == "Arsenal"
-    assert signals[0].reference_bookmakers == ("Betfair", "Pinnacle")
+    assert signals[0].reference_bookmakers == ("Betfair", "Pinnacle", "Random Book")
 
 
 def test_scan_aborts_before_fetching_when_request_cap_is_exceeded(monkeypatch) -> None:

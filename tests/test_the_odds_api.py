@@ -771,8 +771,8 @@ def test_value_mode_supports_sharpness_weighted_reference_consensus() -> None:
                     ],
                 },
                 {
-                    "key": "soft",
-                    "title": "Soft Book",
+                    "key": "weak",
+                    "title": "Weak Book",
                     "last_update": "2026-08-12T12:00:00Z",
                     "markets": [
                         {
@@ -797,7 +797,7 @@ def test_value_mode_supports_sharpness_weighted_reference_consensus() -> None:
         max_age_seconds=300,
         min_reference_books=2,
         allow_target_bookmakers_as_references=True,
-        reference_weights={"pinnacle": 1.0, "soft book": 0.0, "*": 1.0},
+        reference_weights={"pinnacle": 1.0, "weak book": 0.0, "*": 1.0},
         now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
     )
 
@@ -805,7 +805,7 @@ def test_value_mode_supports_sharpness_weighted_reference_consensus() -> None:
     assert signals[0].target_bookmaker == "Betfair"
     assert signals[0].reference_probability == pytest.approx(0.5)
     assert signals[0].edge == pytest.approx(0.05)
-    assert signals[0].reference_bookmakers == ("Pinnacle", "Soft Book")
+    assert signals[0].reference_bookmakers == ("Pinnacle", "Weak Book")
 
 
 def test_odds_api_client_reuses_fresh_cache(tmp_path) -> None:

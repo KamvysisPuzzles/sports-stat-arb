@@ -37,7 +37,7 @@ class BacktestBet:
     @property
     def profit(self) -> float:
         if self.won:
-            return self.stake * (self.signal.target_odds - 1)
+            return self.stake * (self.signal.effective_odds - 1)
         return -self.stake
 
     @property
@@ -58,7 +58,7 @@ def run_backtest(
     historical_odds_path: Path,
     results_path: Path,
     target_bookmakers: set[str],
-    reference_bookmakers: set[str],
+    reference_bookmakers: set[str] | None,
     markets: set[str],
     min_edge: float,
     max_age_seconds: int,
@@ -71,6 +71,7 @@ def run_backtest(
     allow_rebet_same_event: bool = False,
     allow_target_bookmakers_as_references: bool = False,
     reference_weights: dict[str, float] | None = None,
+    target_commission_rates: dict[str, float] | None = None,
 ) -> list[BacktestBet]:
     results = load_results(results_path)
     snapshots = load_historical_snapshots(historical_odds_path)
@@ -102,6 +103,7 @@ def run_backtest(
             include_started=include_started,
             allow_target_bookmakers_as_references=allow_target_bookmakers_as_references,
             reference_weights=reference_weights,
+            target_commission_rates=target_commission_rates,
             now=snapshot.fetched_at,
         )
         if unique_events:
@@ -134,6 +136,7 @@ def run_backtest(
                 min_reference_books=min_reference_books,
                 allow_target_bookmakers_as_references=allow_target_bookmakers_as_references,
                 reference_weights=reference_weights,
+                target_commission_rates=target_commission_rates,
             )
             bets.append(
                 BacktestBet(
@@ -313,11 +316,12 @@ def _closing_line_for_signal(
     *,
     snapshots: list[HistoricalSnapshot],
     target_bookmakers: set[str],
-    reference_bookmakers: set[str],
+    reference_bookmakers: set[str] | None,
     max_age_seconds: int,
     min_reference_books: int,
     allow_target_bookmakers_as_references: bool = False,
     reference_weights: dict[str, float] | None = None,
+    target_commission_rates: dict[str, float] | None = None,
 ) -> _ClosingLine:
     candidate_snapshots = [
         snapshot
@@ -339,6 +343,7 @@ def _closing_line_for_signal(
             include_started=False,
             allow_target_bookmakers_as_references=allow_target_bookmakers_as_references,
             reference_weights=reference_weights,
+            target_commission_rates=target_commission_rates,
             now=snapshot.fetched_at,
         )
         for closing_signal in closing_signals:

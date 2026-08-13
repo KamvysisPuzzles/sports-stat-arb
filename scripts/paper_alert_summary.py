@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -33,9 +34,10 @@ def read_csv(path: Path) -> list[dict[str, str]]:
 
 
 def build_markdown(trades: list[dict[str, str]], opportunities: list[dict[str, str]]) -> str:
+    now = datetime.now(timezone.utc)
     open_trades = [row for row in trades if row.get("status") == "open"]
     settled = [row for row in trades if row.get("status") == "settled"]
-    clv_rows = [row for row in trades if row.get("target_clv")]
+    clv_rows = [row for row in trades if row.get("target_clv") and _trade_has_closed(row, now)]
     beat_close = [row for row in clv_rows if row.get("beat_closing_line") == "True"]
     profit = sum(float(row.get("profit") or 0) for row in settled)
     staked = sum(float(row.get("stake") or 0) for row in settled)
@@ -98,6 +100,18 @@ def _float(value: str | None) -> float:
         return float(value or 0)
     except ValueError:
         return 0.0
+
+
+def _trade_has_closed(row: dict[str, str], now: datetime) -> bool:
+    if row.get("status") == "settled":
+        return True
+    try:
+        commence_time = datetime.fromisoformat(row.get("commence_time", ""))
+    except ValueError:
+        return False
+    if commence_time.tzinfo is None:
+        commence_time = commence_time.replace(tzinfo=timezone.utc)
+    return commence_time <= now
 
 
 if __name__ == "__main__":

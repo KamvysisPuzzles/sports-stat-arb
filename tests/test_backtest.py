@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from exchange_scanner.backtest import backtest_summary, run_backtest
-from exchange_scanner.cli import SHARP_REFERENCE_BOOKMAKERS, UK_SOFT_BOOKMAKERS
+from exchange_scanner.cli import MATCHBOOK_TARGET_BOOKMAKERS
 
 
 def test_run_backtest_settles_value_bets_against_results(tmp_path: Path) -> None:
@@ -25,8 +25,8 @@ def test_run_backtest_settles_value_bets_against_results(tmp_path: Path) -> None
                         "commence_time": "2026-08-14T15:00:00Z",
                         "bookmakers": [
                             {
-                                "key": "betway",
-                                "title": "Betway",
+                                "key": "matchbook",
+                                "title": "Matchbook",
                                 "last_update": "2026-08-12T21:55:00Z",
                                 "markets": [
                                     {
@@ -86,8 +86,8 @@ def test_run_backtest_settles_value_bets_against_results(tmp_path: Path) -> None
                         "commence_time": "2026-08-14T15:00:00Z",
                         "bookmakers": [
                             {
-                                "key": "betway",
-                                "title": "Betway",
+                                "key": "matchbook",
+                                "title": "Matchbook",
                                 "last_update": "2026-08-13T21:55:00Z",
                                 "markets": [
                                     {
@@ -142,8 +142,8 @@ def test_run_backtest_settles_value_bets_against_results(tmp_path: Path) -> None
     bets = run_backtest(
         historical_odds_path=tmp_path,
         results_path=results,
-        target_bookmakers=UK_SOFT_BOOKMAKERS,
-        reference_bookmakers=SHARP_REFERENCE_BOOKMAKERS,
+        target_bookmakers=MATCHBOOK_TARGET_BOOKMAKERS,
+        reference_bookmakers=None,
         markets={"h2h"},
         min_edge=0.05,
         max_age_seconds=300,
@@ -154,6 +154,7 @@ def test_run_backtest_settles_value_bets_against_results(tmp_path: Path) -> None
         stake=10,
         daily_decision_time="22:00",
         allow_rebet_same_event=False,
+        allow_target_bookmakers_as_references=True,
     )
 
     assert len(bets) == 1

@@ -27,7 +27,7 @@ def signal(
         commence_time=datetime(2026, 8, 14, 15, tzinfo=timezone.utc),
         market_key="h2h",
         outcome_name="Arsenal",
-        target_bookmaker="Betway",
+        target_bookmaker="Matchbook",
         target_odds=target_odds,
         reference_fair_odds=reference_fair_odds,
         reference_probability=1 / reference_fair_odds,
@@ -67,10 +67,35 @@ def test_update_closing_values_tracks_clv_and_closing_edge(tmp_path) -> None:
     trade = list_trades(db_path)[0]
     assert trade.closing_target_odds == 2.0
     assert trade.target_clv == pytest.approx(0.15)
-    assert trade.closing_edge == pytest.approx(0.15)
-    summary = paper_summary([trade])
+    assert trade.closing_edge == pytest.approx(0.137)
+    summary = paper_summary([trade], now=datetime(2026, 8, 14, 16, tzinfo=timezone.utc))
     assert summary["beat_closing_line_rate"] == 1
     assert summary["positive_closing_edge_rate"] == 1
+
+
+def test_paper_summary_excludes_unclosed_trades_from_clv_rate(tmp_path) -> None:
+    db_path = tmp_path / "paper.sqlite3"
+    log_signals(db_path, [signal()], stake=10)
+    update_closing_values(
+        db_path,
+        [
+            signal(
+                target_odds=2.0,
+                reference_fair_odds=2.0,
+                edge=0,
+            )
+        ],
+        checked_at=datetime(2026, 8, 13, 12, tzinfo=timezone.utc),
+    )
+
+    trade = list_trades(db_path)[0]
+    early_summary = paper_summary([trade], now=datetime(2026, 8, 13, 12, tzinfo=timezone.utc))
+    closed_summary = paper_summary([trade], now=datetime(2026, 8, 14, 16, tzinfo=timezone.utc))
+
+    assert early_summary["closing_checked"] == 0
+    assert early_summary["beat_closing_line_rate"] == 0
+    assert closed_summary["closing_checked"] == 1
+    assert closed_summary["beat_closing_line_rate"] == 1
 
 
 def test_settle_results_marks_trade_profit(tmp_path) -> None:
@@ -83,7 +108,7 @@ def test_settle_results_marks_trade_profit(tmp_path) -> None:
     trade = list_trades(db_path)[0]
     assert trade.status == "settled"
     assert trade.result == "Arsenal"
-    assert trade.profit == pytest.approx(13)
+    assert trade.profit == pytest.approx(12.74)
     summary = paper_summary([trade])
     assert summary["settled"] == 1
-    assert summary["settled_roi"] == pytest.approx(1.3)
+    assert summary["settled_roi"] == pytest.approx(1.274)

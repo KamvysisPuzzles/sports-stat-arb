@@ -1,69 +1,39 @@
-# UK Soft-Book Value Scanner
+# Matchbook CLV Paper Trader
 
-Read-only scanner for finding potential value bets at UK soft bookmakers by
-comparing their prices with sharper reference books and exchanges.
+Read-only scanner for finding potential Matchbook h2h value bets by comparing
+Matchbook prices with a sharpness-weighted reference consensus.
 
 It does not place bets.
 
 ## Strategies
 
-The default `uk-soft-value` strategy:
+The default `sharp-weighted-clv` strategy:
 
 1. Fetches odds from The Odds API.
-2. Treats UK soft books as target bookmakers.
-3. Treats sharp books and exchanges as reference prices.
+2. Treats Matchbook as the only target venue.
+3. Treats all other complete books as reference prices.
 4. De-vigs the reference market into an estimated fair probability.
-5. Flags a bet when:
+5. Applies Matchbook's assumed 2% winning-market commission.
+6. Flags a bet when:
 
 ```text
-edge = target_odds * reference_probability - 1
+edge = matchbook_effective_odds * reference_probability - 1
 ```
 
-The CSV tells you what to bet in `bet_to_place`, including decimal and UK
-fractional odds.
-
-There is also an experimental `sharp-only-value` strategy. It only targets
-sharper/non-soft venues and compares each price against the other sharp venues:
-
-```text
-target books: betfair, smarkets, matchbook, pinnacle
-reference books: the other sharp venues on the same event
-```
-
-This is designed to reduce soft-book limiting risk. The tradeoff is that edges
-should be smaller, and The Odds API does not expose exchange liquidity, so a
-displayed price may not be available for meaningful stake.
+The CSV tells you what to back in `bet_to_place`, including decimal, UK
+fractional, and American odds. Matchbook liquidity enrichment adds visible
+order-book size at or above the target price.
 
 ## Included Books
 
-Target UK soft books:
+Target venue:
 
 ```text
-bet365
-betfred
-betvictor
-betway
-boylesports
-coral
-grosvenor
-ladbrokes
-livescorebet
-paddypower
-skybet
-sport888 / 888sport
-unibet_uk
-virginbet
-williamhill
-```
-
-Sharp reference books/exchanges:
-
-```text
-pinnacle
-betfair
-smarkets
 matchbook
 ```
+
+Reference books are all other complete books available for the same event and
+market, weighted by the built-in or learned sharpness weights.
 
 ## Quick Start
 
@@ -81,36 +51,10 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Run the default UK soft-book value scan:
+Run the Matchbook h2h CLV scan:
 
 ```bash
 scan-exchanges \
-  --min-edge 0.02 \
-  --max-edge 0.10 \
-  --min-reference-books 2 \
-  --max-age-seconds 900 \
-  --unique-events \
-  --resolve-event-pages
-```
-
-Run the separate sharp-only strategy:
-
-```bash
-scan-exchanges \
-  --strategy sharp-only-value \
-  --sports-profile uk-soft-edge \
-  --max-api-requests 40 \
-  --min-edge 0.005 \
-  --min-reference-books 2 \
-  --max-age-seconds 900 \
-  --unique-events
-```
-
-Run the Matchbook-only CLV strategy:
-
-```bash
-scan-exchanges \
-  --strategy sharp-weighted-clv \
   --sports-profile matchbook-h2h-expanded \
   --markets h2h \
   --max-api-requests 80 \
@@ -128,12 +72,13 @@ Matchbook get the highest reference weights, stronger mainstream books get
 medium weights, and unknown books get low default weight. Matchbook's own price
 is excluded from the reference calculation for a Matchbook target.
 
-The scanner can also learn those weights from stored odds snapshots:
+The scanner can also learn sharpness weights from stored odds snapshots:
 
 ```bash
 scan-exchanges \
-  --sports-profile uk-soft-edge \
-  --max-api-requests 40 \
+  --sports-profile matchbook-h2h-expanded \
+  --markets h2h \
+  --max-api-requests 80 \
   --store-odds-snapshot \
   --market-db data/market_snapshots.sqlite3
 
@@ -151,7 +96,8 @@ learned weights over the built-in heuristic weights.
 The default scan uses:
 
 ```text
---sports-profile uk-soft-edge-core
+--strategy sharp-weighted-clv
+--sports-profile matchbook-h2h-expanded
 --regions uk,eu
 --markets h2h
 --max-event-days 2
@@ -161,11 +107,10 @@ For paper staking, pass a bankroll:
 
 ```bash
 scan-exchanges \
-  --min-edge 0.02 \
-  --min-reference-books 2 \
+  --min-edge 0.005 \
+  --min-reference-books 5 \
   --max-age-seconds 900 \
   --unique-events \
-  --resolve-event-pages \
   --bankroll 1000
 ```
 
@@ -177,31 +122,28 @@ Important CSV columns:
 
 - `bet_to_place`: plain-English action, e.g. `Back Team with Book at 4.5 (7/2)+`.
 - `target_odds`: decimal odds from the target bookmaker.
+- `target_effective_odds`: target odds after Matchbook commission.
 - `target_odds_fractional`: UK fractional odds.
 - `target_odds_american`: American odds.
 - `target_implied_probability`: implied probability from the offered price.
 - `reference_fair_odds`: de-vigged fair decimal odds from sharp references.
 - `edge`: estimated value edge.
-- `event_page_url`: exact event page when resolved; otherwise the bookmaker's main sports link.
-- `event_page_status`: `resolved`, `not_found`, or another resolver status.
 - `recommended_stake`: populated only when `--bankroll` is provided.
 
 ## Sports Profiles
 
-`uk-soft-edge-core` scans lower-tier and less efficient markets such as selected
-football leagues, cricket, WNBA, AFL, and CFL. It intentionally skips some
-headline markets like EPL and La Liga.
-
-Use the wider profile when you are willing to spend more The Odds API requests:
+`matchbook-h2h-expanded` scans event-level h2h sports and competitions where
+Matchbook may have exchange markets. It excludes futures and outright winner
+markets.
 
 ```bash
-scan-exchanges --sports-profile uk-soft-edge --max-api-requests 40
+scan-exchanges --sports-profile matchbook-h2h-expanded --markets h2h --max-api-requests 80
 ```
 
 Estimate request count before a broad scan:
 
 ```bash
-scan-exchanges --sports-profile uk-soft-edge --dry-run-estimate
+scan-exchanges --sports-profile matchbook-h2h-expanded --markets h2h --dry-run-estimate
 ```
 
 ## Caching
@@ -366,25 +308,18 @@ settle-results
 
 Credit estimate for the deployed wider profile:
 
-- Candidate scan: about 30 credits per run.
-- Closing update: about 30 credits per run.
+- Candidate scan: about 73 credits per run.
+- Closing update: about 73 credits per run.
 - Result settlement: 2 credits per sport with open trades.
 
-If the workflow starts finding many trades, consider narrowing the schedule or
-sports profile to control quota usage.
-
-The deployed workflow uses the wider `uk-soft-edge` profile. This intentionally
-adds more lower-tier football, cricket, WNBA, AFL, CFL, and NFL preseason
-markets than `uk-soft-edge-core`. Wider coverage should create more paper
-trades, but it also means the sharp-reference price can be noisier on niche
-events where exchange liquidity is thin.
+The deployed workflow uses the `matchbook-h2h-expanded` profile. It scans h2h
+only every hour and updates closing values every 2 hours, which keeps expected
+monthly usage under the 100k-credit plan before result settlement.
 
 Sharp books are treated as a reference-price proxy, not as guaranteed truth. The
-strategy requires at least 2 reference books before logging a trade, which helps
+strategy requires at least 5 reference books before logging a trade, which helps
 avoid trusting a single stale or low-liquidity quote. It also excludes new
 booked opportunities above `10%` edge by default, because very large edges are
 usually stale prices, market mismatches, or unusable exchange quotes rather than
-clean value. Betfair remains a sharp reference, but exchange back prices with a
-very wide available back/lay spread are filtered before they can distort the
-reference fair price. If the live test produces too many weak candidates, raise
-`--min-reference-books` or `--min-edge` before adding more leagues.
+clean value. Matchbook liquidity snapshots are stored separately so we can
+measure visible executable size over time.

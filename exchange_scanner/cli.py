@@ -35,24 +35,6 @@ from exchange_scanner.the_odds_api import (
     normalise_odds_api_events,
 )
 
-UK_SOFT_BOOKMAKERS = {
-    "bet365",
-    "betfred",
-    "betvictor",
-    "betway",
-    "boylesports",
-    "coral",
-    "grosvenor",
-    "ladbrokes",
-    "livescorebet",
-    "paddypower",
-    "skybet",
-    "sport888",
-    "unibet_uk",
-    "virginbet",
-    "williamhill",
-}
-
 SHARP_REFERENCE_BOOKMAKERS = {
     "pinnacle",
     "betfair",
@@ -92,20 +74,6 @@ MATCHBOOK_COMMISSION_RATES = {
 }
 
 STRATEGIES = {
-    "uk-soft-value": {
-        "target_bookmakers": UK_SOFT_BOOKMAKERS,
-        "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
-        "allow_target_bookmakers_as_references": False,
-        "reference_weights": None,
-        "target_commission_rates": None,
-    },
-    "sharp-only-value": {
-        "target_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
-        "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
-        "allow_target_bookmakers_as_references": True,
-        "reference_weights": None,
-        "target_commission_rates": None,
-    },
     "sharp-weighted-clv": {
         "target_bookmakers": MATCHBOOK_TARGET_BOOKMAKERS,
         "reference_bookmakers": None,
@@ -116,58 +84,6 @@ STRATEGIES = {
 }
 
 SPORT_PROFILES = {
-    "uk-soft-edge-core": [
-        "soccer_efl_champ",
-        "soccer_england_efl_cup",
-        "soccer_england_league1",
-        "soccer_england_league2",
-        "soccer_spain_segunda_division",
-        "soccer_norway_eliteserien",
-        "soccer_sweden_allsvenskan",
-        "soccer_finland_veikkausliiga",
-        "soccer_poland_ekstraklasa",
-        "soccer_japan_j_league",
-        "soccer_korea_kleague1",
-        "soccer_mexico_ligamx",
-        "soccer_chile_campeonato",
-        "cricket_the_hundred",
-        "cricket_odi",
-        "basketball_wnba",
-        "aussierules_afl",
-        "americanfootball_cfl",
-    ],
-    "uk-soft-edge": [
-        "soccer_efl_champ",
-        "soccer_england_efl_cup",
-        "soccer_england_league1",
-        "soccer_england_league2",
-        "soccer_spl",
-        "soccer_france_ligue_two",
-        "soccer_germany_bundesliga2",
-        "soccer_italy_serie_b",
-        "soccer_spain_segunda_division",
-        "soccer_norway_eliteserien",
-        "soccer_sweden_allsvenskan",
-        "soccer_sweden_superettan",
-        "soccer_finland_veikkausliiga",
-        "soccer_poland_ekstraklasa",
-        "soccer_greece_super_league",
-        "soccer_japan_j_league",
-        "soccer_korea_kleague1",
-        "soccer_mexico_ligamx",
-        "soccer_chile_campeonato",
-        "soccer_china_superleague",
-        "soccer_brazil_serie_b",
-        "soccer_concacaf_leagues_cup",
-        "cricket_the_hundred",
-        "cricket_the_hundred_womens",
-        "cricket_odi",
-        "cricket_test_match",
-        "basketball_wnba",
-        "aussierules_afl",
-        "americanfootball_cfl",
-        "americanfootball_nfl_preseason",
-    ],
     "matchbook-h2h-expanded": [
         "americanfootball_cfl",
         "americanfootball_ncaaf",
@@ -307,8 +223,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--strategy",
         choices=sorted(STRATEGIES),
-        default="uk-soft-value",
-        help="Value strategy to run. Default keeps the UK soft-book strategy.",
+        default="sharp-weighted-clv",
+        help="Value strategy to run. Default targets Matchbook against weighted reference prices.",
     )
     parser.add_argument("--fixtures", type=Path, help="Read quotes from a local JSON fixture.")
     parser.add_argument(
@@ -394,7 +310,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sports-profile",
         choices=sorted(SPORT_PROFILES),
-        default="uk-soft-edge-core",
+        default="matchbook-h2h-expanded",
         help="Named sports profile to scan. Combines with --sports.",
     )
     parser.add_argument(
@@ -654,7 +570,7 @@ def scan_the_odds_api(args: argparse.Namespace):
 
 
 def _strategy_config(args: argparse.Namespace):
-    return STRATEGIES[getattr(args, "strategy", "uk-soft-value")]
+    return STRATEGIES[getattr(args, "strategy", "sharp-weighted-clv")]
 
 
 def _reference_weights_for_scan(args: argparse.Namespace, strategy, allowed_markets: set[str]):
