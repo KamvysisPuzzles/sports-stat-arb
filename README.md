@@ -292,7 +292,7 @@ THE_ODDS_API_KEY
 
 The workflow:
 
-- Logs nightly candidates at `20:00` UK time.
+- Logs candidates every 2 hours.
 - Updates closing values every 2 hours.
 - Settles recent completed results every 6 hours using The Odds API scores endpoint.
 - Commits `data/paper_trades.sqlite3` and `data/paper_trades.csv` back to the repo.
@@ -316,10 +316,10 @@ update-closing
 settle-results
 ```
 
-Credit estimate for the default profile:
+Credit estimate for the deployed wider profile:
 
-- Nightly candidate scan: about 36 credits.
-- Closing update: about 36 credits per run.
+- Candidate scan: about 30 credits per run.
+- Closing update: about 30 credits per run.
 - Result settlement: 2 credits per sport with open trades.
 
 If the workflow starts finding many trades, consider narrowing the schedule or
