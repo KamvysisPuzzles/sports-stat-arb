@@ -72,6 +72,18 @@ def test_uk_soft_core_profile_stays_under_default_request_cap() -> None:
     assert len(SPORT_PROFILES["uk-soft-edge-core"]) <= 25
 
 
+def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None:
+    sports = SPORT_PROFILES["matchbook-h2h-expanded"]
+
+    assert "americanfootball_nfl" in sports
+    assert "baseball_mlb" in sports
+    assert "basketball_nba" in sports
+    assert "icehockey_nhl" in sports
+    assert "tennis_atp_cincinnati_open" in sports
+    assert all("winner" not in sport for sport in sports)
+    assert len(sports) <= 80
+
+
 def test_sports_profile_combines_with_explicit_sports_without_duplicates() -> None:
     args = Namespace(
         sports_profile="uk-soft-edge",

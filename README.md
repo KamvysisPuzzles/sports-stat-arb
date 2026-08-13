@@ -111,9 +111,9 @@ Run the Matchbook-only CLV strategy:
 ```bash
 scan-exchanges \
   --strategy sharp-weighted-clv \
-  --sports-profile uk-soft-edge \
-  --markets h2h,spreads,totals \
-  --max-api-requests 40 \
+  --sports-profile matchbook-h2h-expanded \
+  --markets h2h \
+  --max-api-requests 80 \
   --min-edge 0.005 \
   --max-edge 0.10 \
   --min-reference-books 5 \
