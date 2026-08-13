@@ -104,6 +104,7 @@ def enrich_opportunities_csv(
             match = match_liquidity(
                 events,
                 event_name=row["event_name"],
+                market_key=row.get("market", row.get("market_key", "h2h")),
                 outcome_name=row["outcome_name"],
                 target_odds=float(row["target_odds"]),
             )
@@ -116,24 +117,25 @@ def match_liquidity(
     events: list[dict[str, Any]],
     *,
     event_name: str,
+    market_key: str = "h2h",
     outcome_name: str,
     target_odds: float,
 ) -> LiquidityMatch:
     best: tuple[float, dict[str, Any], dict[str, Any], dict[str, Any]] | None = None
     for event in events:
+        event_score = _name_score(event_name, event.get("name", ""))
         for market in event.get("markets", []):
-            if not _is_match_odds_market(market):
+            if not _market_matches(market, market_key):
                 continue
             for runner in market.get("runners", []):
-                event_score = _name_score(event_name, event.get("name", ""))
-                runner_score = _name_score(outcome_name, runner.get("name", ""))
-                score = (event_score * 0.75) + (runner_score * 0.25)
-                if runner_score < 0.72:
+                runner_score = _runner_score(outcome_name, runner, market_key)
+                score = (event_score * 0.70) + (runner_score * 0.30)
+                if runner_score < 0.70:
                     continue
                 if best is None or score > best[0]:
                     best = (score, event, market, runner)
 
-    if best is None or best[0] < 0.72:
+    if best is None or best[0] < 0.70:
         return LiquidityMatch(
             matchbook_event_id=None,
             matchbook_market_id=None,
@@ -178,15 +180,48 @@ def match_liquidity(
     )
 
 
-def _is_match_odds_market(market: dict[str, Any]) -> bool:
-    return (
-        market.get("product") == "EXCHANGE"
-        and market.get("status") == "open"
-        and (
-            market.get("name", "").casefold() == "match odds"
-            or market.get("market-type") in {"one_x_two", "money_line"}
-        )
-    )
+def _market_matches(market: dict[str, Any], market_key: str) -> bool:
+    if market.get("product") != "EXCHANGE" or market.get("status") != "open":
+        return False
+    market_type = market.get("market-type", "")
+    market_name = market.get("name", "").casefold()
+    if market_key == "h2h":
+        return market_name in {"match odds", "moneyline"} or market_type in {
+            "one_x_two",
+            "money_line",
+        }
+    if market_key == "spreads":
+        return market_name == "handicap" or market_type == "handicap"
+    if market_key == "totals":
+        return market_name == "total" or market_type == "total"
+    return False
+
+
+def _runner_score(outcome_name: str, runner: dict[str, Any], market_key: str) -> float:
+    if market_key in {"spreads", "totals"}:
+        desired = _selection_parts(outcome_name)
+        actual = _selection_parts(str(runner.get("name", "")))
+        handicap = runner.get("handicap")
+        if handicap is not None:
+            actual = (actual[0], float(handicap))
+        if (
+            desired[1] is not None
+            and actual[1] is not None
+            and abs(desired[1] - actual[1]) > 0.001
+        ):
+            return 0.0
+        return _name_score(desired[0], actual[0])
+    return _name_score(outcome_name, runner.get("name", ""))
+
+
+def _selection_parts(selection: str) -> tuple[str, float | None]:
+    words = selection.strip().rsplit(" ", 1)
+    if len(words) != 2:
+        return selection, None
+    try:
+        return words[0], float(words[1])
+    except ValueError:
+        return selection, None
 
 
 def _prices(runner: dict[str, Any], *, side: str) -> list[dict[str, float]]:

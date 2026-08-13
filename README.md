@@ -112,6 +112,7 @@ Run the Matchbook-only CLV strategy:
 scan-exchanges \
   --strategy sharp-weighted-clv \
   --sports-profile uk-soft-edge \
+  --markets h2h,spreads,totals \
   --max-api-requests 40 \
   --min-edge 0.005 \
   --max-edge 0.10 \

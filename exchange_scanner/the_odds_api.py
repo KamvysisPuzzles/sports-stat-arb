@@ -331,9 +331,12 @@ def find_value_opportunities(
         if price.last_update >= cutoff and (include_started or price.commence_time > now)
     ]
 
-    grouped: dict[tuple[str, str], list[OutcomePrice]] = {}
+    grouped: dict[tuple[str, str, float | None], list[OutcomePrice]] = {}
     for price in fresh_prices:
-        grouped.setdefault((price.event_id, price.market_key), []).append(price)
+        grouped.setdefault(
+            (price.event_id, price.market_key, _market_line_key(price)),
+            [],
+        ).append(price)
 
     signals: list[ValueSignal] = []
     for market_prices in grouped.values():
@@ -479,6 +482,16 @@ def _expected_outcome_count(prices: list[OutcomePrice]) -> int:
     for price in prices:
         by_bookmaker.setdefault(price.bookmaker_key, set()).add(price.comparable_outcome_name)
     return max((len(outcomes) for outcomes in by_bookmaker.values()), default=0)
+
+
+def _market_line_key(price: OutcomePrice) -> float | None:
+    if price.point is None:
+        return None
+    if price.market_key == "spreads":
+        return abs(float(price.point))
+    if price.market_key == "totals":
+        return float(price.point)
+    return None
 
 
 def _best_target_prices(prices: Iterable[OutcomePrice]) -> list[OutcomePrice]:

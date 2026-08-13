@@ -42,7 +42,59 @@ def matchbook_events():
                             ],
                         }
                     ],
-                }
+                },
+                {
+                    "id": 11,
+                    "name": "Total",
+                    "market-type": "total",
+                    "product": "EXCHANGE",
+                    "status": "open",
+                    "runners": [
+                        {
+                            "id": 101,
+                            "name": "OVER 2.5",
+                            "handicap": 2.5,
+                            "prices": [
+                                {
+                                    "side": "back",
+                                    "decimal-odds": 2.02,
+                                    "available-amount": 18,
+                                },
+                                {
+                                    "side": "lay",
+                                    "decimal-odds": 2.08,
+                                    "available-amount": 20,
+                                },
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "id": 12,
+                    "name": "Handicap",
+                    "market-type": "handicap",
+                    "product": "EXCHANGE",
+                    "status": "open",
+                    "runners": [
+                        {
+                            "id": 102,
+                            "name": "Exeter City +1.5",
+                            "handicap": 1.5,
+                            "prices": [
+                                {
+                                    "side": "back",
+                                    "decimal-odds": 1.91,
+                                    "available-amount": 25,
+                                },
+                                {
+                                    "side": "lay",
+                                    "decimal-odds": 1.96,
+                                    "available-amount": 33,
+                                },
+                            ],
+                        }
+                    ],
+                },
             ],
         }
     ]
@@ -79,12 +131,42 @@ def test_match_liquidity_marks_missing_target_price() -> None:
     assert match.available_at_or_above_target == 0
 
 
+def test_match_liquidity_matches_total_markets_by_point() -> None:
+    match = match_liquidity(
+        matchbook_events(),
+        event_name="Grimsby Town v Exeter City",
+        market_key="totals",
+        outcome_name="Over 2.5",
+        target_odds=2.02,
+    )
+
+    assert match.liquidity_status == "available"
+    assert match.matchbook_market_id == 11
+    assert match.matchbook_runner_id == 101
+    assert match.available_at_or_above_target == pytest.approx(18)
+
+
+def test_match_liquidity_matches_spread_markets_by_selection_and_point() -> None:
+    match = match_liquidity(
+        matchbook_events(),
+        event_name="Grimsby Town v Exeter City",
+        market_key="spreads",
+        outcome_name="Exeter City 1.5",
+        target_odds=1.91,
+    )
+
+    assert match.liquidity_status == "available"
+    assert match.matchbook_market_id == 12
+    assert match.matchbook_runner_id == 102
+    assert match.available_at_or_above_target == pytest.approx(25)
+
+
 def test_enrich_opportunities_csv_appends_liquidity_columns(tmp_path) -> None:
     input_csv = tmp_path / "opportunities.csv"
     output_csv = tmp_path / "enriched.csv"
     input_csv.write_text(
-        "event_name,outcome_name,target_odds\n"
-        "Grimsby Town v Exeter City,Exeter City,4.9\n"
+        "event_name,market,outcome_name,target_odds\n"
+        "Grimsby Town v Exeter City,h2h,Exeter City,4.9\n"
     )
 
     enrich_opportunities_csv(

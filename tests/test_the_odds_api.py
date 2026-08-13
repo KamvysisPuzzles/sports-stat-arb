@@ -487,6 +487,83 @@ def test_spreads_only_compare_the_same_point_line() -> None:
     assert signals == []
 
 
+def test_spreads_devig_each_point_line_separately() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "basketball_wnba",
+            "home_team": "Mystics",
+            "away_team": "Dream",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "matchbook",
+                    "title": "Matchbook",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "spreads",
+                            "outcomes": [
+                                {"name": "Mystics", "price": 2.2, "point": -1.5},
+                                {"name": "Dream", "price": 1.8, "point": 1.5},
+                                {"name": "Mystics", "price": 1.4, "point": -3.5},
+                                {"name": "Dream", "price": 2.6, "point": 3.5},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "pinnacle",
+                    "title": "Pinnacle",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "spreads",
+                            "outcomes": [
+                                {"name": "Mystics", "price": 2.0, "point": -1.5},
+                                {"name": "Dream", "price": 2.0, "point": 1.5},
+                                {"name": "Mystics", "price": 1.5, "point": -3.5},
+                                {"name": "Dream", "price": 2.5, "point": 3.5},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "smarkets",
+                    "title": "Smarkets",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "spreads",
+                            "outcomes": [
+                                {"name": "Mystics", "price": 2.0, "point": -1.5},
+                                {"name": "Dream", "price": 2.0, "point": 1.5},
+                                {"name": "Mystics", "price": 1.5, "point": -3.5},
+                                {"name": "Dream", "price": 2.5, "point": 3.5},
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+    prices = normalise_odds_api_events(events)
+    signals = find_value_opportunities(
+        prices,
+        target_bookmakers={"matchbook"},
+        reference_bookmakers={"pinnacle", "smarkets"},
+        min_edge=0.05,
+        max_age_seconds=300,
+        min_reference_books=2,
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )
+
+    assert [(signal.outcome_name, round(signal.edge, 2)) for signal in signals] == [
+        ("Mystics -1.5", 0.1)
+    ]
+
+
 def test_value_mode_ignores_incomplete_reference_markets() -> None:
     events = [
         {
