@@ -2,10 +2,10 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 49
-- Newly booked trades: 7
-- Candidate average edge: 4.71%
-- Candidate nominal EV at 1 GBP stake: 2.31
+- Candidate price signals this scan: 0
+- Newly booked trades: 0
+- Candidate average edge: 0.00%
+- Candidate nominal EV at 1 GBP stake: 0.00
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
@@ -25,9 +25,9 @@
 - Settled trades: 15
 - Settled profit: -13.13
 - Settled ROI: -87.53%
-- Beat closing line: 37.50% (6/16)
-- Missed closing line: 43.75% (7/16)
-- Tied closing line: 18.75% (3/16)
+- Beat closing line: 45.45% (10/22)
+- Missed closing line: 36.36% (8/22)
+- Tied closing line: 18.18% (4/22)
 
 ## Booked Trades
 
