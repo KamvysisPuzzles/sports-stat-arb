@@ -2,41 +2,41 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 24
-- Newly booked trades: 3
-- Candidate average edge: 5.10%
-- Candidate nominal EV at 1 GBP stake: 1.22
+- Candidate price signals this scan: 20
+- Newly booked trades: 8
+- Candidate average edge: 5.33%
+- Candidate nominal EV at 1 GBP stake: 1.07
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
 
-- Total trades booked: 38
-- Trades booked last 24h: 38
-- Total paper stake deployed: 38.00
-- Total booked theoretical EV: 1.84
-- Total booked weighted edge: 4.84%
-- Open trades: 38
-- Open paper stake deployed: 38.00
-- Open booked theoretical EV: 1.84
-- Open booked weighted edge: 4.84%
+- Total trades booked: 46
+- Trades booked last 24h: 46
+- Total paper stake deployed: 46.00
+- Total booked theoretical EV: 2.21
+- Total booked weighted edge: 4.81%
+- Open trades: 46
+- Open paper stake deployed: 46.00
+- Open booked theoretical EV: 2.21
+- Open booked weighted edge: 4.81%
 
 ## Results And CLV
 
 - Settled trades: 0
 - Settled profit: 0.00
 - Settled ROI: 0.00%
-- Beat closing line: 60.00% (3/5)
+- Beat closing line: 50.00% (6/12)
 
 ## Booked Trades
 
+- Back Portland Timbers with Smarkets at 1.89 (89/100)+ | Portland Timbers v Tijuana | stake 1.00 | edge 6.90% | EV 0.07 | status open | starts 2026-08-14T02:30:00+00:00
+- Back Southern Brave with Betfair at 2.42 (71/50)+ | Sunrisers Leeds v Southern Brave | stake 1.00 | edge 2.68% | EV 0.03 | status open | starts 2026-08-14T13:15:00+00:00
+- Back Arezzo with Betfair at 8.2 (36/5)+ | Cagliari v Arezzo | stake 1.00 | edge 3.30% | EV 0.03 | status open | starts 2026-08-14T16:30:00+00:00
+- Back Clermont with Betfair at 7 (6/1)+ | Saint Etienne v Clermont | stake 1.00 | edge 8.78% | EV 0.09 | status open | starts 2026-08-14T18:45:00+00:00
+- Back Stade Lavallois with Betfair at 4.2 (16/5)+ | Stade Lavallois v Nantes | stake 1.00 | edge 3.87% | EV 0.04 | status open | starts 2026-08-14T18:45:00+00:00
+- Back Draw with Matchbook at 4.8 (19/5)+ | Sri Lanka v India | stake 1.00 | edge 4.65% | EV 0.05 | status open | starts 2026-08-15T04:30:00+00:00
+- Back TSV Havelse with Betfair at 7.6 (33/5)+ | Rot-Weiss Essen v TSV Havelse | stake 1.00 | edge 4.22% | EV 0.04 | status open | starts 2026-08-15T12:00:00+00:00
+- Back Sporting Kansas City with Betfair at 6.4 (27/5)+ | Colorado Rapids v Sporting Kansas City | stake 1.00 | edge 3.13% | EV 0.03 | status open | starts 2026-08-16T01:30:00+00:00
 - Back Brandon Nakashima with Betfair at 3.3 (23/10)+ | Ben Shelton v Brandon Nakashima | stake 1.00 | edge 4.81% | EV 0.05 | status open | starts 2026-08-14T00:00:00+00:00
 - Back Bangladesh with Betfair at 3.6 (13/5)+ | Australia v Bangladesh | stake 1.00 | edge 5.00% | EV 0.05 | status open | starts 2026-08-14T00:30:00+00:00
-- Back Cruz Azul with Smarkets at 2.78 (89/50)+ | Cruz Azul v Chicago Fire | stake 1.00 | edge 4.32% | EV 0.04 | status open | starts 2026-08-14T01:00:00+00:00
-- Back América with Smarkets at 2.26 (63/50)+ | América v Austin FC | stake 1.00 | edge 2.89% | EV 0.03 | status open | starts 2026-08-14T00:30:00+00:00
-- Back Chongqing Tonglianglong FC with Matchbook at 3.9 (29/10)+ | Qingdao West Coast FC v Chongqing Tonglianglong FC | stake 1.00 | edge 3.06% | EV 0.03 | status open | starts 2026-08-14T12:00:00+00:00
-- Back Benevento with Betfair at 13.5 (25/2)+ | Fiorentina v Benevento | stake 1.00 | edge 9.56% | EV 0.10 | status open | starts 2026-08-14T19:15:00+00:00
-- Back Draw with Matchbook at 7 (6/1)+ | Sporting Lisbon v Vitória SC | stake 1.00 | edge 4.92% | EV 0.05 | status open | starts 2026-08-14T19:15:00+00:00
-- Back Jamaica Kingsmen with Betfair at 2.5 (3/2)+ | Jamaica Kingsmen v Guyana Amazon Warriors | stake 1.00 | edge 4.82% | EV 0.05 | status open | starts 2026-08-14T00:00:00+00:00
-- Back Austin FC with Betfair at 3.85 (57/20)+ | América v Austin FC | stake 1.00 | edge 4.08% | EV 0.04 | status open | starts 2026-08-14T00:30:00+00:00
-- Back Draw with Betfair at 5.8 (24/5)+ | Parma v Catania FC | stake 1.00 | edge 2.75% | EV 0.03 | status open | starts 2026-08-14T16:00:00+00:00
-- ...and 28 more
+- ...and 36 more
