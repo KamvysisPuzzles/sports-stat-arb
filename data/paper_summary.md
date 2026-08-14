@@ -11,7 +11,7 @@
 ## Paper Portfolio
 
 - Total trades booked: 121
-- Trades booked last 24h: 121
+- Trades booked last 24h: 98
 - Total paper stake deployed: 121.00
 - Total booked theoretical EV: 5.39
 - Total booked weighted edge: 4.45%
@@ -25,9 +25,9 @@
 - Settled trades: 33
 - Settled profit: -19.04
 - Settled ROI: -57.70%
-- Beat closing line: 44.90% (22/49)
-- Missed closing line: 34.69% (17/49)
-- Tied closing line: 20.41% (10/49)
+- Beat closing line: 48.00% (24/50)
+- Missed closing line: 34.00% (17/50)
+- Tied closing line: 18.00% (9/50)
 
 ## Booked Trades
 
