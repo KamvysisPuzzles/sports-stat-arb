@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import textwrap
 from pathlib import Path
 
 from exchange_scanner.betfair_auth import certificate_login
@@ -53,8 +55,8 @@ def _session_token(app_key: str) -> tuple[str, str | None]:
     if app_key and username and password and cert_pem and key_pem:
         cert_file = Path("/tmp/betfair-client.crt")
         key_file = Path("/tmp/betfair-client.key")
-        cert_file.write_text(cert_pem, encoding="utf-8")
-        key_file.write_text(key_pem, encoding="utf-8")
+        cert_file.write_text(_normalise_pem(cert_pem), encoding="utf-8")
+        key_file.write_text(_normalise_pem(key_pem), encoding="utf-8")
         try:
             return (
                 certificate_login(
@@ -69,6 +71,24 @@ def _session_token(app_key: str) -> tuple[str, str | None]:
         except Exception as exc:
             return "", type(exc).__name__
     return os.getenv("BETFAIR_SESSION_TOKEN", ""), None
+
+
+def _normalise_pem(value: str) -> str:
+    value = value.strip().replace("\\n", "\n")
+    if "\n" in value:
+        return value + "\n"
+
+    match = re.fullmatch(
+        r"-----BEGIN ([^-]+)-----\s+(.+?)\s+-----END \1-----",
+        value,
+    )
+    if not match:
+        return value + "\n"
+
+    label = match.group(1)
+    body = re.sub(r"\s+", "", match.group(2))
+    wrapped_body = "\n".join(textwrap.wrap(body, width=64))
+    return f"-----BEGIN {label}-----\n{wrapped_body}\n-----END {label}-----\n"
 
 
 def _response(status_code: int, body: dict[str, object]) -> dict[str, object]:

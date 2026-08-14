@@ -34,3 +34,27 @@ def test_lambda_marks_betfair_not_configured_without_credentials(monkeypatch) ->
     rows = list(csv.DictReader(body["csv"].splitlines()))
     assert body["betfair_configured"] is False
     assert rows[0]["liquidity_status"] == "betfair_not_configured"
+
+
+def test_normalise_pem_preserves_multiline_value() -> None:
+    pem = "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
+
+    assert lambda_function._normalise_pem(pem) == pem
+
+
+def test_normalise_pem_converts_literal_newlines() -> None:
+    pem = "-----BEGIN CERTIFICATE-----\\nabc\\n-----END CERTIFICATE-----"
+
+    assert (
+        lambda_function._normalise_pem(pem)
+        == "-----BEGIN CERTIFICATE-----\nabc\n-----END CERTIFICATE-----\n"
+    )
+
+
+def test_normalise_pem_rebuilds_space_collapsed_value() -> None:
+    pem = "-----BEGIN RSA PRIVATE KEY----- abc def -----END RSA PRIVATE KEY-----"
+
+    assert (
+        lambda_function._normalise_pem(pem)
+        == "-----BEGIN RSA PRIVATE KEY-----\nabcdef\n-----END RSA PRIVATE KEY-----\n"
+    )
