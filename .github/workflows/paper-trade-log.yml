@@ -78,6 +78,40 @@ jobs:
             --currency GBP \
             --minimum-liquidity 2
 
+      - name: Show GitHub OIDC claims
+        if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *') && env.AWS_ROLE_ARN != '' && env.BETFAIR_LAMBDA_FUNCTION_NAME != '' }}
+        run: |
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          import urllib.parse
+          import urllib.request
+
+          request_url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
+          request_token = os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]
+          url = request_url + "&" + urllib.parse.urlencode({"audience": "sts.amazonaws.com"})
+          request = urllib.request.Request(
+              url,
+              headers={"Authorization": f"Bearer {request_token}"},
+          )
+          with urllib.request.urlopen(request, timeout=15) as response:
+              token = json.loads(response.read())["value"]
+          payload = token.split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          for key in (
+              "aud",
+              "sub",
+              "repository",
+              "repository_owner",
+              "ref",
+              "event_name",
+              "job_workflow_ref",
+          ):
+              print(f"{key}: {claims.get(key)}")
+          PY
+
       - name: Configure AWS credentials
         id: aws-credentials
         if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *') && env.AWS_ROLE_ARN != '' && env.BETFAIR_LAMBDA_FUNCTION_NAME != '' }}
