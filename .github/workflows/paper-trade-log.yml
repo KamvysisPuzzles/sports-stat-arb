@@ -79,14 +79,18 @@ jobs:
             --minimum-liquidity 2
 
       - name: Configure AWS credentials
+        id: aws-credentials
         if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *') && env.AWS_ROLE_ARN != '' && env.BETFAIR_LAMBDA_FUNCTION_NAME != '' }}
+        continue-on-error: true
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.BETFAIR_LAMBDA_REGION }}
 
       - name: Deploy Betfair enrichment Lambda
-        if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *') && env.AWS_ROLE_ARN != '' && env.BETFAIR_LAMBDA_FUNCTION_NAME != '' }}
+        id: deploy-betfair-lambda
+        if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *') && steps.aws-credentials.outcome == 'success' }}
+        continue-on-error: true
         run: |
           rm -rf /tmp/betfair_lambda_package /tmp/betfair_lambda.zip
           mkdir -p /tmp/betfair_lambda_package
@@ -109,17 +113,19 @@ jobs:
           aws lambda wait function-updated \
             --region "$BETFAIR_LAMBDA_REGION" \
             --function-name "$BETFAIR_LAMBDA_FUNCTION_NAME"
+          echo "BETFAIR_LAMBDA_READY=1" >> "$GITHUB_ENV"
 
       - name: Add Betfair liquidity
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *' }}
         run: |
-          if [ -n "$AWS_ROLE_ARN" ] && [ -n "$BETFAIR_LAMBDA_FUNCTION_NAME" ]; then
+          if [ "$BETFAIR_LAMBDA_READY" = "1" ]; then
             python scripts/invoke_betfair_lambda.py \
               --function-name "$BETFAIR_LAMBDA_FUNCTION_NAME" \
               --region "$BETFAIR_LAMBDA_REGION" \
               --input-csv data/latest_opportunities_with_matchbook_liquidity.csv \
               --output-csv data/latest_opportunities_with_liquidity.csv
           else
+            echo "Betfair Lambda is unavailable; using local fallback without Betfair credentials."
             python scripts/enrich_betfair_liquidity.py \
               --input-csv data/latest_opportunities_with_matchbook_liquidity.csv \
               --output-csv data/latest_opportunities_with_liquidity.csv
