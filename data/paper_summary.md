@@ -2,43 +2,43 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 0
-- Newly booked trades: 0
-- Candidate average edge: 0.00%
-- Candidate nominal EV at 1 GBP stake: 0.00
+- Candidate price signals this scan: 50
+- Newly booked trades: 10
+- Candidate average edge: 4.68%
+- Candidate nominal EV at 1 GBP stake: 2.34
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
 
-- Total trades booked: 99
-- Trades booked last 24h: 99
-- Total paper stake deployed: 99.00
-- Total booked theoretical EV: 4.61
-- Total booked weighted edge: 4.66%
-- Open trades: 84
-- Open paper stake deployed: 84.00
-- Open booked theoretical EV: 3.92
-- Open booked weighted edge: 4.66%
+- Total trades booked: 109
+- Trades booked last 24h: 109
+- Total paper stake deployed: 109.00
+- Total booked theoretical EV: 4.95
+- Total booked weighted edge: 4.54%
+- Open trades: 94
+- Open paper stake deployed: 94.00
+- Open booked theoretical EV: 4.26
+- Open booked weighted edge: 4.53%
 
 ## Results And CLV
 
 - Settled trades: 15
 - Settled profit: -13.13
 - Settled ROI: -87.53%
-- Beat closing line: 45.45% (10/22)
-- Missed closing line: 36.36% (8/22)
-- Tied closing line: 18.18% (4/22)
+- Beat closing line: 45.83% (11/24)
+- Missed closing line: 33.33% (8/24)
+- Tied closing line: 20.83% (5/24)
 
 ## Booked Trades
 
-- Back Yuliia Starodubtseva with Betfair at 2.86 (93/50)+ | Daria Snigur v Yuliia Starodubtseva | stake 1.00 | edge 3.71% | EV 0.04 | status open | starts 2026-08-14T15:00:00+00:00
-- Back Mary Stoiana with Betfair at 3.3 (23/10)+ | Mary Stoiana v Tereza Valentova | stake 1.00 | edge 2.74% | EV 0.03 | status open | starts 2026-08-14T18:30:00+00:00
-- Back Wimbledon with Smarkets at 5.7 (47/10)+ | Huddersfield Town v Wimbledon | stake 1.00 | edge 2.56% | EV 0.03 | status open | starts 2026-08-15T14:00:00+00:00
-- Back Carrarese with Betfair at 8.2 (36/5)+ | Torino v Carrarese | stake 1.00 | edge 6.38% | EV 0.06 | status open | starts 2026-08-15T19:15:00+00:00
-- Back Draw with Betfair at 5.2 (21/5)+ | Rio Ave FC v FC Porto | stake 1.00 | edge 4.02% | EV 0.04 | status open | starts 2026-08-15T19:30:00+00:00
-- Back FC Zwolle with Smarkets at 12.5 (23/2)+ | FC Twente Enschede v FC Zwolle | stake 1.00 | edge 9.95% | EV 0.10 | status open | starts 2026-08-16T12:30:00+00:00
-- Back Draw with Betfair at 7.4 (32/5)+ | FC Twente Enschede v FC Zwolle | stake 1.00 | edge 5.22% | EV 0.05 | status open | starts 2026-08-16T12:30:00+00:00
-- Back Willem II with Betfair at 5.4 (22/5)+ | Willem II v NEC Nijmegen | stake 1.00 | edge 2.79% | EV 0.03 | status open | starts 2026-08-15T14:30:00+00:00
-- Back Tatjana Maria with Betfair at 4.1 (31/10)+ | Diana Shnaider v Tatjana Maria | stake 1.00 | edge 5.41% | EV 0.05 | status open | starts 2026-08-15T15:00:00+00:00
-- Back Venus Williams with Betfair at 3.6 (13/5)+ | Emiliana Arango v Venus Williams | stake 1.00 | edge 4.38% | EV 0.04 | status open | starts 2026-08-14T17:00:00+00:00
-- ...and 89 more
+- Back Talia Gibson with Betfair at 2.66 (83/50)+ | Lilli Tagger v Talia Gibson | stake 1.00 | edge 2.87% | EV 0.03 | status open | starts 2026-08-14T16:10:00+00:00
+- Back Rosenborg with Smarkets at 2.52 (38/25)+ | Rosenborg v Viking FK | stake 1.00 | edge 3.60% | EV 0.04 | status open | starts 2026-08-14T17:00:00+00:00
+- Back AGF Aarhus with Betfair at 3.65 (53/20)+ | Viborg FF v AGF Aarhus | stake 1.00 | edge 2.94% | EV 0.03 | status open | starts 2026-08-14T17:00:00+00:00
+- Back Viking FK with Betfair at 3.1 (21/10)+ | Rosenborg v Viking FK | stake 1.00 | edge 2.91% | EV 0.03 | status open | starts 2026-08-14T17:00:00+00:00
+- Back Boulogne with Smarkets at 5.1 (41/10)+ | Guingamp v Boulogne | stake 1.00 | edge 3.32% | EV 0.03 | status open | starts 2026-08-14T18:45:00+00:00
+- Back Leuven with Betfair at 8 (7/1)+ | Leuven v Club Brugge | stake 1.00 | edge 3.93% | EV 0.04 | status open | starts 2026-08-15T18:45:00+00:00
+- Back Atlante FC with Matchbook at 6.6 (28/5)+ | Atlante FC v Toluca | stake 1.00 | edge 4.64% | EV 0.05 | status open | starts 2026-08-15T23:00:00+00:00
+- Back Minnesota United FC with Matchbook at 4.9 (39/10)+ | Real Salt Lake v Minnesota United FC | stake 1.00 | edge 2.87% | EV 0.03 | status open | starts 2026-08-16T01:30:00+00:00
+- Back Kocaelispor with Betfair at 7.4 (32/5)+ | Basaksehir v Kocaelispor | stake 1.00 | edge 4.57% | EV 0.05 | status open | starts 2026-08-16T16:00:00+00:00
+- Back Randers FC with Betfair at 4.8 (19/5)+ | Randers FC v FC Copenhagen | stake 1.00 | edge 2.51% | EV 0.03 | status open | starts 2026-08-16T16:00:00+00:00
+- ...and 99 more
