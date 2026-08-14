@@ -23,6 +23,11 @@ def test_keep_alive_uses_delayed_key_first(monkeypatch, capsys) -> None:
     monkeypatch.setenv("BETFAIR_APP_KEY_DELAYED", "delayed-key")
     monkeypatch.setenv("BETFAIR_APP_KEY", "bad")
     monkeypatch.setenv("BETFAIR_SESSION_TOKEN", "session-token")
+    monkeypatch.delenv("BETFAIR_USERNAME", raising=False)
+    monkeypatch.delenv("BETFAIR_PASSWORD", raising=False)
+    monkeypatch.delenv("BETFAIR_CERT_FILE", raising=False)
+    monkeypatch.delenv("BETFAIR_KEY_FILE", raising=False)
+    monkeypatch.setattr(betfair_keep_alive, "load_dotenv", lambda: None)
     monkeypatch.setattr(betfair_keep_alive.httpx, "post", fake_post)
 
     betfair_keep_alive.main()

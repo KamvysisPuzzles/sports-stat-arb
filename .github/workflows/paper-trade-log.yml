@@ -32,6 +32,12 @@ jobs:
       PAPER_ALERT_WEBHOOK_URL: ${{ secrets.PAPER_ALERT_WEBHOOK_URL }}
       BETFAIR_APP_KEY: ${{ secrets.BETFAIR_APP_KEY_DELAYED }}
       BETFAIR_SESSION_TOKEN: ${{ secrets.BETFAIR_SESSION_TOKEN }}
+      BETFAIR_USERNAME: ${{ secrets.BETFAIR_USERNAME }}
+      BETFAIR_PASSWORD: ${{ secrets.BETFAIR_PASSWORD }}
+      BETFAIR_CERT_PEM: ${{ secrets.BETFAIR_CERT_PEM }}
+      BETFAIR_KEY_PEM: ${{ secrets.BETFAIR_KEY_PEM }}
+      BETFAIR_CERT_FILE: ${{ runner.temp }}/betfair-client.crt
+      BETFAIR_KEY_FILE: ${{ runner.temp }}/betfair-client.key
       PAPER_DB: data/paper_trades.sqlite3
       SPORTS_PROFILE: matchbook-h2h-expanded
       MAX_API_REQUESTS: "80"
@@ -52,8 +58,15 @@ jobs:
       - name: Ensure data directory
         run: mkdir -p data
 
+      - name: Prepare Betfair certificate files
+        if: ${{ env.BETFAIR_CERT_PEM != '' && env.BETFAIR_KEY_PEM != '' }}
+        run: |
+          printf '%s' "$BETFAIR_CERT_PEM" > "$BETFAIR_CERT_FILE"
+          printf '%s' "$BETFAIR_KEY_PEM" > "$BETFAIR_KEY_FILE"
+          chmod 600 "$BETFAIR_CERT_FILE" "$BETFAIR_KEY_FILE"
+
       - name: Keep Betfair session alive
-        if: ${{ env.BETFAIR_APP_KEY != '' && env.BETFAIR_SESSION_TOKEN != '' }}
+        if: ${{ env.BETFAIR_APP_KEY != '' && (env.BETFAIR_SESSION_TOKEN != '' || (env.BETFAIR_USERNAME != '' && env.BETFAIR_PASSWORD != '' && env.BETFAIR_CERT_PEM != '' && env.BETFAIR_KEY_PEM != '')) }}
         continue-on-error: true
         run: python scripts/betfair_keep_alive.py
 

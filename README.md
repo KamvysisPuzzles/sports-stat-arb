@@ -247,12 +247,12 @@ The trade log only logs one trade per `event_id`, market, and outcome, so
 rerunning the scanner will not re-book the same bet. Matchbook rows include
 available liquidity at or above the target price when the public Matchbook order
 book can be matched. Betfair rows include delayed-API liquidity diagnostics when
-`BETFAIR_APP_KEY`/`BETFAIR_APP_KEY_DELAYED` and `BETFAIR_SESSION_TOKEN` are set;
-otherwise they are marked `betfair_not_configured`.
-The workflow calls Betfair `keepAlive` when those secrets are present, which can
-keep a manually supplied token usable for short-term testing. Long-term
-automation should use Betfair certificate login to create a fresh session token
-per run.
+`BETFAIR_APP_KEY`/`BETFAIR_APP_KEY_DELAYED` is set with either certificate-login
+credentials or a temporary `BETFAIR_SESSION_TOKEN`; otherwise they are marked
+`betfair_not_configured`.
+Certificate login is preferred because it creates a fresh Betfair session token
+per run. The workflow can also call Betfair `keepAlive` for short-term testing
+with a manually supplied session token.
 
 Export the paper log:
 
@@ -288,6 +288,20 @@ Before enabling it, add this repository secret in GitHub:
 THE_ODDS_API_KEY
 ```
 
+To add Betfair delayed-API liquidity diagnostics, add:
+
+```text
+BETFAIR_APP_KEY_DELAYED
+BETFAIR_USERNAME
+BETFAIR_PASSWORD
+BETFAIR_CERT_PEM
+BETFAIR_KEY_PEM
+```
+
+`BETFAIR_CERT_PEM` should be the contents of the uploaded `.crt` file.
+`BETFAIR_KEY_PEM` should be the contents of the matching private `.key` file.
+Do not commit either file.
+
 The workflow now keeps one combined trade log:
 
 - Scans `matchbook-h2h-expanded` h2h markets every hour.
@@ -298,6 +312,8 @@ The workflow now keeps one combined trade log:
   multiple exchanges.
 - Logs a nominal `1 GBP` paper stake for each selected trade.
 - Adds visible Matchbook liquidity fields when the selected target is Matchbook.
+- Adds Betfair delayed-API liquidity fields when certificate-login secrets are
+  configured.
 - Updates closing values every 2 hours.
 - Settles recent completed results every 6 hours using The Odds API scores endpoint.
 - Commits one durable SQLite database, one CSV trade log, and one summary:
