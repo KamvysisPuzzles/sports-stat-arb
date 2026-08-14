@@ -50,13 +50,17 @@ def _session_token(app_key: str) -> str:
     cert_file = os.getenv("BETFAIR_CERT_FILE", "")
     key_file = os.getenv("BETFAIR_KEY_FILE", "")
     if app_key and username and password and cert_file and key_file:
-        return certificate_login(
-            username=username,
-            password=password,
-            app_key=app_key,
-            cert_file=Path(cert_file),
-            key_file=Path(key_file),
-        )
+        try:
+            return certificate_login(
+                username=username,
+                password=password,
+                app_key=app_key,
+                cert_file=Path(cert_file),
+                key_file=Path(key_file),
+            )
+        except Exception as exc:
+            print(f"Betfair certificate login unavailable; keepAlive skipped: {exc}")
+            return ""
     return os.getenv("BETFAIR_SESSION_TOKEN", "")
 
 

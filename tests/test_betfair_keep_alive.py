@@ -35,3 +35,23 @@ def test_keep_alive_uses_delayed_key_first(monkeypatch, capsys) -> None:
     assert captured["headers"]["X-Application"] == "delayed-key"
     assert captured["headers"]["X-Authentication"] == "session-token"
     assert "succeeded" in capsys.readouterr().out
+
+
+def test_keep_alive_skips_when_certificate_login_is_blocked(monkeypatch, capsys) -> None:
+    def blocked_login(**kwargs):
+        raise RuntimeError("restricted location")
+
+    monkeypatch.setenv("BETFAIR_APP_KEY_DELAYED", "delayed-key")
+    monkeypatch.setenv("BETFAIR_USERNAME", "user")
+    monkeypatch.setenv("BETFAIR_PASSWORD", "pass")
+    monkeypatch.setenv("BETFAIR_CERT_FILE", "/tmp/client.crt")
+    monkeypatch.setenv("BETFAIR_KEY_FILE", "/tmp/client.key")
+    monkeypatch.delenv("BETFAIR_SESSION_TOKEN", raising=False)
+    monkeypatch.setattr(betfair_keep_alive, "load_dotenv", lambda: None)
+    monkeypatch.setattr(betfair_keep_alive, "certificate_login", blocked_login)
+
+    betfair_keep_alive.main()
+
+    output = capsys.readouterr().out
+    assert "keepAlive skipped" in output
+    assert "not configured" in output

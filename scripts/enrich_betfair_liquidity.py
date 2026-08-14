@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -58,13 +59,21 @@ def _session_token(app_key: str) -> str:
     cert_file = os.getenv("BETFAIR_CERT_FILE", "")
     key_file = os.getenv("BETFAIR_KEY_FILE", "")
     if app_key and username and password and cert_file and key_file:
-        return certificate_login(
-            username=username,
-            password=password,
-            app_key=app_key,
-            cert_file=Path(cert_file),
-            key_file=Path(key_file),
-        )
+        try:
+            return certificate_login(
+                username=username,
+                password=password,
+                app_key=app_key,
+                cert_file=Path(cert_file),
+                key_file=Path(key_file),
+            )
+        except Exception as exc:
+            print(
+                "Betfair certificate login unavailable; "
+                f"liquidity will be marked betfair_not_configured: {exc}",
+                file=sys.stderr,
+            )
+            return ""
     return os.getenv("BETFAIR_SESSION_TOKEN", "")
 
 

@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 concurrency:
   group: paper-trade-log
@@ -30,18 +31,13 @@ jobs:
     env:
       THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
       PAPER_ALERT_WEBHOOK_URL: ${{ secrets.PAPER_ALERT_WEBHOOK_URL }}
-      BETFAIR_APP_KEY: ${{ secrets.BETFAIR_APP_KEY_DELAYED }}
-      BETFAIR_SESSION_TOKEN: ${{ secrets.BETFAIR_SESSION_TOKEN }}
-      BETFAIR_USERNAME: ${{ secrets.BETFAIR_USERNAME }}
-      BETFAIR_PASSWORD: ${{ secrets.BETFAIR_PASSWORD }}
-      BETFAIR_CERT_PEM: ${{ secrets.BETFAIR_CERT_PEM }}
-      BETFAIR_KEY_PEM: ${{ secrets.BETFAIR_KEY_PEM }}
-      BETFAIR_CERT_FILE: /tmp/betfair-client.crt
-      BETFAIR_KEY_FILE: /tmp/betfair-client.key
       PAPER_DB: data/paper_trades.sqlite3
       SPORTS_PROFILE: matchbook-h2h-expanded
       MAX_API_REQUESTS: "80"
       MAX_EDGE: "0.10"
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      BETFAIR_LAMBDA_FUNCTION_NAME: ${{ secrets.BETFAIR_LAMBDA_FUNCTION_NAME }}
+      BETFAIR_LAMBDA_REGION: eu-west-2
 
     steps:
       - uses: actions/checkout@v4
@@ -58,18 +54,6 @@ jobs:
       - name: Ensure data directory
         run: mkdir -p data
 
-      - name: Prepare Betfair certificate files
-        if: ${{ env.BETFAIR_CERT_PEM != '' && env.BETFAIR_KEY_PEM != '' }}
-        run: |
-          printf '%s' "$BETFAIR_CERT_PEM" > "$BETFAIR_CERT_FILE"
-          printf '%s' "$BETFAIR_KEY_PEM" > "$BETFAIR_KEY_FILE"
-          chmod 600 "$BETFAIR_CERT_FILE" "$BETFAIR_KEY_FILE"
-
-      - name: Keep Betfair session alive
-        if: ${{ env.BETFAIR_APP_KEY != '' && (env.BETFAIR_SESSION_TOKEN != '' || (env.BETFAIR_USERNAME != '' && env.BETFAIR_PASSWORD != '' && env.BETFAIR_CERT_PEM != '' && env.BETFAIR_KEY_PEM != '')) }}
-        continue-on-error: true
-        run: python scripts/betfair_keep_alive.py
-
       - name: Scan exchange CLV signals
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *' }}
         run: |
@@ -85,7 +69,7 @@ jobs:
             --unique-bets \
             > data/latest_opportunities.csv
 
-      - name: Add Matchbook liquidity and log trades
+      - name: Add Matchbook liquidity
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *' }}
         run: |
           python scripts/enrich_matchbook_liquidity.py \
@@ -93,9 +77,57 @@ jobs:
             --output-csv data/latest_opportunities_with_matchbook_liquidity.csv \
             --currency GBP \
             --minimum-liquidity 2
-          python scripts/enrich_betfair_liquidity.py \
-            --input-csv data/latest_opportunities_with_matchbook_liquidity.csv \
-            --output-csv data/latest_opportunities_with_liquidity.csv
+
+      - name: Configure AWS credentials
+        if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *') && env.AWS_ROLE_ARN != '' && env.BETFAIR_LAMBDA_FUNCTION_NAME != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.BETFAIR_LAMBDA_REGION }}
+
+      - name: Deploy Betfair enrichment Lambda
+        if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *') && env.AWS_ROLE_ARN != '' && env.BETFAIR_LAMBDA_FUNCTION_NAME != '' }}
+        run: |
+          rm -rf /tmp/betfair_lambda_package /tmp/betfair_lambda.zip
+          mkdir -p /tmp/betfair_lambda_package
+          python -m pip install --target /tmp/betfair_lambda_package httpx
+          cp -R exchange_scanner /tmp/betfair_lambda_package/
+          cp lambda_functions/betfair_enrichment/lambda_function.py /tmp/betfair_lambda_package/lambda_function.py
+          (cd /tmp/betfair_lambda_package && zip -r /tmp/betfair_lambda.zip .)
+          aws lambda update-function-code \
+            --region "$BETFAIR_LAMBDA_REGION" \
+            --function-name "$BETFAIR_LAMBDA_FUNCTION_NAME" \
+            --zip-file fileb:///tmp/betfair_lambda.zip
+          aws lambda wait function-updated \
+            --region "$BETFAIR_LAMBDA_REGION" \
+            --function-name "$BETFAIR_LAMBDA_FUNCTION_NAME"
+          aws lambda update-function-configuration \
+            --region "$BETFAIR_LAMBDA_REGION" \
+            --function-name "$BETFAIR_LAMBDA_FUNCTION_NAME" \
+            --handler lambda_function.lambda_handler \
+            --timeout 120
+          aws lambda wait function-updated \
+            --region "$BETFAIR_LAMBDA_REGION" \
+            --function-name "$BETFAIR_LAMBDA_FUNCTION_NAME"
+
+      - name: Add Betfair liquidity
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *' }}
+        run: |
+          if [ -n "$AWS_ROLE_ARN" ] && [ -n "$BETFAIR_LAMBDA_FUNCTION_NAME" ]; then
+            python scripts/invoke_betfair_lambda.py \
+              --function-name "$BETFAIR_LAMBDA_FUNCTION_NAME" \
+              --region "$BETFAIR_LAMBDA_REGION" \
+              --input-csv data/latest_opportunities_with_matchbook_liquidity.csv \
+              --output-csv data/latest_opportunities_with_liquidity.csv
+          else
+            python scripts/enrich_betfair_liquidity.py \
+              --input-csv data/latest_opportunities_with_matchbook_liquidity.csv \
+              --output-csv data/latest_opportunities_with_liquidity.csv
+          fi
+
+      - name: Log trades
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *' }}
+        run: |
           python scripts/log_exchange_paper_trades.py \
             --paper-db "$PAPER_DB" \
             --opportunities-csv data/latest_opportunities_with_liquidity.csv \
