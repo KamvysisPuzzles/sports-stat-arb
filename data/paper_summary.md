@@ -15,16 +15,16 @@
 - Total paper stake deployed: 53.00
 - Total booked theoretical EV: 2.54
 - Total booked weighted edge: 4.80%
-- Open trades: 42
-- Open paper stake deployed: 42.00
-- Open booked theoretical EV: 2.04
-- Open booked weighted edge: 4.87%
+- Open trades: 41
+- Open paper stake deployed: 41.00
+- Open booked theoretical EV: 1.97
+- Open booked weighted edge: 4.82%
 
 ## Results And CLV
 
-- Settled trades: 11
-- Settled profit: -11.00
-- Settled ROI: -100.00%
+- Settled trades: 12
+- Settled profit: -10.13
+- Settled ROI: -84.42%
 - Beat closing line: 50.00% (6/12)
 
 ## Booked Trades
@@ -36,7 +36,7 @@
 - Back Aleksandar Kovacevic with Betfair at 3.2 (11/5)+ | Aleksandar Kovacevic v Karen Khachanov | stake 1.00 | edge 3.50% | EV 0.04 | status open | starts 2026-08-15T00:30:00+00:00
 - Back Qingdao Hainiu FC with Betfair at 7.6 (33/5)+ | Shandong Luneng Taishan FC v Qingdao Hainiu FC | stake 1.00 | edge 5.55% | EV 0.06 | status open | starts 2026-08-14T11:35:00+00:00
 - Back Modena with Betfair at 6.8 (29/5)+ | Venezia v Modena | stake 1.00 | edge 5.17% | EV 0.05 | status open | starts 2026-08-15T18:45:00+00:00
-- Back Portland Timbers with Smarkets at 1.89 (89/100)+ | Portland Timbers v Tijuana | stake 1.00 | edge 6.90% | EV 0.07 | status open | starts 2026-08-14T02:30:00+00:00
+- Back Portland Timbers with Smarkets at 1.89 (89/100)+ | Portland Timbers v Tijuana | stake 1.00 | edge 6.90% | EV 0.07 | status settled | starts 2026-08-14T02:30:00+00:00
 - Back Southern Brave with Betfair at 2.42 (71/50)+ | Sunrisers Leeds v Southern Brave | stake 1.00 | edge 2.68% | EV 0.03 | status open | starts 2026-08-14T13:15:00+00:00
 - Back Arezzo with Betfair at 8.2 (36/5)+ | Cagliari v Arezzo | stake 1.00 | edge 3.30% | EV 0.03 | status open | starts 2026-08-14T16:30:00+00:00
 - ...and 43 more
