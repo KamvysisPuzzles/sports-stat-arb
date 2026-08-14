@@ -84,11 +84,10 @@ def build_markdown(
     settled = [row for row in trades if row.get("status") == "settled"]
     trades_last_24h = [row for row in trades if _logged_within(row, now, timedelta(hours=24))]
     clv_rows = [row for row in trades if row.get("target_clv") and _trade_has_closed(row, now)]
-    beat_close = [row for row in clv_rows if row.get("beat_closing_line") == "True"]
+    clv_counts = _clv_counts(clv_rows)
     profit = sum(float(row.get("profit") or 0) for row in settled)
     staked = sum(float(row.get("stake") or 0) for row in settled)
     roi = profit / staked if staked else 0.0
-    beat_close_rate = len(beat_close) / len(clv_rows) if clv_rows else None
     booked_stake = sum(_float(row.get("stake")) for row in trades)
     open_stake = sum(_float(row.get("stake")) for row in open_trades)
     booked_ev = sum(_float(row.get("stake")) * _float(row.get("edge")) for row in trades)
@@ -135,7 +134,7 @@ def build_markdown(
             f"- Settled trades: {len(settled)}",
             f"- Settled profit: {profit:.2f}",
             f"- Settled ROI: {roi:.2%}",
-            _format_clv_line(beat_close_rate, len(beat_close), len(clv_rows)),
+            *_format_clv_lines(clv_counts),
             "",
         ]
     )
@@ -254,6 +253,34 @@ def _scan_summary_lines(
         f"- Executable unbooked liquidity found: {visible_liquidity:.2f}",
         f"- Liquidity-weighted unbooked scan edge: {liquidity_weighted_edge:.2%}",
         f"- Unbooked scan theoretical EV: {executable_ev:.2f}",
+    ]
+
+
+def _clv_counts(rows: list[dict[str, str]]) -> dict[str, int]:
+    counts = {"beat": 0, "tie": 0, "miss": 0, "total": 0}
+    for row in rows:
+        target_clv = _float(row.get("target_clv"))
+        counts["total"] += 1
+        if target_clv > 0:
+            counts["beat"] += 1
+        elif target_clv < 0:
+            counts["miss"] += 1
+        else:
+            counts["tie"] += 1
+    return counts
+
+
+def _format_clv_lines(counts: dict[str, int]) -> list[str]:
+    total = counts["total"]
+    if total == 0:
+        return ["- Beat closing line: pending (0 closed trades with CLV)"]
+    beat_rate = counts["beat"] / total
+    miss_rate = counts["miss"] / total
+    tie_rate = counts["tie"] / total
+    return [
+        f"- Beat closing line: {beat_rate:.2%} ({counts['beat']}/{total})",
+        f"- Missed closing line: {miss_rate:.2%} ({counts['miss']}/{total})",
+        f"- Tied closing line: {tie_rate:.2%} ({counts['tie']}/{total})",
     ]
 
 

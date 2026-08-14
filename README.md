@@ -76,6 +76,9 @@ The live workflow intentionally does not store raw odds snapshots. It only keeps
 the paper trade ledgers, exported trade CSVs, and summary markdown so the repo
 stays comfortably below GitHub's normal file-size limits.
 
+For the future full-universe odds history and bookmaker sharpness store, see
+[Historical Odds Storage Plan](docs/historical-odds-storage-plan.md).
+
 The default scan uses:
 
 ```text
