@@ -30,6 +30,8 @@ jobs:
     env:
       THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
       PAPER_ALERT_WEBHOOK_URL: ${{ secrets.PAPER_ALERT_WEBHOOK_URL }}
+      BETFAIR_APP_KEY: ${{ secrets.BETFAIR_APP_KEY_DELAYED }}
+      BETFAIR_SESSION_TOKEN: ${{ secrets.BETFAIR_SESSION_TOKEN }}
       PAPER_DB: data/paper_trades.sqlite3
       SPORTS_PROFILE: matchbook-h2h-expanded
       MAX_API_REQUESTS: "80"
@@ -49,6 +51,11 @@ jobs:
 
       - name: Ensure data directory
         run: mkdir -p data
+
+      - name: Keep Betfair session alive
+        if: ${{ env.BETFAIR_APP_KEY != '' && env.BETFAIR_SESSION_TOKEN != '' }}
+        continue-on-error: true
+        run: python scripts/betfair_keep_alive.py
 
       - name: Scan exchange CLV signals
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *' }}
@@ -70,9 +77,12 @@ jobs:
         run: |
           python scripts/enrich_matchbook_liquidity.py \
             --input-csv data/latest_opportunities.csv \
-            --output-csv data/latest_opportunities_with_liquidity.csv \
+            --output-csv data/latest_opportunities_with_matchbook_liquidity.csv \
             --currency GBP \
             --minimum-liquidity 2
+          python scripts/enrich_betfair_liquidity.py \
+            --input-csv data/latest_opportunities_with_matchbook_liquidity.csv \
+            --output-csv data/latest_opportunities_with_liquidity.csv
           python scripts/log_exchange_paper_trades.py \
             --paper-db "$PAPER_DB" \
             --opportunities-csv data/latest_opportunities_with_liquidity.csv \

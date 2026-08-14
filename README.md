@@ -22,7 +22,9 @@ edge = matchbook_effective_odds * reference_probability - 1
 
 The CSV tells you what to back in `bet_to_place`, including decimal, UK
 fractional, and American odds. Matchbook liquidity enrichment adds visible
-order-book size at or above the target price.
+order-book size at or above the target price. Betfair delayed-API enrichment can
+also add Betfair best back/lay, spread, and available size diagnostics when a
+Betfair app key and session token are configured.
 
 ## Included Books
 
@@ -229,6 +231,10 @@ scan-exchanges \
 
 python scripts/enrich_matchbook_liquidity.py \
   --input-csv data/latest_opportunities.csv \
+  --output-csv data/latest_opportunities_with_matchbook_liquidity.csv
+
+python scripts/enrich_betfair_liquidity.py \
+  --input-csv data/latest_opportunities_with_matchbook_liquidity.csv \
   --output-csv data/latest_opportunities_with_liquidity.csv
 
 python scripts/log_exchange_paper_trades.py \
@@ -238,10 +244,15 @@ python scripts/log_exchange_paper_trades.py \
 ```
 
 The trade log only logs one trade per `event_id`, market, and outcome, so
-rerunning the scanner will not re-book the same bet. Smarkets and Betfair rows
-have blank liquidity fields because The Odds API does not provide their order
-book depth. Matchbook rows include available liquidity at or above the target
-price when the public Matchbook order book can be matched.
+rerunning the scanner will not re-book the same bet. Matchbook rows include
+available liquidity at or above the target price when the public Matchbook order
+book can be matched. Betfair rows include delayed-API liquidity diagnostics when
+`BETFAIR_APP_KEY`/`BETFAIR_APP_KEY_DELAYED` and `BETFAIR_SESSION_TOKEN` are set;
+otherwise they are marked `betfair_not_configured`.
+The workflow calls Betfair `keepAlive` when those secrets are present, which can
+keep a manually supplied token usable for short-term testing. Long-term
+automation should use Betfair certificate login to create a fresh session token
+per run.
 
 Export the paper log:
 
