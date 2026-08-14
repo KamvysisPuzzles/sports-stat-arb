@@ -2,10 +2,10 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 30
-- Newly booked trades: 5
-- Candidate average edge: 4.67%
-- Candidate nominal EV at 1 GBP stake: 1.40
+- Candidate price signals this scan: 27
+- Newly booked trades: 0
+- Candidate average edge: 4.72%
+- Candidate nominal EV at 1 GBP stake: 1.28
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
