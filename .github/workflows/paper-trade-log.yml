@@ -36,8 +36,8 @@ jobs:
       BETFAIR_PASSWORD: ${{ secrets.BETFAIR_PASSWORD }}
       BETFAIR_CERT_PEM: ${{ secrets.BETFAIR_CERT_PEM }}
       BETFAIR_KEY_PEM: ${{ secrets.BETFAIR_KEY_PEM }}
-      BETFAIR_CERT_FILE: ${{ runner.temp }}/betfair-client.crt
-      BETFAIR_KEY_FILE: ${{ runner.temp }}/betfair-client.key
+      BETFAIR_CERT_FILE: /tmp/betfair-client.crt
+      BETFAIR_KEY_FILE: /tmp/betfair-client.key
       PAPER_DB: data/paper_trades.sqlite3
       SPORTS_PROFILE: matchbook-h2h-expanded
       MAX_API_REQUESTS: "80"
