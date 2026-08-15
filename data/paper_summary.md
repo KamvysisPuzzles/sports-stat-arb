@@ -15,16 +15,16 @@
 - Total paper stake deployed: 139.00
 - Total booked theoretical EV: 6.04
 - Total booked weighted edge: 4.35%
-- Open trades: 106
-- Open paper stake deployed: 106.00
-- Open booked theoretical EV: 4.71
-- Open booked weighted edge: 4.45%
+- Open trades: 81
+- Open paper stake deployed: 81.00
+- Open booked theoretical EV: 3.53
+- Open booked weighted edge: 4.36%
 
 ## Results And CLV
 
-- Settled trades: 33
-- Settled profit: -19.04
-- Settled ROI: -57.70%
+- Settled trades: 58
+- Settled profit: -21.44
+- Settled ROI: -36.97%
 - Beat closing line: 47.46% (28/59)
 - Missed closing line: 37.29% (22/59)
 - Tied closing line: 15.25% (9/59)
