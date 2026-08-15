@@ -2,43 +2,43 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 39
-- Newly booked trades: 2
-- Candidate average edge: 5.23%
-- Candidate nominal EV at 1 GBP stake: 2.04
+- Candidate price signals this scan: 35
+- Newly booked trades: 5
+- Candidate average edge: 4.93%
+- Candidate nominal EV at 1 GBP stake: 1.73
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
 
-- Total trades booked: 191
-- Trades booked last 24h: 76
-- Total paper stake deployed: 191.00
-- Total booked theoretical EV: 8.25
-- Total booked weighted edge: 4.32%
-- Open trades: 125
-- Open paper stake deployed: 125.00
-- Open booked theoretical EV: 5.51
-- Open booked weighted edge: 4.41%
+- Total trades booked: 196
+- Trades booked last 24h: 81
+- Total paper stake deployed: 196.00
+- Total booked theoretical EV: 8.40
+- Total booked weighted edge: 4.29%
+- Open trades: 130
+- Open paper stake deployed: 130.00
+- Open booked theoretical EV: 5.66
+- Open booked weighted edge: 4.35%
 
 ## Results And CLV
 
 - Settled trades: 66
 - Settled profit: -19.03
 - Settled ROI: -28.83%
-- Beat closing line: 47.57% (49/103)
-- Missed closing line: 36.89% (38/103)
-- Tied closing line: 15.53% (16/103)
+- Beat closing line: 46.36% (51/110)
+- Missed closing line: 38.18% (42/110)
+- Tied closing line: 15.45% (17/110)
 
 ## Booked Trades
 
+- Back Draw with Betfair at 5.5 (9/2)+ | Torino v Carrarese | stake 1.00 | edge 2.65% | EV 0.03 | status open | starts 2026-08-15T19:15:00+00:00
+- Back Bucheon FC 1995 with Betfair at 4.6 (18/5)+ | Bucheon FC 1995 v Jeonbuk Hyundai Motors | stake 1.00 | edge 2.64% | EV 0.03 | status open | starts 2026-08-16T10:30:00+00:00
+- Back Chapecoense with Matchbook at 3.95 (59/20)+ | Chapecoense v Bahia | stake 1.00 | edge 3.58% | EV 0.04 | status open | starts 2026-08-16T14:00:00+00:00
+- Back Moreirense FC with Betfair at 4 (3/1)+ | Arouca v Moreirense FC | stake 1.00 | edge 3.46% | EV 0.03 | status open | starts 2026-08-16T17:00:00+00:00
+- Back Eyüpspor with Betfair at 9 (8/1)+ | Besiktas JK v Eyüpspor | stake 1.00 | edge 2.53% | EV 0.03 | status open | starts 2026-08-16T18:30:00+00:00
 - Back Jamaica Kingsmen with Betfair at 3.1 (21/10)+ | Jamaica Kingsmen v Trinbago Knight Riders | stake 1.00 | edge 5.60% | EV 0.06 | status open | starts 2026-08-16T00:00:00+00:00
 - Back Draw with Smarkets at 4.4 (17/5)+ | Sarpsborg FK v Sandefjord | stake 1.00 | edge 3.87% | EV 0.04 | status open | starts 2026-08-16T15:00:00+00:00
 - Back Marco Trungelliti with Betfair at 6.6 (28/5)+ | Marco Trungelliti v Daniil Medvedev | stake 1.00 | edge 8.78% | EV 0.09 | status open | starts 2026-08-16T15:00:00+00:00
 - Back Draw with Betfair at 5.4 (22/5)+ | Chicago Fire v Portland Timbers | stake 1.00 | edge 2.69% | EV 0.03 | status open | starts 2026-08-16T22:00:00+00:00
 - Back Südtirol with Betfair at 3.8 (14/5)+ | US Catanzaro 1929 v Südtirol | stake 1.00 | edge 6.05% | EV 0.06 | status open | starts 2026-08-15T16:00:00+00:00
-- Back Jaime Faria with Betfair at 5.9 (49/10)+ | Ben Shelton v Jaime Faria | stake 1.00 | edge 6.50% | EV 0.07 | status open | starts 2026-08-16T15:00:00+00:00
-- Back Los Angeles Sparks with Betfair at 3.35 (47/20)+ | Washington Mystics v Los Angeles Sparks | stake 1.00 | edge 2.96% | EV 0.03 | status open | starts 2026-08-15T23:30:00+00:00
-- Back Australia with Betfair at 3.85 (57/20)+ | Australia v Bangladesh | stake 1.00 | edge 3.06% | EV 0.03 | status open | starts 2026-08-16T00:30:00+00:00
-- Back Daniel Altmaier with Betfair at 4.5 (7/2)+ | Daniel Altmaier v Lorenzo Musetti | stake 1.00 | edge 4.57% | EV 0.05 | status open | starts 2026-08-16T15:00:00+00:00
-- Back Quentin Halys with Betfair at 3.4 (12/5)+ | Quentin Halys v Alex de Minaur | stake 1.00 | edge 3.19% | EV 0.03 | status open | starts 2026-08-15T17:20:00+00:00
-- ...and 181 more
+- ...and 186 more
