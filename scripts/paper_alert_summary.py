@@ -278,17 +278,29 @@ def _scan_summary_lines(
 
 
 def _clv_counts(rows: list[dict[str, str]]) -> dict[str, float]:
-    counts = {"beat": 0, "tie": 0, "miss": 0, "total": 0, "total_clv": 0.0}
+    counts = {
+        "beat": 0,
+        "tie": 0,
+        "miss": 0,
+        "total": 0,
+        "total_clv": 0.0,
+        "beat_clv": 0.0,
+        "miss_clv": 0.0,
+        "tie_clv": 0.0,
+    }
     for row in rows:
         target_clv = _float(row.get("target_clv"))
         counts["total"] += 1
         counts["total_clv"] += target_clv
         if target_clv > 0:
             counts["beat"] += 1
+            counts["beat_clv"] += target_clv
         elif target_clv < 0:
             counts["miss"] += 1
+            counts["miss_clv"] += target_clv
         else:
             counts["tie"] += 1
+            counts["tie_clv"] += target_clv
     return counts
 
 
@@ -300,11 +312,20 @@ def _format_clv_lines(counts: dict[str, float]) -> list[str]:
     miss_rate = counts["miss"] / total
     tie_rate = counts["tie"] / total
     average_clv = counts["total_clv"] / total
+    average_beat_clv = counts["beat_clv"] / counts["beat"] if counts["beat"] else 0.0
+    average_miss_clv = counts["miss_clv"] / counts["miss"] if counts["miss"] else 0.0
+    average_tie_clv = counts["tie_clv"] / counts["tie"] if counts["tie"] else 0.0
     return [
         f"- Beat closing line: {beat_rate:.2%} ({int(counts['beat'])}/{total})",
         f"- Missed closing line: {miss_rate:.2%} ({int(counts['miss'])}/{total})",
         f"- Tied closing line: {tie_rate:.2%} ({int(counts['tie'])}/{total})",
         f"- Average CLV per closed trade: {average_clv:.2%}",
+        (
+            "- CLV breakdown: "
+            f"beat avg {average_beat_clv:.2%}, "
+            f"miss avg {average_miss_clv:.2%}, "
+            f"tie avg {average_tie_clv:.2%}"
+        ),
     ]
 
 

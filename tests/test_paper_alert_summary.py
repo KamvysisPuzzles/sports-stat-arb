@@ -168,3 +168,4 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
     assert "Missed closing line: 33.33% (1/3)" in markdown
     assert "Tied closing line: 33.33% (1/3)" in markdown
     assert "Average CLV per closed trade: 1.00%" in markdown
+    assert "CLV breakdown: beat avg 5.00%, miss avg -2.00%, tie avg 0.00%" in markdown
