@@ -2,10 +2,10 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 26
-- Newly booked trades: 1
-- Candidate average edge: 4.31%
-- Candidate nominal EV at 1 GBP stake: 1.12
+- Candidate price signals this scan: 0
+- Newly booked trades: 0
+- Candidate average edge: 0.00%
+- Candidate nominal EV at 1 GBP stake: 0.00
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
@@ -30,11 +30,11 @@
 - Settled average booked odds: 4.65
 - Settled profit: 6.06
 - Settled ROI: 20.90%
-- Beat closing line: 47.17% (25/53)
-- Missed closing line: 39.62% (21/53)
-- Tied closing line: 13.21% (7/53)
-- Average CLV per closed trade: 1.30%
-- CLV breakdown: beat avg 8.53%, miss avg -6.87%, tie avg 0.00%
+- Beat closing line: 47.27% (26/55)
+- Missed closing line: 36.36% (20/55)
+- Tied closing line: 16.36% (9/55)
+- Average CLV per closed trade: 1.38%
+- CLV breakdown: beat avg 8.60%, miss avg -7.40%, tie avg 0.00%
 
 ## Booked Trades
 
