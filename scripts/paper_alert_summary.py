@@ -88,6 +88,8 @@ def build_markdown(
     profit = sum(float(row.get("profit") or 0) for row in settled)
     staked = sum(float(row.get("stake") or 0) for row in settled)
     roi = profit / staked if staked else 0.0
+    won_bets = sum(1 for row in settled if _float(row.get("profit")) > 0)
+    lost_bets = len(settled) - won_bets
     booked_stake = sum(_float(row.get("stake")) for row in trades)
     open_stake = sum(_float(row.get("stake")) for row in open_trades)
     booked_ev = sum(_float(row.get("stake")) * _float(row.get("edge")) for row in trades)
@@ -132,6 +134,7 @@ def build_markdown(
             "## Results And CLV",
             "",
             f"- Settled trades: {len(settled)}",
+            f"- Settled won/lost bets: {won_bets}/{lost_bets}",
             f"- Settled profit: {profit:.2f}",
             f"- Settled ROI: {roi:.2%}",
             *_format_clv_lines(clv_counts),
@@ -256,11 +259,12 @@ def _scan_summary_lines(
     ]
 
 
-def _clv_counts(rows: list[dict[str, str]]) -> dict[str, int]:
-    counts = {"beat": 0, "tie": 0, "miss": 0, "total": 0}
+def _clv_counts(rows: list[dict[str, str]]) -> dict[str, float]:
+    counts = {"beat": 0, "tie": 0, "miss": 0, "total": 0, "total_clv": 0.0}
     for row in rows:
         target_clv = _float(row.get("target_clv"))
         counts["total"] += 1
+        counts["total_clv"] += target_clv
         if target_clv > 0:
             counts["beat"] += 1
         elif target_clv < 0:
@@ -270,17 +274,19 @@ def _clv_counts(rows: list[dict[str, str]]) -> dict[str, int]:
     return counts
 
 
-def _format_clv_lines(counts: dict[str, int]) -> list[str]:
-    total = counts["total"]
+def _format_clv_lines(counts: dict[str, float]) -> list[str]:
+    total = int(counts["total"])
     if total == 0:
         return ["- Beat closing line: pending (0 closed trades with CLV)"]
     beat_rate = counts["beat"] / total
     miss_rate = counts["miss"] / total
     tie_rate = counts["tie"] / total
+    average_clv = counts["total_clv"] / total
     return [
-        f"- Beat closing line: {beat_rate:.2%} ({counts['beat']}/{total})",
-        f"- Missed closing line: {miss_rate:.2%} ({counts['miss']}/{total})",
-        f"- Tied closing line: {tie_rate:.2%} ({counts['tie']}/{total})",
+        f"- Beat closing line: {beat_rate:.2%} ({int(counts['beat'])}/{total})",
+        f"- Missed closing line: {miss_rate:.2%} ({int(counts['miss'])}/{total})",
+        f"- Tied closing line: {tie_rate:.2%} ({int(counts['tie'])}/{total})",
+        f"- Average CLV per closed trade: {average_clv:.2%}",
     ]
 
 

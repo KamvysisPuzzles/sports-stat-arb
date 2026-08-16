@@ -104,6 +104,7 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
             "logged_at": "2026-08-13T12:00:00+00:00",
             "commence_time": "2026-08-14T12:00:00+00:00",
             "target_clv": "0.0500",
+            "profit": "2.0",
         },
         {
             "event_id": "event-2",
@@ -116,6 +117,7 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
             "logged_at": "2026-08-13T12:00:00+00:00",
             "commence_time": "2026-08-14T12:00:00+00:00",
             "target_clv": "-0.0200",
+            "profit": "-1.0",
         },
         {
             "event_id": "event-3",
@@ -128,11 +130,14 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
             "logged_at": "2026-08-13T12:00:00+00:00",
             "commence_time": "2026-08-14T12:00:00+00:00",
             "target_clv": "0.0000",
+            "profit": "-1.0",
         },
     ]
 
     markdown = build_markdown(trades, [])
 
+    assert "Settled won/lost bets: 1/2" in markdown
     assert "Beat closing line: 33.33% (1/3)" in markdown
     assert "Missed closing line: 33.33% (1/3)" in markdown
     assert "Tied closing line: 33.33% (1/3)" in markdown
+    assert "Average CLV per closed trade: 1.00%" in markdown
