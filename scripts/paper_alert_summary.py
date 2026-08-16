@@ -101,6 +101,8 @@ def build_markdown(
         _float(row.get("stake")) * _float(row.get("edge")) for row in portfolio_trades
     )
     open_ev = sum(_float(row.get("stake")) * _float(row.get("edge")) for row in open_trades)
+    booked_average_odds = _average(row.get("target_odds") for row in portfolio_trades)
+    settled_average_odds = _average(row.get("target_odds") for row in settled)
     booked_weighted_edge = booked_ev / booked_stake if booked_stake else 0.0
     open_weighted_edge = open_ev / open_stake if open_stake else 0.0
     unbooked_opportunities = _exclude_booked_opportunities(
@@ -129,9 +131,9 @@ def build_markdown(
             "## Paper Portfolio",
             "",
             "- Scope: liquidity-confirmed trades only",
-            f"- Raw trades logged: {len(trades)}",
             f"- Total trades booked: {len(portfolio_trades)}",
             f"- Trades booked last 24h: {len(trades_last_24h)}",
+            f"- Average booked odds: {booked_average_odds:.2f}",
             f"- Total paper stake deployed: {booked_stake:.2f}",
             f"- Total booked theoretical EV: {booked_ev:.2f}",
             f"- Total booked weighted edge: {booked_weighted_edge:.2%}",
@@ -145,6 +147,7 @@ def build_markdown(
             "- Scope: liquidity-confirmed trades only",
             f"- Settled trades: {len(settled)}",
             f"- Settled won/lost bets: {won_bets}/{lost_bets}",
+            f"- Settled average booked odds: {settled_average_odds:.2f}",
             f"- Settled profit: {profit:.2f}",
             f"- Settled ROI: {roi:.2%}",
             *_format_clv_lines(clv_counts),
@@ -217,6 +220,11 @@ def _float(value: str | None) -> float:
         return float(value or 0)
     except ValueError:
         return 0.0
+
+
+def _average(values: object) -> float:
+    floats = [_float(value) for value in values]
+    return sum(floats) / len(floats) if floats else 0.0
 
 
 def _fallback_bet(row: dict[str, str]) -> str:

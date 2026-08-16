@@ -100,6 +100,7 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
             "outcome_name": "Team A",
             "stake": "1",
             "edge": "0.03",
+            "target_odds": "3.0",
             "status": "settled",
             "logged_at": "2026-08-13T12:00:00+00:00",
             "commence_time": "2026-08-14T12:00:00+00:00",
@@ -114,6 +115,7 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
             "outcome_name": "Team C",
             "stake": "1",
             "edge": "0.03",
+            "target_odds": "4.0",
             "status": "settled",
             "logged_at": "2026-08-13T12:00:00+00:00",
             "commence_time": "2026-08-14T12:00:00+00:00",
@@ -128,6 +130,7 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
             "outcome_name": "Team E",
             "stake": "1",
             "edge": "0.03",
+            "target_odds": "5.0",
             "status": "settled",
             "logged_at": "2026-08-13T12:00:00+00:00",
             "commence_time": "2026-08-14T12:00:00+00:00",
@@ -142,6 +145,7 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
             "outcome_name": "Team G",
             "stake": "1",
             "edge": "0.03",
+            "target_odds": "10.0",
             "status": "settled",
             "logged_at": "2026-08-13T12:00:00+00:00",
             "commence_time": "2026-08-14T12:00:00+00:00",
@@ -154,10 +158,12 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
     markdown = build_markdown(trades, [])
 
     assert "Scope: liquidity-confirmed trades only" in markdown
-    assert "Raw trades logged: 4" in markdown
+    assert "Raw trades logged" not in markdown
     assert "Total trades booked: 3" in markdown
+    assert "Average booked odds: 4.00" in markdown
     assert "Settled trades: 3" in markdown
     assert "Settled won/lost bets: 1/2" in markdown
+    assert "Settled average booked odds: 4.00" in markdown
     assert "Beat closing line: 33.33% (1/3)" in markdown
     assert "Missed closing line: 33.33% (1/3)" in markdown
     assert "Tied closing line: 33.33% (1/3)" in markdown
