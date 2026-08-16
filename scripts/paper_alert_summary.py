@@ -80,19 +80,26 @@ def build_markdown(
     scan_kind: str = "liquidity",
 ) -> str:
     now = datetime.now(timezone.utc)
-    open_trades = [row for row in trades if row.get("status") == "open"]
-    settled = [row for row in trades if row.get("status") == "settled"]
-    trades_last_24h = [row for row in trades if _logged_within(row, now, timedelta(hours=24))]
-    clv_rows = [row for row in trades if row.get("target_clv") and _trade_has_closed(row, now)]
+    portfolio_trades = [row for row in trades if row.get("liquidity_status") == "available"]
+    open_trades = [row for row in portfolio_trades if row.get("status") == "open"]
+    settled = [row for row in portfolio_trades if row.get("status") == "settled"]
+    trades_last_24h = [
+        row for row in portfolio_trades if _logged_within(row, now, timedelta(hours=24))
+    ]
+    clv_rows = [
+        row for row in portfolio_trades if row.get("target_clv") and _trade_has_closed(row, now)
+    ]
     clv_counts = _clv_counts(clv_rows)
     profit = sum(float(row.get("profit") or 0) for row in settled)
     staked = sum(float(row.get("stake") or 0) for row in settled)
     roi = profit / staked if staked else 0.0
     won_bets = sum(1 for row in settled if _float(row.get("profit")) > 0)
     lost_bets = len(settled) - won_bets
-    booked_stake = sum(_float(row.get("stake")) for row in trades)
+    booked_stake = sum(_float(row.get("stake")) for row in portfolio_trades)
     open_stake = sum(_float(row.get("stake")) for row in open_trades)
-    booked_ev = sum(_float(row.get("stake")) * _float(row.get("edge")) for row in trades)
+    booked_ev = sum(
+        _float(row.get("stake")) * _float(row.get("edge")) for row in portfolio_trades
+    )
     open_ev = sum(_float(row.get("stake")) * _float(row.get("edge")) for row in open_trades)
     booked_weighted_edge = booked_ev / booked_stake if booked_stake else 0.0
     open_weighted_edge = open_ev / open_stake if open_stake else 0.0
@@ -121,7 +128,9 @@ def build_markdown(
             "",
             "## Paper Portfolio",
             "",
-            f"- Total trades booked: {len(trades)}",
+            "- Scope: liquidity-confirmed trades only",
+            f"- Raw trades logged: {len(trades)}",
+            f"- Total trades booked: {len(portfolio_trades)}",
             f"- Trades booked last 24h: {len(trades_last_24h)}",
             f"- Total paper stake deployed: {booked_stake:.2f}",
             f"- Total booked theoretical EV: {booked_ev:.2f}",
@@ -133,6 +142,7 @@ def build_markdown(
             "",
             "## Results And CLV",
             "",
+            "- Scope: liquidity-confirmed trades only",
             f"- Settled trades: {len(settled)}",
             f"- Settled won/lost bets: {won_bets}/{lost_bets}",
             f"- Settled profit: {profit:.2f}",
