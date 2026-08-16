@@ -2,17 +2,17 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 14
-- Newly booked trades: 2
-- Candidate average edge: 5.44%
-- Candidate nominal EV at 1 GBP stake: 0.76
+- Candidate price signals this scan: 0
+- Newly booked trades: 0
+- Candidate average edge: 0.00%
+- Candidate nominal EV at 1 GBP stake: 0.00
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
 
 - Scope: liquidity-confirmed trades only
 - Total trades booked: 93
-- Trades booked last 24h: 36
+- Trades booked last 24h: 35
 - Average booked odds: 5.19
 - Total paper stake deployed: 93.00
 - Total booked theoretical EV: 3.62
@@ -33,8 +33,8 @@
 - Beat closing line: 47.69% (31/65)
 - Missed closing line: 38.46% (25/65)
 - Tied closing line: 13.85% (9/65)
-- Average CLV per closed trade: 1.32%
-- CLV breakdown: beat avg 8.86%, miss avg -7.55%, tie avg 0.00%
+- Average CLV per closed trade: 1.30%
+- CLV breakdown: beat avg 8.86%, miss avg -7.60%, tie avg 0.00%
 
 ## Booked Trades
 
