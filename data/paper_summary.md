@@ -2,25 +2,25 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 13
-- Newly booked trades: 1
-- Candidate average edge: 4.90%
-- Candidate nominal EV at 1 GBP stake: 0.64
+- Candidate price signals this scan: 14
+- Newly booked trades: 2
+- Candidate average edge: 4.87%
+- Candidate nominal EV at 1 GBP stake: 0.68
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
 
 - Scope: liquidity-confirmed trades only
-- Total trades booked: 94
-- Trades booked last 24h: 36
-- Average booked odds: 5.15
-- Total paper stake deployed: 94.00
-- Total booked theoretical EV: 3.68
-- Total booked weighted edge: 3.92%
-- Open trades: 45
-- Open paper stake deployed: 45.00
-- Open booked theoretical EV: 1.85
-- Open booked weighted edge: 4.11%
+- Total trades booked: 95
+- Trades booked last 24h: 35
+- Average booked odds: 5.18
+- Total paper stake deployed: 95.00
+- Total booked theoretical EV: 3.77
+- Total booked weighted edge: 3.97%
+- Open trades: 46
+- Open paper stake deployed: 46.00
+- Open booked theoretical EV: 1.94
+- Open booked weighted edge: 4.22%
 
 ## Results And CLV
 
@@ -38,6 +38,8 @@
 
 ## Booked Trades
 
+- Back Janice Tjen with Smarkets at 4.8 (19/5)+ | Janice Tjen v Mirra Andreeva | stake 1.00 | edge 4.18% | EV 0.04 | status open | starts 2026-08-18T12:00:00+00:00
+- Back Club Bolívar with Betfair at 7.8 (34/5)+ | Sao Paulo v Club Bolívar | stake 1.00 | edge 8.99% | EV 0.09 | status open | starts 2026-08-19T00:30:00+00:00
 - Back India with Betfair at 2.04 (26/25)+ | Sri Lanka v India | stake 1.00 | edge 6.24% | EV 0.06 | status open | starts 2026-08-17T04:15:00+00:00
 - Back Cruzeiro with Betfair at 4.9 (39/10)+ | Corinthians v Cruzeiro | stake 1.00 | edge 3.62% | EV 0.04 | status open | starts 2026-08-16T22:30:00+00:00
 - Back Recoleta FC with Betfair at 5.9 (49/10)+ | Recoleta FC v Boca Juniors | stake 1.00 | edge 7.08% | EV 0.07 | status open | starts 2026-08-18T22:00:00+00:00
@@ -46,6 +48,4 @@
 - Back Magdalena Frech with Betfair at 7.2 (31/5)+ | Magdalena Frech v Elena Rybakina | stake 1.00 | edge 5.98% | EV 0.06 | status open | starts 2026-08-17T16:30:00+00:00
 - Back Saint Lucia Kings with Betfair at 2.52 (38/25)+ | Saint Lucia Kings v Barbados Tridents | stake 1.00 | edge 4.82% | EV 0.05 | status open | starts 2026-08-16T23:00:00+00:00
 - Back Goztepe with Betfair at 3.65 (53/20)+ | Samsunspor v Goztepe | stake 1.00 | edge 3.21% | EV 0.03 | status open | starts 2026-08-17T18:30:00+00:00
-- Back VfB Stuttgart II with Betfair at 2.84 (46/25)+ | VfB Stuttgart II v FC Viktoria Köln 1904 | stake 1.00 | edge 4.74% | EV 0.05 | status open | starts 2026-08-16T17:30:00+00:00
-- Back Querétaro with Betfair at 4.4 (17/5)+ | Pumas v Querétaro | stake 1.00 | edge 2.59% | EV 0.03 | status open | starts 2026-08-16T18:00:00+00:00
-- ...and 248 more
+- ...and 250 more
