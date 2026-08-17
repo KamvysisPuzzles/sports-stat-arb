@@ -98,7 +98,10 @@ def write_parquet(
         import pyarrow as pa
         import pyarrow.parquet as pq
     except ImportError as exc:
-        raise RuntimeError("Missing pyarrow. Install it with: pip install pyarrow") from exc
+        raise RuntimeError(
+            f"Missing or unloadable pyarrow. Install/package it with: pip install pyarrow. "
+            f"Import error: {exc}"
+        ) from exc
 
     table = pa.Table.from_pylist(rows)
     metadata = {
