@@ -1,0 +1,53 @@
+name: Migrate Liquidity Paper Trades
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the migration count without writing to DynamoDB"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_REGION: eu-west-2
+      PAPER_TRADES_TABLE: sports-stat-arb-paper-trades
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install boto3
+
+      - name: Migrate liquidity-confirmed paper trades
+        run: |
+          args=()
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          python scripts/migrate_liquidity_paper_trades_to_dynamodb.py \
+            --paper-csv data/paper_trades.csv \
+            --table "$PAPER_TRADES_TABLE" \
+            --region "$AWS_REGION" \
+            "${args[@]}"
