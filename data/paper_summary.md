@@ -2,17 +2,17 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 0
-- Newly booked trades: 0
-- Candidate average edge: 0.00%
-- Candidate nominal EV at 1 GBP stake: 0.00
+- Candidate price signals this scan: 20
+- Newly booked trades: 1
+- Candidate average edge: 5.98%
+- Candidate nominal EV at 1 GBP stake: 1.20
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
 
 - Scope: liquidity-confirmed trades only
 - Total trades booked: 106
-- Trades booked last 24h: 32
+- Trades booked last 24h: 30
 - Average booked odds: 5.19
 - Average confirmed liquidity at target: 66.06
 - Total paper stake deployed: 106.00
@@ -40,6 +40,7 @@
 
 ## Booked Trades
 
+- Back Xinyu Wang with Smarkets at 8.8 (39/5)+ | Aryna Sabalenka v Xinyu Wang | stake 1.00 | edge 7.72% | EV 0.08 | status open | starts 2026-08-18T12:00:00+00:00
 - Back Ann Li with Betfair at 6 (5/1)+ | Coco Gauff v Ann Li | stake 1.00 | edge 3.42% | EV 0.03 | status open | starts 2026-08-18T12:00:00+00:00
 - Back Christopher O'Connell with Betfair at 5.2 (21/5)+ | Joao Fonseca v Christopher O'Connell | stake 1.00 | edge 4.07% | EV 0.04 | status open | starts 2026-08-18T15:00:00+00:00
 - Back Pakistan with Betfair at 4.3 (33/10)+ | England v Pakistan | stake 1.00 | edge 3.25% | EV 0.03 | status open | starts 2026-08-19T10:00:00+00:00
@@ -49,5 +50,4 @@
 - Back Draw with Smarkets at 5.7 (47/10)+ | Almería v CD Eldense | stake 1.00 | edge 2.71% | EV 0.03 | status open | starts 2026-08-17T19:30:00+00:00
 - Back Dallas Wings with Betfair at 3.25 (9/4)+ | Golden State Valkyries v Dallas Wings | stake 1.00 | edge 3.27% | EV 0.03 | status open | starts 2026-08-18T02:00:00+00:00
 - Back Cesena FC with Betfair at 6.2 (26/5)+ | Sassuolo v Cesena FC | stake 1.00 | edge 2.56% | EV 0.03 | status open | starts 2026-08-17T16:30:00+00:00
-- Back Draw with Betfair at 2.14 (57/50)+ | Sri Lanka v India | stake 1.00 | edge 5.19% | EV 0.05 | status open | starts 2026-08-17T04:15:00+00:00
-- ...and 264 more
+- ...and 265 more
