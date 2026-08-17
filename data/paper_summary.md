@@ -2,17 +2,17 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 20
-- Newly booked trades: 2
-- Candidate average edge: 5.71%
-- Candidate nominal EV at 1 GBP stake: 1.14
+- Candidate price signals this scan: 17
+- Newly booked trades: 0
+- Candidate average edge: 6.74%
+- Candidate nominal EV at 1 GBP stake: 1.15
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
 
 - Scope: liquidity-confirmed trades only
 - Total trades booked: 102
-- Trades booked last 24h: 33
+- Trades booked last 24h: 31
 - Average booked odds: 5.18
 - Average confirmed liquidity at target: 67.76
 - Total paper stake deployed: 102.00
