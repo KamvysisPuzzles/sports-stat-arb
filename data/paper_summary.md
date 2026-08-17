@@ -2,26 +2,26 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 17
-- Newly booked trades: 1
-- Candidate average edge: 6.18%
-- Candidate nominal EV at 1 GBP stake: 1.05
+- Candidate price signals this scan: 18
+- Newly booked trades: 3
+- Candidate average edge: 6.05%
+- Candidate nominal EV at 1 GBP stake: 1.09
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
 
 - Scope: liquidity-confirmed trades only
-- Total trades booked: 103
+- Total trades booked: 106
 - Trades booked last 24h: 32
 - Average booked odds: 5.19
-- Average confirmed liquidity at target: 67.36
-- Total paper stake deployed: 103.00
-- Total booked theoretical EV: 4.17
-- Total booked weighted edge: 4.05%
-- Open trades: 31
-- Open paper stake deployed: 31.00
-- Open booked theoretical EV: 1.42
-- Open booked weighted edge: 4.59%
+- Average confirmed liquidity at target: 66.06
+- Total paper stake deployed: 106.00
+- Total booked theoretical EV: 4.27
+- Total booked weighted edge: 4.03%
+- Open trades: 34
+- Open paper stake deployed: 34.00
+- Open booked theoretical EV: 1.53
+- Open booked weighted edge: 4.50%
 
 ## Results And CLV
 
@@ -40,6 +40,9 @@
 
 ## Booked Trades
 
+- Back Ann Li with Betfair at 6 (5/1)+ | Coco Gauff v Ann Li | stake 1.00 | edge 3.42% | EV 0.03 | status open | starts 2026-08-18T12:00:00+00:00
+- Back Christopher O'Connell with Betfair at 5.2 (21/5)+ | Joao Fonseca v Christopher O'Connell | stake 1.00 | edge 4.07% | EV 0.04 | status open | starts 2026-08-18T15:00:00+00:00
+- Back Pakistan with Betfair at 4.3 (33/10)+ | England v Pakistan | stake 1.00 | edge 3.25% | EV 0.03 | status open | starts 2026-08-19T10:00:00+00:00
 - Back Sloane Stephens with Matchbook at 6.8 (29/5)+ | Marta Kostyuk v Sloane Stephens | stake 1.00 | edge 8.89% | EV 0.09 | status open | starts 2026-08-18T12:00:00+00:00
 - Back Martin Landaluce with Smarkets at 2.32 (33/25)+ | Thiago Agustin Tirante v Martin Landaluce | stake 1.00 | edge 2.54% | EV 0.03 | status open | starts 2026-08-17T15:00:00+00:00
 - Back Michael Zheng with Betfair at 2.74 (87/50)+ | Michael Zheng v Lorenzo Musetti | stake 1.00 | edge 3.15% | EV 0.03 | status open | starts 2026-08-18T15:00:00+00:00
@@ -47,7 +50,4 @@
 - Back Dallas Wings with Betfair at 3.25 (9/4)+ | Golden State Valkyries v Dallas Wings | stake 1.00 | edge 3.27% | EV 0.03 | status open | starts 2026-08-18T02:00:00+00:00
 - Back Cesena FC with Betfair at 6.2 (26/5)+ | Sassuolo v Cesena FC | stake 1.00 | edge 2.56% | EV 0.03 | status open | starts 2026-08-17T16:30:00+00:00
 - Back Draw with Betfair at 2.14 (57/50)+ | Sri Lanka v India | stake 1.00 | edge 5.19% | EV 0.05 | status open | starts 2026-08-17T04:15:00+00:00
-- Back Casa Pia with Betfair at 15 (14/1)+ | Casa Pia v Benfica | stake 1.00 | edge 9.69% | EV 0.10 | status open | starts 2026-08-17T19:15:00+00:00
-- Back Adolfo Daniel Vallejo with Matchbook at 4.8 (19/5)+ | Tommy Paul v Adolfo Daniel Vallejo | stake 1.00 | edge 3.27% | EV 0.03 | status open | starts 2026-08-18T00:10:00+00:00
-- Back Puebla with Smarkets at 7.2 (31/5)+ | Pachuca v Puebla | stake 1.00 | edge 4.55% | EV 0.05 | status open | starts 2026-08-18T03:00:00+00:00
-- ...and 261 more
+- ...and 264 more
