@@ -12,9 +12,6 @@ on:
           - paper-log
           - update-closing
           - settle-results
-  schedule:
-    - cron: "30 */2 * * *"
-    - cron: "45 */6 * * *"
 
 permissions:
   contents: write
