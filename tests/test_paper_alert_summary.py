@@ -107,6 +107,7 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
             "target_clv": "0.0500",
             "profit": "2.0",
             "liquidity_status": "available",
+            "available_at_or_above_target": "10",
         },
         {
             "event_id": "event-2",
@@ -122,6 +123,7 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
             "target_clv": "-0.0200",
             "profit": "-1.0",
             "liquidity_status": "available",
+            "available_at_or_above_target": "20",
         },
         {
             "event_id": "event-3",
@@ -137,6 +139,7 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
             "target_clv": "0.0000",
             "profit": "-1.0",
             "liquidity_status": "available",
+            "available_at_or_above_target": "30",
         },
         {
             "event_id": "event-4",
@@ -152,6 +155,7 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
             "target_clv": "0.5000",
             "profit": "5.0",
             "liquidity_status": "not_applicable",
+            "available_at_or_above_target": "100",
         },
     ]
 
@@ -161,9 +165,11 @@ def test_summary_splits_clv_beats_misses_and_ties() -> None:
     assert "Raw trades logged" not in markdown
     assert "Total trades booked: 3" in markdown
     assert "Average booked odds: 4.00" in markdown
+    assert "Average confirmed liquidity at target: 20.00" in markdown
     assert "Settled trades: 3" in markdown
     assert "Settled won/lost bets: 1/2" in markdown
     assert "Settled average booked odds: 4.00" in markdown
+    assert "Settled average confirmed liquidity at target: 20.00" in markdown
     assert "Beat closing line: 33.33% (1/3)" in markdown
     assert "Missed closing line: 33.33% (1/3)" in markdown
     assert "Tied closing line: 33.33% (1/3)" in markdown
