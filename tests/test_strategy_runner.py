@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from exchange_scanner import strategy_runner
@@ -121,9 +122,16 @@ class FakeMatchbookClient:
 class FakeS3Client:
     def __init__(self) -> None:
         self.uploads = []
+        self.objects = {}
 
     def upload_file(self, filename, bucket, key):
         self.uploads.append((filename, bucket, key))
+
+    def put_object(self, *, Bucket, Key, Body, ContentType):
+        self.objects[(Bucket, Key)] = {
+            "body": Body.decode("utf-8") if isinstance(Body, bytes) else Body,
+            "content_type": ContentType,
+        }
 
 
 class ConditionalCheckFailedException(Exception):
@@ -143,6 +151,8 @@ class FakeTable:
         self.items[Item["trade_id"]] = Item
 
     def scan(self, **kwargs):
+        if not kwargs:
+            return {"Items": list(self.items.values())}
         status = kwargs["ExpressionAttributeValues"][":open_status"]
         return {
             "Items": [
@@ -203,9 +213,21 @@ def test_run_paper_log_archives_snapshot_and_logs_liquidity_confirmed_trade(monk
     assert result["candidate_signals"] == 1
     assert result["liquidity_confirmed_signals"] == 1
     assert result["paper_log"]["inserted"] == 1
+    assert result["summary"]["uploaded"] is True
     assert result["snapshot"]["uploaded"] is True
     assert s3_client.uploads[0][1] == "odds-bucket"
     assert s3_client.uploads[0][2].startswith("odds_snapshots/snapshot_date=2026-08-14/")
+    summary_text = s3_client.objects[
+        ("odds-bucket", "summaries/latest_strategy_runner_summary.txt")
+    ]["body"]
+    assert "Strategy Runner Summary" in summary_text
+    assert "New paper trades: 1" in summary_text
+    summary_json = json.loads(
+        s3_client.objects[("odds-bucket", "summaries/latest_strategy_runner_summary.json")][
+            "body"
+        ]
+    )
+    assert summary_json["portfolio_summary"]["total_trades"] == 1
     item = next(iter(table.items.values()))
     assert item["liquidity_status"] == "available"
     assert item["available_at_or_above_target"] == 25
@@ -250,6 +272,8 @@ def test_run_paper_log_updates_and_settles_existing_open_trade(monkeypatch) -> N
     assert second_result["settlement"]["open_trades"] == 1
     assert second_result["settlement"]["settled"] == 1
     assert second_result["paper_log"]["duplicates"] == 1
+    assert second_result["portfolio_summary"]["settled_trades"] == 1
+    assert second_result["portfolio_summary"]["settled_profit"] == 3.136
     assert second_odds_client.odds_calls == 1
     assert second_odds_client.score_calls == [("soccer_epl", 3)]
     item = next(iter(table.items.values()))

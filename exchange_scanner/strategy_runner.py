@@ -7,6 +7,7 @@ import os
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ from exchange_scanner.dynamodb_paper import (
     DynamoClosingUpdateResult,
     DynamoPaperLogResult,
     DynamoSettlementResult,
+    list_all_trades,
     list_open_trades,
     log_signals_to_dynamodb,
     settle_results_in_dynamodb,
@@ -64,6 +66,7 @@ class StrategyRunnerConfig:
     max_event_days: float = 2.0
     closing_max_event_days: float = 7.0
     scores_days_from: int = 3
+    summary_s3_prefix: str = "summaries"
     paper_stake: float = 1.0
     matchbook_currency: str = "GBP"
     matchbook_minimum_liquidity: float = 2.0
@@ -105,6 +108,9 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
             event.get("closing_max_event_days") or env.get("CLOSING_MAX_EVENT_DAYS") or 7.0
         ),
         scores_days_from=int(event.get("scores_days_from") or env.get("SCORES_DAYS_FROM") or 3),
+        summary_s3_prefix=str(
+            event.get("summary_s3_prefix") or env.get("SUMMARY_S3_PREFIX") or "summaries"
+        ),
         paper_stake=float(event.get("paper_stake") or env.get("PAPER_STAKE") or 1.0),
         matchbook_currency=str(
             event.get("matchbook_currency") or env.get("MATCHBOOK_CURRENCY") or "GBP"
@@ -213,7 +219,7 @@ def run_paper_log(
         logged_at=now,
         liquidity_by_key=liquidity_by_key,
     )
-    return {
+    result = {
         "mode": config.mode,
         "sports": len(sports),
         "odds_rows": len(prices),
@@ -224,6 +230,127 @@ def run_paper_log(
         "liquidity_confirmed_signals": len(executable_signals),
         "paper_log": _log_result_dict(log_result),
     }
+    portfolio_summary = build_portfolio_summary(table, generated_at=now)
+    result["portfolio_summary"] = portfolio_summary
+    result["summary"] = _write_latest_summary(
+        config,
+        s3_client=s3_client,
+        run_result=result,
+        generated_at=now,
+    )
+    return result
+
+
+def build_portfolio_summary(table: Any, *, generated_at: datetime) -> dict[str, Any]:
+    trades = list_all_trades(table)
+    open_trades = [item for item in trades if item.get("status") == "open"]
+    settled = [item for item in trades if item.get("status") == "settled"]
+    clv_rows = [item for item in trades if item.get("target_clv") not in {None, ""}]
+    staked = sum(_float(item.get("stake")) for item in settled)
+    profit = sum(_float(item.get("profit")) for item in settled)
+    wins = sum(1 for item in settled if _float(item.get("profit")) > 0)
+    losses = len(settled) - wins
+    beat = [item for item in clv_rows if _float(item.get("target_clv")) > 0]
+    miss = [item for item in clv_rows if _float(item.get("target_clv")) < 0]
+    tie = len(clv_rows) - len(beat) - len(miss)
+    return {
+        "generated_at": generated_at.isoformat(),
+        "total_trades": len(trades),
+        "open_trades": len(open_trades),
+        "settled_trades": len(settled),
+        "settled_won": wins,
+        "settled_lost": losses,
+        "settled_profit": profit,
+        "settled_roi": profit / staked if staked else 0.0,
+        "average_booked_odds": _average(_float(item.get("target_odds")) for item in trades),
+        "average_confirmed_liquidity_at_target": _average(
+            _float(item.get("available_at_or_above_target")) for item in trades
+        ),
+        "average_clv": _average(_float(item.get("target_clv")) for item in clv_rows),
+        "clv_trades": len(clv_rows),
+        "beat_closing_line": len(beat),
+        "missed_closing_line": len(miss),
+        "tied_closing_line": tie,
+    }
+
+
+def _write_latest_summary(
+    config: StrategyRunnerConfig,
+    *,
+    s3_client: Any | None,
+    run_result: dict[str, Any],
+    generated_at: datetime,
+) -> dict[str, str | bool]:
+    if not config.odds_s3_bucket:
+        return {"uploaded": False, "reason": "missing_odds_s3_bucket"}
+    s3_client = s3_client or _boto3_client("s3", config.aws_region)
+    prefix = config.summary_s3_prefix.strip("/")
+    text_key = f"{prefix}/latest_strategy_runner_summary.txt"
+    json_key = f"{prefix}/latest_strategy_runner_summary.json"
+    s3_client.put_object(
+        Bucket=config.odds_s3_bucket,
+        Key=text_key,
+        Body=_summary_text(run_result).encode("utf-8"),
+        ContentType="text/plain; charset=utf-8",
+    )
+    s3_client.put_object(
+        Bucket=config.odds_s3_bucket,
+        Key=json_key,
+        Body=json.dumps(_jsonable(run_result), indent=2).encode("utf-8"),
+        ContentType="application/json",
+    )
+    return {
+        "uploaded": True,
+        "bucket": config.odds_s3_bucket,
+        "text_key": text_key,
+        "json_key": json_key,
+        "generated_at": generated_at.isoformat(),
+    }
+
+
+def _summary_text(result: dict[str, Any]) -> str:
+    portfolio = result["portfolio_summary"]
+    snapshot = result["snapshot"]
+    closing = result["closing_update"]
+    settlement = result["settlement"]
+    paper_log = result["paper_log"]
+    return "\n".join(
+        [
+            "Strategy Runner Summary",
+            f"Generated at: {portfolio['generated_at']}",
+            "",
+            "Latest run",
+            f"- Sports scanned: {result['sports']}",
+            f"- Odds rows stored: {result['odds_rows']}",
+            f"- Candidate signals: {result['candidate_signals']}",
+            f"- Liquidity-confirmed signals: {result['liquidity_confirmed_signals']}",
+            f"- New paper trades: {paper_log['inserted']}",
+            f"- Duplicate paper trades: {paper_log['duplicates']}",
+            f"- Closing updates: {closing['updated']}/{closing['open_trades']} open trades",
+            f"- Settled this run: {settlement['settled']}",
+            f"- S3 snapshot: s3://{snapshot.get('bucket', '')}/{snapshot.get('key', '')}",
+            "",
+            "Portfolio",
+            f"- Total trades: {portfolio['total_trades']}",
+            f"- Open trades: {portfolio['open_trades']}",
+            f"- Settled trades: {portfolio['settled_trades']}",
+            f"- Settled won/lost: {portfolio['settled_won']}/{portfolio['settled_lost']}",
+            f"- Settled profit: {portfolio['settled_profit']:.2f}",
+            f"- Settled ROI: {portfolio['settled_roi']:.2%}",
+            f"- Average booked odds: {portfolio['average_booked_odds']:.2f}",
+            (
+                "- Average confirmed liquidity at target: "
+                f"{portfolio['average_confirmed_liquidity_at_target']:.2f}"
+            ),
+            f"- Average CLV: {portfolio['average_clv']:.2%}",
+            (
+                "- CLV beat/miss/tie: "
+                f"{portfolio['beat_closing_line']}/"
+                f"{portfolio['missed_closing_line']}/"
+                f"{portfolio['tied_closing_line']}"
+            ),
+        ]
+    ) + "\n"
 
 
 def _find_signals(
@@ -521,6 +648,28 @@ def _settlement_result_dict(result: DynamoSettlementResult) -> dict[str, int]:
         "matched_results": result.matched_results,
         "settled": result.settled,
     }
+
+
+def _float(value: Any) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _average(values) -> float:
+    items = list(values)
+    return sum(items) / len(items) if items else 0.0
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    return value
 
 
 def _format_optional(value: float | None) -> str:

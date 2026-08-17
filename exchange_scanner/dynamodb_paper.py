@@ -177,12 +177,25 @@ def settle_results_in_dynamodb(
 
 
 def list_open_trades(table: Any) -> list[dict[str, Any]]:
-    items: list[dict[str, Any]] = []
+    return list_trades_by_status(table, status="open")
+
+
+def list_trades_by_status(table: Any, *, status: str) -> list[dict[str, Any]]:
     scan_kwargs: dict[str, Any] = {
         "FilterExpression": "#status = :open_status",
         "ExpressionAttributeNames": {"#status": "status"},
-        "ExpressionAttributeValues": {":open_status": "open"},
+        "ExpressionAttributeValues": {":open_status": status},
     }
+    return scan_all(table, scan_kwargs)
+
+
+def list_all_trades(table: Any) -> list[dict[str, Any]]:
+    return scan_all(table)
+
+
+def scan_all(table: Any, scan_kwargs: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    scan_kwargs = dict(scan_kwargs or {})
     while True:
         response = table.scan(**scan_kwargs)
         items.extend(response.get("Items", []))
