@@ -38,6 +38,9 @@ jobs:
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       BETFAIR_LAMBDA_FUNCTION_NAME: ${{ secrets.BETFAIR_LAMBDA_FUNCTION_NAME }}
       BETFAIR_LAMBDA_REGION: eu-west-2
+      MARKET_DB: /tmp/market_snapshots.sqlite3
+      ODDS_S3_BUCKET: ${{ secrets.ODDS_S3_BUCKET }}
+      ODDS_S3_PREFIX: odds_snapshots
 
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +69,8 @@ jobs:
             --max-edge "$MAX_EDGE" \
             --min-reference-books 5 \
             --max-age-seconds 900 \
+            --store-odds-snapshot \
+            --market-db "$MARKET_DB" \
             --unique-bets \
             > data/latest_opportunities.csv
 
@@ -80,16 +85,33 @@ jobs:
 
       - name: Configure AWS credentials
         id: aws-credentials
-        if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *') && env.AWS_ROLE_ARN != '' && env.BETFAIR_LAMBDA_FUNCTION_NAME != '' }}
+        if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *') && env.AWS_ROLE_ARN != '' && (env.BETFAIR_LAMBDA_FUNCTION_NAME != '' || env.ODDS_S3_BUCKET != '') }}
         continue-on-error: true
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.BETFAIR_LAMBDA_REGION }}
 
+      - name: Store odds snapshot in S3
+        id: store-odds-snapshot
+        if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *') && steps.aws-credentials.outcome == 'success' && env.ODDS_S3_BUCKET != '' }}
+        continue-on-error: true
+        run: |
+          odds_snapshot_outputs=/tmp/odds_snapshot_outputs
+          python scripts/export_odds_snapshot_parquet.py \
+            --market-db "$MARKET_DB" \
+            --output-dir /tmp/odds_snapshot_export \
+            --s3-prefix "$ODDS_S3_PREFIX" \
+            --github-output "$odds_snapshot_outputs"
+          . "$odds_snapshot_outputs"
+          aws s3 cp \
+            "$local_path" \
+            "s3://${ODDS_S3_BUCKET}/${s3_key}"
+          cat "$odds_snapshot_outputs" >> "$GITHUB_OUTPUT"
+
       - name: Deploy Betfair enrichment Lambda
         id: deploy-betfair-lambda
-        if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *') && steps.aws-credentials.outcome == 'success' }}
+        if: ${{ ((github.event_name == 'workflow_dispatch' && inputs.mode == 'paper-log') || github.event.schedule == '0 * * * *') && steps.aws-credentials.outcome == 'success' && env.BETFAIR_LAMBDA_FUNCTION_NAME != '' }}
         continue-on-error: true
         run: |
           rm -rf /tmp/betfair_lambda_package /tmp/betfair_lambda.zip

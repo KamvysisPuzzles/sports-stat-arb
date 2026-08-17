@@ -9,6 +9,7 @@ description = "Paper-trade Matchbook h2h value bets against weighted reference p
 requires-python = ">=3.9"
 dependencies = [
     "httpx>=0.27.0",
+    "pyarrow>=15.0.0",
     "pydantic>=2.7.0",
     "python-dotenv>=1.0.1",
 ]
