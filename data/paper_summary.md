@@ -2,26 +2,26 @@
 
 ## Latest Scan
 
-- Candidate price signals this scan: 0
-- Newly booked trades: 0
-- Candidate average edge: 0.00%
-- Candidate nominal EV at 1 GBP stake: 0.00
+- Candidate price signals this scan: 22
+- Newly booked trades: 2
+- Candidate average edge: 5.77%
+- Candidate nominal EV at 1 GBP stake: 1.27
 - Unbooked price signals shown below: 0
 
 ## Paper Portfolio
 
 - Scope: liquidity-confirmed trades only
-- Total trades booked: 108
-- Trades booked last 24h: 29
-- Average booked odds: 5.17
-- Average confirmed liquidity at target: 66.84
-- Total paper stake deployed: 108.00
-- Total booked theoretical EV: 4.34
+- Total trades booked: 110
+- Trades booked last 24h: 30
+- Average booked odds: 5.15
+- Average confirmed liquidity at target: 68.30
+- Total paper stake deployed: 110.00
+- Total booked theoretical EV: 4.42
 - Total booked weighted edge: 4.02%
-- Open trades: 36
-- Open paper stake deployed: 36.00
-- Open booked theoretical EV: 1.60
-- Open booked weighted edge: 4.44%
+- Open trades: 38
+- Open paper stake deployed: 38.00
+- Open booked theoretical EV: 1.67
+- Open booked weighted edge: 4.40%
 
 ## Results And CLV
 
@@ -40,6 +40,8 @@
 
 ## Booked Trades
 
+- Back Clara Tauson with Betfair at 3.25 (9/4)+ | Linda Noskova v Clara Tauson | stake 1.00 | edge 3.95% | EV 0.04 | status open | starts 2026-08-17T18:00:00+00:00
+- Back Draw with Betfair at 4.8 (19/5)+ | Sri Lanka v India | stake 1.00 | edge 3.46% | EV 0.03 | status open | starts 2026-08-18T04:15:00+00:00
 - Back Rinky Hijikata with Betfair at 4 (3/1)+ | Rinky Hijikata v Jakub Mensik | stake 1.00 | edge 3.09% | EV 0.03 | status open | starts 2026-08-17T17:20:00+00:00
 - Back Estudiantes de Río Cuarto with Betfair at 3.6 (13/5)+ | Estudiantes de Río Cuarto v Atlético Tucuman | stake 1.00 | edge 3.74% | EV 0.04 | status open | starts 2026-08-17T17:45:00+00:00
 - Back Xinyu Wang with Smarkets at 8.8 (39/5)+ | Aryna Sabalenka v Xinyu Wang | stake 1.00 | edge 7.72% | EV 0.08 | status open | starts 2026-08-18T12:00:00+00:00
@@ -48,6 +50,4 @@
 - Back Pakistan with Betfair at 4.3 (33/10)+ | England v Pakistan | stake 1.00 | edge 3.25% | EV 0.03 | status open | starts 2026-08-19T10:00:00+00:00
 - Back Sloane Stephens with Matchbook at 6.8 (29/5)+ | Marta Kostyuk v Sloane Stephens | stake 1.00 | edge 8.89% | EV 0.09 | status open | starts 2026-08-18T12:00:00+00:00
 - Back Martin Landaluce with Smarkets at 2.32 (33/25)+ | Thiago Agustin Tirante v Martin Landaluce | stake 1.00 | edge 2.54% | EV 0.03 | status open | starts 2026-08-17T15:00:00+00:00
-- Back Michael Zheng with Betfair at 2.74 (87/50)+ | Michael Zheng v Lorenzo Musetti | stake 1.00 | edge 3.15% | EV 0.03 | status open | starts 2026-08-18T15:00:00+00:00
-- Back Draw with Smarkets at 5.7 (47/10)+ | Almería v CD Eldense | stake 1.00 | edge 2.71% | EV 0.03 | status open | starts 2026-08-17T19:30:00+00:00
-- ...and 267 more
+- ...and 269 more
