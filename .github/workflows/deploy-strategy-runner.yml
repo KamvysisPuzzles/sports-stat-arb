@@ -79,7 +79,6 @@ jobs:
             --function-name "$STRATEGY_RUNNER_LAMBDA_FUNCTION_NAME" \
             --handler lambda_function.lambda_handler \
             --runtime python3.11 \
-            --architectures x86_64 \
             --timeout 300 \
             --memory-size 1024 \
             > /tmp/strategy_runner_update_config.json
