@@ -12,7 +12,7 @@
 
 - Scope: liquidity-confirmed trades only
 - Total trades booked: 115
-- Trades booked last 24h: 31
+- Trades booked last 24h: 28
 - Average booked odds: 5.31
 - Average confirmed liquidity at target: 72.48
 - Total paper stake deployed: 115.00
@@ -32,11 +32,11 @@
 - Settled average confirmed liquidity at target: 71.70
 - Settled profit: 14.15
 - Settled ROI: 19.65%
-- Beat closing line: 45.45% (35/77)
-- Missed closing line: 40.26% (31/77)
-- Tied closing line: 14.29% (11/77)
-- Average CLV per closed trade: 1.79%
-- CLV breakdown: beat avg 10.56%, miss avg -7.49%, tie avg 0.00%
+- Beat closing line: 45.35% (39/86)
+- Missed closing line: 41.86% (36/86)
+- Tied closing line: 12.79% (11/86)
+- Average CLV per closed trade: 1.59%
+- CLV breakdown: beat avg 10.47%, miss avg -7.54%, tie avg 0.00%
 
 ## Booked Trades
 
