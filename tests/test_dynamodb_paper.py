@@ -3,7 +3,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from exchange_scanner.dynamodb_paper import log_signals_to_dynamodb, paper_item, trade_id
+from exchange_scanner.dynamodb_paper import (
+    log_signals_to_dynamodb,
+    paper_item,
+    settle_results_in_dynamodb,
+    trade_id,
+    update_closing_values_in_dynamodb,
+)
 from exchange_scanner.the_odds_api import ValueSignal
 
 
@@ -22,6 +28,34 @@ class FakeTable:
         if Item["trade_id"] in self.items:
             raise ConditionalCheckFailedException()
         self.items[Item["trade_id"]] = Item
+
+    def scan(self, **kwargs):
+        status = kwargs["ExpressionAttributeValues"][":open_status"]
+        return {
+            "Items": [
+                item
+                for item in self.items.values()
+                if item.get("status") == status
+            ]
+        }
+
+    def update_item(self, *, Key, UpdateExpression, ExpressionAttributeValues, **kwargs):
+        item = self.items[Key["trade_id"]]
+        if "closing_checked_at" in UpdateExpression:
+            item["closing_checked_at"] = ExpressionAttributeValues[":checked_at"]
+            item["closing_target_odds"] = ExpressionAttributeValues[":closing_target_odds"]
+            item["target_clv"] = ExpressionAttributeValues[":target_clv"]
+            item["beat_closing_line"] = ExpressionAttributeValues[":beat_closing_line"]
+            item["closing_reference_fair_odds"] = ExpressionAttributeValues[
+                ":closing_reference_fair_odds"
+            ]
+            item["closing_edge"] = ExpressionAttributeValues[":closing_edge"]
+            item["positive_closing_edge"] = ExpressionAttributeValues[":positive_closing_edge"]
+        else:
+            item["status"] = ExpressionAttributeValues[":settled"]
+            item["result"] = ExpressionAttributeValues[":result"]
+            item["profit"] = ExpressionAttributeValues[":profit"]
+        return {"ResponseMetadata": {"HTTPStatusCode": 200}}
 
 
 def signal() -> ValueSignal:
@@ -73,3 +107,48 @@ def test_log_signals_to_dynamodb_dedupes_existing_trade_ids() -> None:
     assert second.inserted == 0
     assert second.duplicates == 1
     assert len(table.items) == 1
+
+
+def test_update_closing_values_in_dynamodb_updates_matching_open_trade() -> None:
+    table = FakeTable()
+    logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
+    log_signals_to_dynamodb(table, [signal()], stake=1, logged_at=logged_at)
+    closing = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time=datetime(2026, 8, 15, 15, tzinfo=timezone.utc),
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Matchbook",
+        target_odds=4.0,
+        target_effective_odds=3.94,
+        reference_fair_odds=3.8,
+        reference_probability=1 / 3.8,
+        edge=0.0368,
+        reference_bookmakers=("Pinnacle", "Smarkets"),
+    )
+
+    result = update_closing_values_in_dynamodb(table, [closing], checked_at=logged_at)
+    item = next(iter(table.items.values()))
+
+    assert result.open_trades == 1
+    assert result.updated == 1
+    assert item["closing_target_odds"] == Decimal("4.0")
+    assert item["target_clv"] == Decimal("0.050000000000000044")
+    assert item["beat_closing_line"] is True
+
+
+def test_settle_results_in_dynamodb_sets_profit_for_winner() -> None:
+    table = FakeTable()
+    logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
+    log_signals_to_dynamodb(table, [signal()], stake=1, logged_at=logged_at)
+
+    result = settle_results_in_dynamodb(table, {"event-1": "Arsenal"})
+    item = next(iter(table.items.values()))
+
+    assert result.open_trades == 1
+    assert result.settled == 1
+    assert item["status"] == "settled"
+    assert item["result"] == "Arsenal"
+    assert item["profit"] == Decimal("3.136")

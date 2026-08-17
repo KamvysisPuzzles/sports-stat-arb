@@ -19,9 +19,14 @@ from exchange_scanner.cli import (
 )
 from exchange_scanner.dynamodb_paper import (
     LIQUIDITY_FIELDS,
+    DynamoClosingUpdateResult,
     DynamoPaperLogResult,
+    DynamoSettlementResult,
+    list_open_trades,
     log_signals_to_dynamodb,
+    settle_results_in_dynamodb,
     signal_key,
+    update_closing_values_in_dynamodb,
 )
 from exchange_scanner.matchbook_liquidity import (
     MatchbookLiquidityClient,
@@ -34,6 +39,7 @@ from exchange_scanner.the_odds_api import (
     TheOddsApiClient,
     ValueSignal,
     find_value_opportunities,
+    h2h_winners_from_scores,
     normalise_odds_api_events,
 )
 
@@ -56,6 +62,8 @@ class StrategyRunnerConfig:
     min_reference_books: int = 5
     max_age_seconds: int = 900
     max_event_days: float = 2.0
+    closing_max_event_days: float = 7.0
+    scores_days_from: int = 3
     paper_stake: float = 1.0
     matchbook_currency: str = "GBP"
     matchbook_minimum_liquidity: float = 2.0
@@ -93,6 +101,10 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
         ),
         max_age_seconds=int(event.get("max_age_seconds") or env.get("MAX_AGE_SECONDS") or 900),
         max_event_days=float(event.get("max_event_days") or env.get("MAX_EVENT_DAYS") or 2.0),
+        closing_max_event_days=float(
+            event.get("closing_max_event_days") or env.get("CLOSING_MAX_EVENT_DAYS") or 7.0
+        ),
+        scores_days_from=int(event.get("scores_days_from") or env.get("SCORES_DAYS_FROM") or 3),
         paper_stake=float(event.get("paper_stake") or env.get("PAPER_STAKE") or 1.0),
         matchbook_currency=str(
             event.get("matchbook_currency") or env.get("MATCHBOOK_CURRENCY") or "GBP"
@@ -168,6 +180,18 @@ def run_paper_log(
         )
     prices = normalise_odds_api_events(events)
     snapshot = _archive_odds_snapshot(config, prices, s3_client=s3_client, snapshot_time=now)
+    table = dynamodb_table or _dynamodb_table(config)
+    closing_signals = _find_closing_signals(config, prices, now=now)
+    closing_update = update_closing_values_in_dynamodb(
+        table,
+        closing_signals,
+        checked_at=now,
+    )
+    settlement = _settle_finished_trades(
+        config,
+        odds_client=odds_client,
+        table=table,
+    )
 
     signals = _find_signals(config, prices, now=now)
     rows = _signal_rows(signals)
@@ -182,7 +206,6 @@ def run_paper_log(
         _row_key(row): {field: row.get(field, "") for field in LIQUIDITY_FIELDS}
         for row in executable_rows
     }
-    table = dynamodb_table or _dynamodb_table(config)
     log_result = log_signals_to_dynamodb(
         table,
         executable_signals,
@@ -195,6 +218,8 @@ def run_paper_log(
         "sports": len(sports),
         "odds_rows": len(prices),
         "snapshot": snapshot,
+        "closing_update": _closing_result_dict(closing_update),
+        "settlement": _settlement_result_dict(settlement),
         "candidate_signals": len(signals),
         "liquidity_confirmed_signals": len(executable_signals),
         "paper_log": _log_result_dict(log_result),
@@ -229,6 +254,57 @@ def _find_signals(
     )
     signals = _filter_signals_by_max_edge(signals, max_edge=config.max_edge)
     return _unique_bet_signals(signals)
+
+
+def _find_closing_signals(
+    config: StrategyRunnerConfig,
+    prices,
+    *,
+    now: datetime,
+) -> list[ValueSignal]:
+    allowed_markets = {market.strip() for market in config.markets.split(",") if market.strip()}
+    prices = [price for price in prices if price.market_key in allowed_markets]
+    prices = _filter_prices_by_event_horizon(
+        prices,
+        max_event_days=config.closing_max_event_days,
+        now=now,
+    )
+    strategy = STRATEGIES[config.strategy]
+    return find_value_opportunities(
+        prices,
+        target_bookmakers=strategy["target_bookmakers"],
+        reference_bookmakers=strategy["reference_bookmakers"],
+        min_edge=-999,
+        max_age_seconds=config.max_age_seconds,
+        min_reference_books=config.min_reference_books,
+        allow_target_bookmakers_as_references=strategy["allow_target_bookmakers_as_references"],
+        reference_weights=strategy["reference_weights"],
+        target_commission_rates=strategy["target_commission_rates"],
+        now=now,
+    )
+
+
+def _settle_finished_trades(
+    config: StrategyRunnerConfig,
+    *,
+    odds_client: Any,
+    table: Any,
+) -> DynamoSettlementResult:
+    open_trades = list_open_trades(table)
+    sports = sorted({str(item["sport_key"]) for item in open_trades})
+    if not sports:
+        return DynamoSettlementResult(open_trades=0, matched_results=0, settled=0)
+    scores_payloads = [
+        odds_client.fetch_scores(sport=sport, days_from=config.scores_days_from)
+        for sport in sports
+    ]
+    winners = h2h_winners_from_scores(scores_payloads)
+    result = settle_results_in_dynamodb(table, winners)
+    return DynamoSettlementResult(
+        open_trades=len(open_trades),
+        matched_results=result.matched_results,
+        settled=result.settled,
+    )
 
 
 def _archive_odds_snapshot(
@@ -428,6 +504,22 @@ def _log_result_dict(result: DynamoPaperLogResult) -> dict[str, int]:
         "attempted": result.attempted,
         "inserted": result.inserted,
         "duplicates": result.duplicates,
+    }
+
+
+def _closing_result_dict(result: DynamoClosingUpdateResult) -> dict[str, int]:
+    return {
+        "open_trades": result.open_trades,
+        "matched": result.matched,
+        "updated": result.updated,
+    }
+
+
+def _settlement_result_dict(result: DynamoSettlementResult) -> dict[str, int]:
+    return {
+        "open_trades": result.open_trades,
+        "matched_results": result.matched_results,
+        "settled": result.settled,
     }
 
 
