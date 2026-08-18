@@ -75,6 +75,7 @@ def run_backtest(
     max_betfair_spread_pct: float | None = None,
     min_sharp_reference_books: int = 0,
     sharp_reference_bookmaker_titles: set[str] | None = None,
+    min_betfair_fair_edge: float | None = None,
 ) -> list[BacktestBet]:
     results = load_results(results_path)
     snapshots = load_historical_snapshots(historical_odds_path)
@@ -114,6 +115,7 @@ def run_backtest(
             max_betfair_spread_pct=max_betfair_spread_pct,
             min_sharp_reference_books=min_sharp_reference_books,
             sharp_reference_bookmaker_titles=sharp_reference_bookmaker_titles,
+            min_betfair_fair_edge=min_betfair_fair_edge,
         )
         if unique_events:
             signals = _unique_event_signals(signals)
@@ -376,8 +378,13 @@ def _filter_betfair_dislocation_signals(
     max_betfair_spread_pct: float | None,
     min_sharp_reference_books: int = 0,
     sharp_reference_bookmaker_titles: set[str] | None = None,
+    min_betfair_fair_edge: float | None = None,
 ) -> list[ValueSignal]:
-    if max_betfair_spread_pct is None and min_sharp_reference_books <= 0:
+    if (
+        max_betfair_spread_pct is None
+        and min_sharp_reference_books <= 0
+        and min_betfair_fair_edge is None
+    ):
         return signals
     filtered = []
     for signal in signals:
@@ -393,6 +400,11 @@ def _filter_betfair_dislocation_signals(
         if max_betfair_spread_pct is not None and (
             signal.betfair_back_lay_spread_pct is None
             or signal.betfair_back_lay_spread_pct > max_betfair_spread_pct
+        ):
+            continue
+        if min_betfair_fair_edge is not None and (
+            signal.betfair_fair_edge is None
+            or signal.betfair_fair_edge < min_betfair_fair_edge
         ):
             continue
         filtered.append(signal)

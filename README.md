@@ -269,6 +269,8 @@ least one complete sharp reference book per outcome. If The Odds API includes a
 matching lay market such as `h2h_lay`, the exported venue fair diagnostics use
 the target venue's back/lay midpoint in implied-probability space; otherwise
 they fall back to that venue's regular h2h win/draw/win price.
+Betfair target signals also require at least `0.5%` edge versus Betfair's own
+top-of-book fair value.
 
 Export the paper log:
 
@@ -378,6 +380,8 @@ The workflow now keeps one combined trade log:
 - Targets Matchbook, Smarkets, and Betfair Exchange prices.
 - Requires `1.5%` post-fee edge, at least 1 sharp reference book, and at most `10%`
   edge.
+- Requires Betfair target prices to beat Betfair top-of-book fair value by at
+  least `0.5%`.
 - Books only the best price when the same event/market/outcome appears on
   multiple exchanges.
 - Logs a nominal `1 GBP` paper stake for each selected trade.

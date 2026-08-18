@@ -66,6 +66,7 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
     assert strategy["target_commission_rates"]["betfair"] == pytest.approx(0.02)
     assert strategy["reference_weights"] == SHARPNESS_WEIGHTS
     assert strategy["min_sharp_reference_books"] == 1
+    assert strategy["min_betfair_fair_edge"] == pytest.approx(0.005)
 
 
 def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None:
@@ -374,6 +375,59 @@ def test_filter_strategy_rules_requires_sharp_reference_when_configured() -> Non
         [soft_only, sharp],
         {"min_sharp_reference_books": 1},
     ) == [sharp]
+
+
+def test_filter_strategy_rules_requires_betfair_fair_edge_for_betfair_only() -> None:
+    betfair_positive = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Betfair",
+        target_odds=4.2,
+        reference_fair_odds=4.0,
+        reference_probability=0.25,
+        edge=0.05,
+        reference_bookmakers=("Pinnacle",),
+        betfair_fair_edge=0.006,
+    )
+    betfair_negative = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-2",
+        event_name="Liverpool v Everton",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Everton",
+        target_bookmaker="Betfair",
+        target_odds=5.0,
+        reference_fair_odds=4.7,
+        reference_probability=0.2128,
+        edge=0.064,
+        reference_bookmakers=("Pinnacle",),
+        betfair_fair_edge=-0.01,
+    )
+    matchbook = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-3",
+        event_name="Leeds v Norwich",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Leeds",
+        target_bookmaker="Matchbook",
+        target_odds=2.2,
+        reference_fair_odds=2.1,
+        reference_probability=0.4762,
+        edge=0.0476,
+        reference_bookmakers=("Pinnacle",),
+        betfair_fair_edge=None,
+    )
+
+    assert _filter_signals_by_strategy_rules(
+        [betfair_negative, matchbook, betfair_positive],
+        {"min_betfair_fair_edge": 0.005},
+    ) == [matchbook, betfair_positive]
 
 
 def test_filter_prices_by_event_horizon_excludes_events_more_than_two_days_out() -> None:

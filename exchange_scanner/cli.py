@@ -117,6 +117,7 @@ STRATEGIES = {
         "reference_weights": SHARPNESS_WEIGHTS,
         "target_commission_rates": EXCHANGE_CLV_COMMISSION_RATES,
         "min_sharp_reference_books": 1,
+        "min_betfair_fair_edge": 0.005,
     },
 }
 
@@ -527,6 +528,7 @@ def backtest(args: argparse.Namespace) -> list[BacktestBet]:
         max_betfair_spread_pct=strategy.get("max_betfair_spread_pct"),
         min_sharp_reference_books=strategy.get("min_sharp_reference_books", 0),
         sharp_reference_bookmaker_titles=SHARP_REFERENCE_BOOKMAKER_TITLES,
+        min_betfair_fair_edge=strategy.get("min_betfair_fair_edge"),
     )
 
 
@@ -668,7 +670,12 @@ def _reference_weights_for_scan(
 def _filter_signals_by_strategy_rules(signals, strategy):
     max_betfair_spread_pct = strategy.get("max_betfair_spread_pct")
     min_sharp_reference_books = strategy.get("min_sharp_reference_books", 0)
-    if max_betfair_spread_pct is None and min_sharp_reference_books <= 0:
+    min_betfair_fair_edge = strategy.get("min_betfair_fair_edge")
+    if (
+        max_betfair_spread_pct is None
+        and min_sharp_reference_books <= 0
+        and min_betfair_fair_edge is None
+    ):
         return signals
     output = []
     for signal in signals:
@@ -680,6 +687,11 @@ def _filter_signals_by_strategy_rules(signals, strategy):
         if max_betfair_spread_pct is not None and (
             signal.betfair_back_lay_spread_pct is None
             or signal.betfair_back_lay_spread_pct > max_betfair_spread_pct
+        ):
+            continue
+        if min_betfair_fair_edge is not None and (
+            signal.betfair_fair_edge is None
+            or signal.betfair_fair_edge < min_betfair_fair_edge
         ):
             continue
         output.append(signal)
