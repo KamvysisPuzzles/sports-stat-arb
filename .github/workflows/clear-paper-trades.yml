@@ -1,0 +1,72 @@
+name: Clear Paper Trades
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type DELETE to clear every item from the paper trades DynamoDB table."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  clear:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_REGION: eu-west-2
+      PAPER_TRADES_TABLE: sports-stat-arb-paper-trades
+
+    steps:
+      - name: Confirm destructive action
+        run: |
+          if [ "${{ inputs.confirm }}" != "DELETE" ]; then
+            echo "Confirmation did not match DELETE; refusing to clear table." >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Clear DynamoDB paper trades
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install boto3
+          python - <<'PY'
+          import os
+
+          import boto3
+
+          table_name = os.environ["PAPER_TRADES_TABLE"]
+          region = os.environ["AWS_REGION"]
+          dynamodb = boto3.resource("dynamodb", region_name=region)
+          table = dynamodb.Table(table_name)
+
+          deleted = 0
+          scan_kwargs = {
+              "ProjectionExpression": "trade_id",
+          }
+          while True:
+              response = table.scan(**scan_kwargs)
+              items = response.get("Items", [])
+              with table.batch_writer() as batch:
+                  for item in items:
+                      batch.delete_item(Key={"trade_id": item["trade_id"]})
+                      deleted += 1
+              last_key = response.get("LastEvaluatedKey")
+              if not last_key:
+                  break
+              scan_kwargs["ExclusiveStartKey"] = last_key
+
+          print(f"Deleted {deleted} items from {table_name}.")
+          PY
