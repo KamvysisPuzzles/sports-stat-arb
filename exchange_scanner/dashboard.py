@@ -10,7 +10,7 @@ from typing import Any
 def dashboard_payload(
     table: Any,
     *,
-    filters: dict[str, str] | None = None,
+    filters: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
@@ -19,10 +19,13 @@ def dashboard_payload(
     filtered = _apply_filters(trades, filters)
     return {
         "generated_at": now.isoformat(),
-        "filters": {key: value for key, value in filters.items() if value},
+        "filters": {key: value for key, value in filters.items() if _filter_values(value)},
+        "filter_options": _filter_options(trades),
         "summary": _summary(filtered),
         "all_summary": _summary(trades),
         "venue_results": _venue_results(filtered),
+        "sport_results": _group_results(filtered, group_key="sport_family", label_key="sport"),
+        "league_results": _group_results(filtered, group_key="sport_key", label_key="league"),
         "trades": sorted(
             filtered,
             key=lambda item: item.get("logged_at", ""),
@@ -37,9 +40,10 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
     rows = payload["trades"][:200]
     generated = _escape(payload["generated_at"])
     active_filters = payload.get("filters", {})
+    filter_options = payload.get("filter_options", {})
     token = str(payload.get("token", ""))
     filter_label = (
-        ", ".join(f"{key}={value}" for key, value in active_filters.items())
+        ", ".join(f"{key}={', '.join(_filter_values(value))}" for key, value in active_filters.items())
         if active_filters
         else "none"
     )
@@ -113,6 +117,53 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       padding: 7px 10px;
       font-size: 13px;
     }}
+    .filter-panel {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 10px;
+      margin: 0 0 16px;
+      padding: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }}
+    .filter-group {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      align-content: start;
+    }}
+    .filter-group-title {{
+      flex-basis: 100%;
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .check {{
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+      color: var(--text);
+      font-size: 12px;
+    }}
+    .check input {{ margin: 0; }}
+    .filter-actions {{
+      display: flex;
+      gap: 8px;
+      align-items: end;
+    }}
+    button {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--text);
+      color: var(--bg);
+      padding: 7px 10px;
+      font: inherit;
+      cursor: pointer;
+    }}
     .table-wrap {{
       overflow-x: auto;
       border: 1px solid var(--line);
@@ -158,7 +209,10 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       <a href="{_href_attr(_filter_href(token, bookmaker='Betfair'))}">Betfair</a>
       <a href="{_href_attr(_filter_href(token, format='json'))}">JSON</a>
     </nav>
+    {_multi_filter_html(token, active_filters, filter_options)}
     {_venue_results_html(payload.get("venue_results", []))}
+    {_group_results_html("Results by Sport", payload.get("sport_results", []), "Sport")}
+    {_group_results_html("Results by League", payload.get("league_results", []), "League")}
     <div class="table-wrap">
       <table>
         <thead>
@@ -235,7 +289,7 @@ def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
 
 
 def _venue_results_html(venues: list[dict[str, Any]]) -> str:
-    rows = _venue_rows_html(venues)
+    rows = _group_rows_html(venues, label_key="venue")
     return f"""<section class="venue-section">
       <h2>Results by Venue</h2>
       <div class="table-wrap venue-wrap">
@@ -261,12 +315,38 @@ def _venue_results_html(venues: list[dict[str, Any]]) -> str:
     </section>"""
 
 
-def _venue_rows_html(venues: list[dict[str, Any]]) -> str:
-    if not venues:
-        return '<tr><td colspan="9">No venue results for the current filters.</td></tr>'
+def _group_results_html(title: str, rows: list[dict[str, Any]], label: str) -> str:
+    return f"""<section class="venue-section">
+      <h2>{_escape(title)}</h2>
+      <div class="table-wrap venue-wrap">
+        <table class="venue-table">
+          <thead>
+            <tr>
+              <th>{_escape(label)}</th>
+              <th>Trades</th>
+              <th>Open</th>
+              <th>Settled</th>
+              <th>Won/Lost</th>
+              <th>PnL</th>
+              <th>ROI</th>
+              <th>Median Liquidity</th>
+              <th>Avg CLV</th>
+            </tr>
+          </thead>
+          <tbody>
+            {_group_rows_html(rows, label_key=label.casefold())}
+          </tbody>
+        </table>
+      </div>
+    </section>"""
+
+
+def _group_rows_html(rows: list[dict[str, Any]], *, label_key: str) -> str:
+    if not rows:
+        return '<tr><td colspan="9">No results for the current filters.</td></tr>'
     return "\n".join(
         "<tr>"
-        f"<td>{_escape(row['venue'])}</td>"
+        f"<td>{_escape(row[label_key])}</td>"
         f"<td>{_escape(row['total_trades'])}</td>"
         f"<td>{_escape(row['open_trades'])}</td>"
         f"<td>{_escape(row['settled_trades'])}</td>"
@@ -276,8 +356,61 @@ def _venue_rows_html(venues: list[dict[str, Any]]) -> str:
         f"<td>{row['median_confirmed_liquidity_at_target']:.2f}</td>"
         f"<td class='{_class_for_number(row['average_clv'])}'>{row['average_clv']:.2%}</td>"
         "</tr>"
-        for row in venues
+        for row in rows
     )
+
+
+def _multi_filter_html(
+    token: str,
+    active_filters: dict[str, Any],
+    filter_options: dict[str, list[dict[str, str]]],
+) -> str:
+    sport_values = set(_filter_values(active_filters.get("sport")))
+    league_values = set(_filter_values(active_filters.get("league")))
+    status = _first_filter_value(active_filters.get("status"))
+    bookmaker = _first_filter_value(active_filters.get("bookmaker"))
+    format_value = _first_filter_value(active_filters.get("format"))
+    return f"""<form class="filter-panel" method="get">
+      <input type="hidden" name="token" value="{_escape(token)}">
+      {_hidden_input("status", status)}
+      {_hidden_input("bookmaker", bookmaker)}
+      {_hidden_input("format", format_value)}
+      <div class="filter-group">
+        <div class="filter-group-title">Sports</div>
+        {_checkboxes("sport", filter_options.get("sports", []), sport_values)}
+      </div>
+      <div class="filter-group">
+        <div class="filter-group-title">Leagues</div>
+        {_checkboxes("league", filter_options.get("leagues", []), league_values)}
+      </div>
+      <div class="filter-actions">
+        <button type="submit">Apply</button>
+        <a href="{_href_attr(_filter_href(token))}">Clear</a>
+      </div>
+    </form>"""
+
+
+def _checkboxes(
+    name: str,
+    options: list[dict[str, str]],
+    selected_values: set[str],
+) -> str:
+    if not options:
+        return '<span class="label">None</span>'
+    return "\n".join(
+        '<label class="check">'
+        f'<input type="checkbox" name="{_escape(name)}" value="{_escape(option["value"])}"'
+        f"{' checked' if option['value'] in selected_values else ''}>"
+        f"{_escape(option['label'])}"
+        "</label>"
+        for option in options
+    )
+
+
+def _hidden_input(name: str, value: str) -> str:
+    if not value:
+        return ""
+    return f'<input type="hidden" name="{_escape(name)}" value="{_escape(value)}">'
 
 
 def _filter_href(token: str, **params: str) -> str:
@@ -328,34 +461,61 @@ def _summary(trades: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _venue_results(trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    by_venue: dict[str, list[dict[str, Any]]] = {}
+    return _group_results(trades, group_key="target_bookmaker", label_key="venue")
+
+
+def _group_results(
+    trades: list[dict[str, Any]],
+    *,
+    group_key: str,
+    label_key: str,
+) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
     for trade in trades:
-        venue = str(trade.get("target_bookmaker") or "Unknown")
-        by_venue.setdefault(venue, []).append(trade)
+        label = _group_label(trade, group_key=group_key)
+        grouped.setdefault(label, []).append(trade)
 
     rows = []
-    for venue, venue_trades in by_venue.items():
-        summary = _summary(venue_trades)
+    for label, grouped_trades in grouped.items():
+        summary = _summary(grouped_trades)
         rows.append(
             {
-                "venue": venue,
+                label_key: label,
                 **summary,
             }
         )
     return sorted(
         rows,
-        key=lambda item: (item["settled_profit"], item["total_trades"], item["venue"]),
+        key=lambda item: (item["settled_profit"], item["total_trades"], item[label_key]),
         reverse=True,
     )
 
 
+def _group_label(trade: dict[str, Any], *, group_key: str) -> str:
+    if group_key == "sport_family":
+        return _pretty_label(str(trade.get("sport_family") or "unknown"))
+    if group_key == "sport_key":
+        return _pretty_label(str(trade.get("sport_key") or "unknown"))
+    return str(trade.get(group_key) or "Unknown")
+
+
+def _filter_options(trades: list[dict[str, Any]]) -> dict[str, list[dict[str, str]]]:
+    sports = sorted({str(item.get("sport_family") or "") for item in trades if item.get("sport_family")})
+    leagues = sorted({str(item.get("sport_key") or "") for item in trades if item.get("sport_key")})
+    return {
+        "sports": [{"value": value, "label": _pretty_label(value)} for value in sports],
+        "leagues": [{"value": value, "label": _pretty_label(value)} for value in leagues],
+    }
+
+
 def _apply_filters(
     trades: list[dict[str, Any]],
-    filters: dict[str, str],
+    filters: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    status = filters.get("status", "").casefold()
-    bookmaker = filters.get("bookmaker", "").casefold()
-    sport = filters.get("sport", "").casefold()
+    status = _first_filter_value(filters.get("status")).casefold()
+    bookmaker = _first_filter_value(filters.get("bookmaker")).casefold()
+    sports = {value.casefold() for value in _filter_values(filters.get("sport"))}
+    leagues = {value.casefold() for value in _filter_values(filters.get("league"))}
     output = trades
     if status:
         output = [item for item in output if str(item.get("status", "")).casefold() == status]
@@ -365,13 +525,18 @@ def _apply_filters(
             for item in output
             if bookmaker in str(item.get("target_bookmaker", "")).casefold()
         ]
-    if sport:
-        output = [item for item in output if sport in str(item.get("sport_key", "")).casefold()]
+    if sports:
+        output = [item for item in output if str(item.get("sport_family", "")).casefold() in sports]
+    if leagues:
+        output = [item for item in output if str(item.get("sport_key", "")).casefold() in leagues]
     return output
 
 
 def _normalise_item(item: dict[str, Any]) -> dict[str, Any]:
-    return {key: _jsonable(value) for key, value in item.items()}
+    normalised = {key: _jsonable(value) for key, value in item.items()}
+    sport_key = str(normalised.get("sport_key") or "")
+    normalised["sport_family"] = _sport_family(sport_key)
+    return normalised
 
 
 def _jsonable(value: Any) -> Any:
@@ -429,6 +594,29 @@ def _median(values) -> float:
     if len(items) % 2:
         return items[midpoint]
     return (items[midpoint - 1] + items[midpoint]) / 2
+
+
+def _filter_values(value: Any) -> list[str]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value if item not in {None, ""}]
+    return [str(value)]
+
+
+def _first_filter_value(value: Any) -> str:
+    values = _filter_values(value)
+    return values[0] if values else ""
+
+
+def _sport_family(sport_key: str) -> str:
+    if not sport_key:
+        return "unknown"
+    return sport_key.split("_", 1)[0]
+
+
+def _pretty_label(value: str) -> str:
+    return " ".join(word.upper() if len(word) <= 3 else word.title() for word in value.split("_"))
 
 
 def _escape(value: object) -> str:

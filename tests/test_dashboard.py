@@ -67,6 +67,25 @@ def trades():
     ]
 
 
+def cricket_trade():
+    return {
+        "trade_id": "paper#4",
+        "logged_at": "2026-08-18T13:00:00+00:00",
+        "sport_key": "cricket_caribbean_premier_league",
+        "event_name": "Saint Lucia Kings v Barbados Tridents",
+        "commence_time": "2026-08-18T23:00:00+00:00",
+        "outcome_name": "Saint Lucia Kings",
+        "target_bookmaker": "Betfair",
+        "target_odds": Decimal("2.5"),
+        "available_at_or_above_target": Decimal("50"),
+        "edge": Decimal("0.03"),
+        "target_clv": Decimal("0.01"),
+        "stake": Decimal("1"),
+        "status": "settled",
+        "profit": Decimal("1.45"),
+    }
+
+
 def test_dashboard_payload_summarises_and_filters_trades() -> None:
     payload = dashboard_payload(
         FakeTable(trades()),
@@ -79,6 +98,29 @@ def test_dashboard_payload_summarises_and_filters_trades() -> None:
     assert payload["all_summary"]["total_trades"] == 3
     assert payload["all_summary"]["median_confirmed_liquidity_at_target"] == 25.5
     assert payload["trades"][0]["target_bookmaker"] == "Matchbook"
+
+
+def test_dashboard_payload_filters_multiple_sports_and_leagues() -> None:
+    payload = dashboard_payload(
+        FakeTable([*trades(), cricket_trade()]),
+        filters={
+            "sport": ["soccer", "cricket"],
+            "league": ["cricket_caribbean_premier_league", "soccer_epl"],
+        },
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+
+    assert payload["summary"]["total_trades"] == 4
+    assert payload["filter_options"]["sports"] == [
+        {"value": "cricket", "label": "Cricket"},
+        {"value": "soccer", "label": "Soccer"},
+    ]
+    assert {"value": "soccer_epl", "label": "Soccer EPL"} in payload["filter_options"]["leagues"]
+    assert {row["sport"] for row in payload["sport_results"]} == {"Soccer", "Cricket"}
+    assert {row["league"] for row in payload["league_results"]} == {
+        "Soccer EPL",
+        "Cricket Caribbean Premier League",
+    }
 
 
 def test_dashboard_payload_includes_results_by_venue() -> None:
@@ -109,8 +151,12 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "Arsenal v Chelsea" in html
     assert "Liverpool v Everton" in html
     assert "Results by Venue" in html
+    assert "Results by Sport" in html
+    assert "Results by League" in html
     assert "Median Liquidity" in html
     assert "Smarkets" in html
+    assert 'name="sport" value="soccer"' in html
+    assert 'name="league" value="soccer_epl"' in html
     assert "token=secret&amp;status=open" in html
     assert "3.14" in html
 
@@ -142,3 +188,28 @@ def test_lambda_handler_returns_json(monkeypatch) -> None:
     body = json.loads(response["body"])
     assert body["summary"]["total_trades"] == 3
     assert body["venue_results"][0]["venue"] == "Matchbook"
+
+
+def test_lambda_handler_accepts_repeated_sport_and_league_params(monkeypatch) -> None:
+    monkeypatch.setenv("DASHBOARD_TOKEN", "secret")
+    monkeypatch.setenv("PAPER_TRADES_TABLE", "paper")
+    monkeypatch.setattr(
+        lambda_function,
+        "_dynamodb_table",
+        lambda name, region: FakeTable([*trades(), cricket_trade()]),
+    )
+
+    response = lambda_function.lambda_handler(
+        {
+            "rawQueryString": (
+                "token=secret&format=json&sport=cricket&sport=soccer"
+                "&league=cricket_caribbean_premier_league"
+            )
+        },
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    body = json.loads(response["body"])
+    assert body["summary"]["total_trades"] == 1
+    assert body["trades"][0]["sport_key"] == "cricket_caribbean_premier_league"

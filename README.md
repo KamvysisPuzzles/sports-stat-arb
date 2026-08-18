@@ -282,8 +282,9 @@ Important paper columns:
 The repository includes a small read-only dashboard Lambda for the DynamoDB paper
 trade table. It shows total trades, open/settled counts, win/loss record, settled
 PnL, ROI, average booked odds, median confirmed liquidity, CLV beat/miss/tie
-counts, and results by venue. The page also supports quick filters for open,
-settled, Matchbook, Betfair, sport key, and JSON output.
+counts, results by venue, results by sport, and results by league. The page also
+supports quick filters for open, settled, Matchbook, Betfair, multi-select sport
+and league inclusion, and JSON output.
 
 Required Lambda configuration:
 
@@ -311,7 +312,10 @@ status=open
 status=settled
 bookmaker=Matchbook
 bookmaker=Betfair
-sport=soccer_epl
+sport=soccer
+sport=cricket&sport=soccer
+league=soccer_epl
+league=soccer_epl&league=cricket_caribbean_premier_league
 format=json
 ```
 

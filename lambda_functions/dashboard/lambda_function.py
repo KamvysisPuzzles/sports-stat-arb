@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from urllib.parse import parse_qs
 
 from exchange_scanner.dashboard import (
     dashboard_json,
@@ -25,31 +26,57 @@ def lambda_handler(event, context):
     filters = {
         "status": params.get("status", ""),
         "bookmaker": params.get("bookmaker", ""),
-        "sport": params.get("sport", ""),
+        "sport": params.get("sport", []),
+        "league": params.get("league", []),
+        "format": params.get("format", ""),
     }
     payload = dashboard_payload(table, filters=filters)
     payload["token"] = token
-    if params.get("format", "").casefold() == "json":
+    if _first_param(params.get("format", "")).casefold() == "json":
         return _response(200, dashboard_json(payload), content_type="application/json")
     return _response(200, render_dashboard_html(payload), content_type="text/html; charset=utf-8")
 
 
-def _query_params(event) -> dict[str, str]:
+def _query_params(event) -> dict[str, object]:
     if not isinstance(event, dict):
         return {}
+    parsed: dict[str, object] = {}
+    if event.get("rawQueryString"):
+        parsed.update(
+            {
+                str(key): [str(item) for item in values if item]
+                for key, values in parse_qs(str(event["rawQueryString"]), keep_blank_values=False).items()
+            }
+        )
+    multi_params = event.get("multiValueQueryStringParameters") or {}
+    for key, values in multi_params.items():
+        parsed[str(key)] = [str(item) for item in values if item is not None]
     params = event.get("queryStringParameters") or {}
-    return {str(key): str(value) for key, value in params.items() if value is not None}
+    for key, value in params.items():
+        if value is None or key in parsed:
+            continue
+        parsed[str(key)] = str(value)
+    for key, value in list(parsed.items()):
+        if isinstance(value, list) and len(value) == 1:
+            parsed[key] = value[0]
+    return parsed
 
 
-def _token(event, params: dict[str, str]) -> str:
+def _token(event, params: dict[str, object]) -> str:
     if "token" in params:
-        return params["token"]
+        return _first_param(params["token"])
     headers = event.get("headers") if isinstance(event, dict) else {}
     headers = headers or {}
     for key, value in headers.items():
         if str(key).casefold() == "x-dashboard-token":
             return str(value)
     return ""
+
+
+def _first_param(value: object) -> str:
+    if isinstance(value, list):
+        return str(value[0]) if value else ""
+    return str(value or "")
 
 
 def _dynamodb_table(name: str, *, region: str):
