@@ -63,7 +63,7 @@ class StrategyRunnerConfig:
     max_api_requests: int = 80
     min_edge: float = 0.015
     max_edge: float = 0.10
-    min_reference_books: int = 3
+    min_reference_books: int = 1
     max_age_seconds: int = 900
     max_event_days: float = 2.0
     closing_max_event_days: float = 7.0
@@ -103,7 +103,7 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
         min_edge=float(event.get("min_edge") or env.get("MIN_EDGE") or 0.015),
         max_edge=float(event.get("max_edge") or env.get("MAX_EDGE") or 0.10),
         min_reference_books=int(
-            event.get("min_reference_books") or env.get("MIN_REFERENCE_BOOKS") or 3
+            event.get("min_reference_books") or env.get("MIN_REFERENCE_BOOKS") or 1
         ),
         max_age_seconds=int(event.get("max_age_seconds") or env.get("MAX_AGE_SECONDS") or 900),
         max_event_days=float(event.get("max_event_days") or env.get("MAX_EVENT_DAYS") or 2.0),

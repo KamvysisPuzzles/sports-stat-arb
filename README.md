@@ -225,7 +225,7 @@ scan-exchanges \
   --markets h2h,h2h_lay \
   --max-api-requests 80 \
   --min-edge 0.015 \
-  --min-reference-books 3 \
+  --min-reference-books 1 \
   --max-age-seconds 900 \
   --unique-bets > data/latest_opportunities.csv
 
@@ -256,8 +256,8 @@ with a manually supplied session token.
 
 The current `exchange-clv` strategy targets Matchbook, Smarkets, and Betfair
 Exchange prices against an equal-weight sharp reference set: Pinnacle, Betfair,
-Smarkets, and Matchbook. It requires at least three complete sharp reference
-books per outcome. If The Odds API includes a matching lay market such as
+Smarkets, and Matchbook. It requires at least one complete sharp reference
+book per outcome. If The Odds API includes a matching lay market such as
 `h2h_lay`, the exported venue fair diagnostics use the target venue's back/lay
 midpoint in implied-probability space; otherwise they fall back to that venue's
 regular h2h win/draw/win price.

@@ -358,7 +358,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-reference-books",
         type=int,
-        default=3,
+        default=1,
         help="Minimum reference bookmakers required per outcome for value mode.",
     )
     parser.add_argument(
