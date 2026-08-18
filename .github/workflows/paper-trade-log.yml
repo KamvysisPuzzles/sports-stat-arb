@@ -59,11 +59,11 @@ jobs:
           scan-exchanges \
             --strategy exchange-clv \
             --sports-profile "$SPORTS_PROFILE" \
-            --markets h2h \
+            --markets h2h,h2h_lay \
             --max-api-requests "$MAX_API_REQUESTS" \
             --min-edge 0.025 \
             --max-edge "$MAX_EDGE" \
-            --min-reference-books 5 \
+            --min-reference-books 3 \
             --max-age-seconds 900 \
             --store-odds-snapshot \
             --market-db "$MARKET_DB" \
@@ -168,11 +168,11 @@ jobs:
             --paper-db "$PAPER_DB" \
             --paper-update-closing \
             --sports-profile "$SPORTS_PROFILE" \
-            --markets h2h \
+            --markets h2h,h2h_lay \
             --max-api-requests "$MAX_API_REQUESTS" \
             --max-event-days 7 \
             --min-edge -999 \
-            --min-reference-books 5 \
+            --min-reference-books 3 \
             --max-age-seconds 900
 
       - name: Settle recent results

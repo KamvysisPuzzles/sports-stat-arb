@@ -59,10 +59,10 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
         "betfair_ex_uk",
         "betfair_ex_eu",
     }
-    assert strategy["reference_bookmakers"] is None
+    assert strategy["reference_bookmakers"] == SHARP_REFERENCE_BOOKMAKERS
     assert strategy["allow_target_bookmakers_as_references"] is True
     assert strategy["target_commission_rates"]["betfair"] == pytest.approx(0.02)
-    assert strategy["reference_weights"]["target venue fair value"] == pytest.approx(3.0)
+    assert strategy["reference_weights"] is None
 
 
 def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None:

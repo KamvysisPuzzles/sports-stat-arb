@@ -225,7 +225,7 @@ scan-exchanges \
   --markets h2h,h2h_lay \
   --max-api-requests 80 \
   --min-edge 0.025 \
-  --min-reference-books 5 \
+  --min-reference-books 3 \
   --max-age-seconds 900 \
   --unique-bets > data/latest_opportunities.csv
 
@@ -254,11 +254,13 @@ Certificate login is preferred because it creates a fresh Betfair session token
 per run. The workflow can also call Betfair `keepAlive` for short-term testing
 with a manually supplied session token.
 
-The current `exchange-clv` strategy also adds the target venue's own fair value
-as a `3.0` weight `Target Venue Fair Value` reference in the consensus. If The
-Odds API includes a matching lay market such as `h2h_lay`, the fair value uses
-the target venue's back/lay midpoint in implied-probability space; otherwise it
-falls back to that venue's regular h2h win/draw/win price.
+The current `exchange-clv` strategy targets Matchbook, Smarkets, and Betfair
+Exchange prices against an equal-weight sharp reference set: Pinnacle, Betfair,
+Smarkets, and Matchbook. It requires at least three complete sharp reference
+books per outcome. If The Odds API includes a matching lay market such as
+`h2h_lay`, the exported venue fair diagnostics use the target venue's back/lay
+midpoint in implied-probability space; otherwise they fall back to that venue's
+regular h2h win/draw/win price.
 
 Export the paper log:
 

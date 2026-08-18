@@ -57,13 +57,13 @@ class StrategyRunnerConfig:
     aws_region: str = "eu-west-2"
     odds_s3_prefix: str = "odds_snapshots"
     sports_profile: str = "matchbook-h2h-expanded"
-    markets: str = "h2h"
+    markets: str = "h2h,h2h_lay"
     regions: str = "uk,eu"
     strategy: str = "exchange-clv"
     max_api_requests: int = 80
     min_edge: float = 0.025
     max_edge: float = 0.10
-    min_reference_books: int = 5
+    min_reference_books: int = 3
     max_age_seconds: int = 900
     max_event_days: float = 2.0
     closing_max_event_days: float = 7.0
@@ -96,14 +96,14 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
         sports_profile=str(
             event.get("sports_profile") or env.get("SPORTS_PROFILE") or "matchbook-h2h-expanded"
         ),
-        markets=str(event.get("markets") or env.get("MARKETS") or "h2h"),
+        markets=str(event.get("markets") or env.get("MARKETS") or "h2h,h2h_lay"),
         regions=str(event.get("regions") or env.get("REGIONS") or "uk,eu"),
         strategy=str(event.get("strategy") or env.get("STRATEGY") or "exchange-clv"),
         max_api_requests=int(event.get("max_api_requests") or env.get("MAX_API_REQUESTS") or 80),
         min_edge=float(event.get("min_edge") or env.get("MIN_EDGE") or 0.025),
         max_edge=float(event.get("max_edge") or env.get("MAX_EDGE") or 0.10),
         min_reference_books=int(
-            event.get("min_reference_books") or env.get("MIN_REFERENCE_BOOKS") or 5
+            event.get("min_reference_books") or env.get("MIN_REFERENCE_BOOKS") or 3
         ),
         max_age_seconds=int(event.get("max_age_seconds") or env.get("MAX_AGE_SECONDS") or 900),
         max_event_days=float(event.get("max_event_days") or env.get("MAX_EVENT_DAYS") or 2.0),

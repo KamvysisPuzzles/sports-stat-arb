@@ -103,9 +103,9 @@ STRATEGIES = {
     },
     "exchange-clv": {
         "target_bookmakers": EXCHANGE_CLV_TARGET_BOOKMAKERS,
-        "reference_bookmakers": None,
+        "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
         "allow_target_bookmakers_as_references": True,
-        "reference_weights": {**SHARPNESS_WEIGHTS, "target venue fair value": 3.0},
+        "reference_weights": None,
         "target_commission_rates": EXCHANGE_CLV_COMMISSION_RATES,
     },
 }
