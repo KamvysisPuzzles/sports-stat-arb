@@ -52,6 +52,8 @@ class OutcomePrice:
     point: float | None
     odds: float
     last_update: datetime
+    exchange_lay_odds: float | None = None
+    exchange_spread_pct: float | None = None
 
     @property
     def comparable_outcome_name(self) -> str:
@@ -75,6 +77,9 @@ class ValueSignal:
     edge: float
     reference_bookmakers: tuple[str, ...]
     target_effective_odds: float | None = None
+    betfair_fair_odds: float | None = None
+    betfair_fair_edge: float | None = None
+    betfair_back_lay_spread_pct: float | None = None
 
     @property
     def effective_odds(self) -> float:
@@ -95,6 +100,9 @@ class ValueSignal:
             "reference_probability": self.reference_probability,
             "edge": self.edge,
             "reference_bookmakers": ", ".join(self.reference_bookmakers),
+            "betfair_fair_odds": self.betfair_fair_odds or "",
+            "betfair_fair_edge": self.betfair_fair_edge or "",
+            "betfair_back_lay_spread_pct": self.betfair_back_lay_spread_pct or "",
             "target_bookmaker_url": bookmaker_url(self.target_bookmaker),
             "event_search_url": bookmaker_event_search_url(self.target_bookmaker, self.event_name),
             "copy_search": f"{self.event_name} {self.outcome_name}",
@@ -246,6 +254,7 @@ def normalise_odds_api_events(events: list[dict[str, Any]]) -> list[OutcomePrice
 
         for bookmaker in event.get("bookmakers", []):
             last_update = _parse_time(bookmaker["last_update"])
+            lay_by_outcome = _exchange_lay_prices(bookmaker)
             rejected_exchange_backs = _wide_exchange_back_markets(bookmaker)
             for market in bookmaker.get("markets", []):
                 if market.get("key") == "h2h_lay":
@@ -269,12 +278,19 @@ def normalise_odds_api_events(events: list[dict[str, Any]]) -> list[OutcomePrice
                             point=point,
                             odds=float(outcome["price"]),
                             last_update=last_update,
+                            exchange_lay_odds=lay_by_outcome.get(
+                                (market["key"], outcome_name, point)
+                            ),
+                            exchange_spread_pct=_exchange_spread_or_none(
+                                float(outcome["price"]),
+                                lay_by_outcome.get((market["key"], outcome_name, point)),
+                            ),
                         )
                     )
     return prices
 
 
-def _wide_exchange_back_markets(bookmaker: dict[str, Any]) -> set[tuple[str, str, float | None]]:
+def _exchange_lay_prices(bookmaker: dict[str, Any]) -> dict[tuple[str, str, float | None], float]:
     markets = bookmaker.get("markets", [])
     lay_by_outcome: dict[tuple[str, str, float | None], float] = {}
     for market in markets:
@@ -285,7 +301,12 @@ def _wide_exchange_back_markets(bookmaker: dict[str, Any]) -> set[tuple[str, str
             lay_by_outcome[(back_market_key, outcome["name"], outcome.get("point"))] = float(
                 outcome["price"]
             )
+    return lay_by_outcome
 
+
+def _wide_exchange_back_markets(bookmaker: dict[str, Any]) -> set[tuple[str, str, float | None]]:
+    markets = bookmaker.get("markets", [])
+    lay_by_outcome = _exchange_lay_prices(bookmaker)
     rejected: set[tuple[str, str, float | None]] = set()
     for market in markets:
         market_key = str(market.get("key", ""))
@@ -307,6 +328,12 @@ def _exchange_spread(back_odds: float, lay_odds: float) -> float:
         return float("inf")
     midpoint = (back_odds + lay_odds) / 2
     return (lay_odds - back_odds) / midpoint
+
+
+def _exchange_spread_or_none(back_odds: float, lay_odds: float | None) -> float | None:
+    if lay_odds is None:
+        return None
+    return _exchange_spread(back_odds, lay_odds)
 
 
 def find_value_opportunities(
@@ -362,6 +389,22 @@ def find_value_opportunities(
                 for price in base_reference_prices
                 if _bookmaker_identity(price) != _bookmaker_identity(target)
             ]
+            target_venue_fair_odds = _target_venue_fair_odds(target)
+            external_fair_probabilities = _fair_probabilities(
+                reference_prices,
+                min_reference_books,
+                expected_outcomes=expected_outcomes,
+                reference_weights=reference_weights,
+            )
+            if target.comparable_outcome_name not in external_fair_probabilities:
+                continue
+            reference_prices.extend(
+                _target_venue_fair_value_reference_prices(
+                    market_prices,
+                    target,
+                    reference_weights=reference_weights,
+                )
+            )
             fair_probabilities = _fair_probabilities(
                 reference_prices,
                 min_reference_books,
@@ -402,10 +445,71 @@ def find_value_opportunities(
                         reference_probability=fair_probability,
                         edge=edge,
                         reference_bookmakers=references,
+                        betfair_fair_odds=target_venue_fair_odds,
+                        betfair_fair_edge=_betfair_fair_edge(
+                            target_effective_odds,
+                            target_venue_fair_odds,
+                        ),
+                        betfair_back_lay_spread_pct=target.exchange_spread_pct,
                     )
                 )
 
     return sorted(signals, key=lambda signal: signal.edge, reverse=True)
+
+
+def betfair_top_of_book_fair_odds(back_odds: float, lay_odds: float) -> float | None:
+    if back_odds <= 1 or lay_odds <= 1:
+        return None
+    fair_probability = ((1 / back_odds) + (1 / lay_odds)) / 2
+    if fair_probability <= 0:
+        return None
+    return 1 / fair_probability
+
+
+def _target_venue_fair_odds(price: OutcomePrice) -> float | None:
+    if price.exchange_lay_odds is None:
+        return price.odds
+    return betfair_top_of_book_fair_odds(price.odds, price.exchange_lay_odds)
+
+
+def _target_venue_fair_value_reference_prices(
+    market_prices: list[OutcomePrice],
+    target: OutcomePrice,
+    *,
+    reference_weights: dict[str, float] | None,
+) -> list[OutcomePrice]:
+    if not reference_weights or "target venue fair value" not in reference_weights:
+        return []
+    synthetic_prices = []
+    for price in market_prices:
+        if _bookmaker_identity(price) != _bookmaker_identity(target):
+            continue
+        fair_odds = _target_venue_fair_odds(price)
+        if fair_odds is None:
+            continue
+        synthetic_prices.append(
+            OutcomePrice(
+                bookmaker_key="target_venue_fair_value",
+                bookmaker_title="Target Venue Fair Value",
+                sport_key=price.sport_key,
+                event_id=price.event_id,
+                event_name=price.event_name,
+                commence_time=price.commence_time,
+                market_key=price.market_key,
+                market_name=price.market_name,
+                outcome_name=price.outcome_name,
+                point=price.point,
+                odds=fair_odds,
+                last_update=price.last_update,
+            )
+        )
+    return synthetic_prices
+
+
+def _betfair_fair_edge(effective_odds: float, fair_odds: float | None) -> float | None:
+    if fair_odds is None:
+        return None
+    return (effective_odds / fair_odds) - 1
 
 
 def effective_decimal_odds(decimal_odds: float, commission_rate: float = 0.0) -> float:

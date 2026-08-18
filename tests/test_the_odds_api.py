@@ -8,6 +8,7 @@ import pytest
 from exchange_scanner.the_odds_api import (
     TheOddsApiClient,
     TheOddsApiError,
+    betfair_top_of_book_fair_odds,
     bookmaker_url,
     effective_decimal_odds,
     find_value_opportunities,
@@ -93,6 +94,15 @@ def test_normalise_odds_api_events_skips_wide_exchange_back_prices() -> None:
 
     assert [price.outcome_name for price in prices] == ["Arsenal", "Chelsea"]
     assert {price.market_key for price in prices} == {"h2h"}
+    arsenal = next(price for price in prices if price.outcome_name == "Arsenal")
+    assert arsenal.exchange_lay_odds == 2.08
+    assert arsenal.exchange_spread_pct == pytest.approx(0.02926829)
+
+
+def test_betfair_top_of_book_fair_odds_uses_probability_midpoint() -> None:
+    fair_odds = betfair_top_of_book_fair_odds(4.0, 4.1)
+
+    assert fair_odds == pytest.approx(4.0493827)
 
 
 def test_filters_stale_prices() -> None:
@@ -731,6 +741,169 @@ def test_sharp_only_value_can_use_other_target_books_as_references() -> None:
         if signal.target_bookmaker == "Betfair" and signal.outcome_name == "Arsenal"
     )
     assert betfair_signal.reference_bookmakers == ("Pinnacle", "Smarkets")
+
+
+def test_target_venue_fair_value_can_be_weighted_into_reference_consensus() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "soccer_epl",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "betfair_ex_uk",
+                    "title": "Betfair",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.2},
+                                {"name": "Chelsea", "price": 1.8},
+                            ],
+                        },
+                        {
+                            "key": "h2h_lay",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.3},
+                                {"name": "Chelsea", "price": 1.9},
+                            ],
+                        },
+                    ],
+                },
+                {
+                    "key": "pinnacle",
+                    "title": "Pinnacle",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.0},
+                                {"name": "Chelsea", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "smarkets",
+                    "title": "Smarkets",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.0},
+                                {"name": "Chelsea", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+    prices = normalise_odds_api_events(events)
+    signals = find_value_opportunities(
+        prices,
+        target_bookmakers={"betfair_ex_uk"},
+        reference_bookmakers=None,
+        min_edge=0.02,
+        max_age_seconds=300,
+        min_reference_books=2,
+        allow_target_bookmakers_as_references=True,
+        reference_weights={"pinnacle": 1.0, "smarkets": 1.0, "target venue fair value": 3.0},
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )
+
+    assert len(signals) == 1
+    assert signals[0].reference_bookmakers == (
+        "Pinnacle",
+        "Smarkets",
+        "Target Venue Fair Value",
+    )
+    assert signals[0].betfair_fair_odds == pytest.approx(2.2488889)
+    assert signals[0].reference_probability == pytest.approx(0.4706965)
+    assert signals[0].edge == pytest.approx(0.03553236)
+
+
+def test_target_venue_fair_value_falls_back_to_h2h_price_without_lay() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "soccer_epl",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "betfair_ex_uk",
+                    "title": "Betfair",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.2},
+                                {"name": "Chelsea", "price": 1.8},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "pinnacle",
+                    "title": "Pinnacle",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.0},
+                                {"name": "Chelsea", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "smarkets",
+                    "title": "Smarkets",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.0},
+                                {"name": "Chelsea", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+    prices = normalise_odds_api_events(events)
+    signals = find_value_opportunities(
+        prices,
+        target_bookmakers={"betfair_ex_uk"},
+        reference_bookmakers=None,
+        min_edge=0.01,
+        max_age_seconds=300,
+        min_reference_books=2,
+        allow_target_bookmakers_as_references=True,
+        reference_weights={"pinnacle": 1.0, "smarkets": 1.0, "target venue fair value": 3.0},
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )
+
+    assert len(signals) == 1
+    assert signals[0].betfair_fair_odds == pytest.approx(2.2)
+    assert signals[0].reference_bookmakers == (
+        "Pinnacle",
+        "Smarkets",
+        "Target Venue Fair Value",
+    )
 
 
 def test_value_mode_supports_sharpness_weighted_reference_consensus() -> None:

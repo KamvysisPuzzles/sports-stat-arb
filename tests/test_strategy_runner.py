@@ -32,7 +32,7 @@ class FakeOddsClient:
                                 "key": "h2h",
                                 "outcomes": [
                                     {"name": "Arsenal", "price": 4.2},
-                                    {"name": "Chelsea", "price": 1.25},
+                                    {"name": "Chelsea", "price": 1.4},
                                 ],
                             }
                         ],
@@ -210,7 +210,7 @@ def test_run_paper_log_archives_snapshot_and_logs_liquidity_confirmed_trade(monk
     assert result["settlement"]["open_trades"] == 0
     assert odds_client.odds_calls == 1
     assert odds_client.score_calls == []
-    assert result["candidate_signals"] == 1
+    assert result["candidate_signals"] == 2
     assert result["liquidity_confirmed_signals"] == 1
     assert result["paper_log"]["inserted"] == 1
     assert result["summary"]["uploaded"] is True

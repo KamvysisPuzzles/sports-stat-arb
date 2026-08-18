@@ -17,6 +17,7 @@ from exchange_scanner.cli import (
     _american_odds,
     _filter_prices_by_event_horizon,
     _filter_signals_by_max_edge,
+    _filter_signals_by_strategy_rules,
     _fractional_odds,
     _recommended_value_stake,
     _sport_keys,
@@ -52,6 +53,7 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
 
     assert strategy["target_bookmakers"] == EXCHANGE_CLV_TARGET_BOOKMAKERS
     assert strategy["target_bookmakers"] == {
+        "betfair",
         "matchbook",
         "smarkets",
         "betfair_ex_uk",
@@ -60,6 +62,7 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
     assert strategy["reference_bookmakers"] is None
     assert strategy["allow_target_bookmakers_as_references"] is True
     assert strategy["target_commission_rates"]["betfair"] == pytest.approx(0.02)
+    assert strategy["reference_weights"]["target venue fair value"] == pytest.approx(3.0)
 
 
 def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None:
@@ -74,7 +77,6 @@ def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None
     assert "tennis_atp_cincinnati_open" in sports
     assert all("winner" not in sport for sport in sports)
     assert len(sports) <= 80
-
 
 def test_sports_profile_combines_with_explicit_sports_without_duplicates() -> None:
     args = Namespace(
@@ -220,6 +222,87 @@ def test_filter_signals_by_max_edge_excludes_suspicious_high_edges() -> None:
     )
 
     assert _filter_signals_by_max_edge([suspicious, clean], max_edge=0.10) == [clean]
+
+
+def test_filter_strategy_rules_can_reject_wide_betfair_spreads() -> None:
+    accepted = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Betfair",
+        target_odds=4.2,
+        reference_fair_odds=4.0,
+        reference_probability=0.25,
+        edge=0.05,
+        reference_bookmakers=("Pinnacle", "Smarkets"),
+        betfair_fair_odds=4.1,
+        betfair_fair_edge=0.02,
+        betfair_back_lay_spread_pct=0.025,
+    )
+    wide = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-2",
+        event_name="Liverpool v Everton",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Everton",
+        target_bookmaker="Betfair",
+        target_odds=5.0,
+        reference_fair_odds=4.7,
+        reference_probability=0.2128,
+        edge=0.064,
+        reference_bookmakers=("Pinnacle", "Smarkets"),
+        betfair_fair_odds=4.9,
+        betfair_fair_edge=0.03,
+        betfair_back_lay_spread_pct=0.08,
+    )
+
+    assert _filter_signals_by_strategy_rules(
+        [wide, accepted],
+        {
+            "max_betfair_spread_pct": 0.03,
+        },
+    ) == [accepted]
+
+
+def test_filter_strategy_rules_do_not_apply_betfair_spread_to_matchbook() -> None:
+    matchbook = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Matchbook",
+        target_odds=4.2,
+        reference_fair_odds=4.0,
+        reference_probability=0.25,
+        edge=0.05,
+        reference_bookmakers=("Pinnacle", "Smarkets"),
+    )
+    betfair_wide = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-2",
+        event_name="Liverpool v Everton",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Everton",
+        target_bookmaker="Betfair",
+        target_odds=5.0,
+        reference_fair_odds=4.7,
+        reference_probability=0.2128,
+        edge=0.064,
+        reference_bookmakers=("Pinnacle", "Smarkets"),
+        betfair_back_lay_spread_pct=0.08,
+    )
+
+    assert _filter_signals_by_strategy_rules(
+        [matchbook, betfair_wide],
+        {"max_betfair_spread_pct": 0.03},
+    ) == [matchbook]
 
 
 def test_filter_prices_by_event_horizon_excludes_events_more_than_two_days_out() -> None:

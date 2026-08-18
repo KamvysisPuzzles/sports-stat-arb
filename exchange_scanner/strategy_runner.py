@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from exchange_scanner.cli import (
+    BETFAIR_TARGET_BOOKMAKERS,
     SPORT_PROFILES,
     STRATEGIES,
     _filter_prices_by_event_horizon,
@@ -72,6 +73,7 @@ class StrategyRunnerConfig:
     matchbook_minimum_liquidity: float = 2.0
     betfair_lambda_function_name: str = ""
     use_betfair_lambda: bool = True
+    max_betfair_spread_pct: float | None = None
 
 
 def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
@@ -127,6 +129,9 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
         ),
         use_betfair_lambda=_bool(
             event.get("use_betfair_lambda", env.get("USE_BETFAIR_LAMBDA", "true"))
+        ),
+        max_betfair_spread_pct=_optional_float(
+            event.get("max_betfair_spread_pct") or env.get("MAX_BETFAIR_SPREAD_PCT")
         ),
     )
 
@@ -367,6 +372,11 @@ def _find_signals(
         now=now,
     )
     strategy = STRATEGIES[config.strategy]
+    max_betfair_spread_pct = (
+        config.max_betfair_spread_pct
+        if config.max_betfair_spread_pct is not None
+        else strategy.get("max_betfair_spread_pct")
+    )
     signals = find_value_opportunities(
         prices,
         target_bookmakers=strategy["target_bookmakers"],
@@ -378,6 +388,10 @@ def _find_signals(
         reference_weights=strategy["reference_weights"],
         target_commission_rates=strategy["target_commission_rates"],
         now=now,
+    )
+    signals = _filter_betfair_dislocation_signals(
+        signals,
+        max_betfair_spread_pct=max_betfair_spread_pct,
     )
     signals = _filter_signals_by_max_edge(signals, max_edge=config.max_edge)
     return _unique_bet_signals(signals)
@@ -409,6 +423,27 @@ def _find_closing_signals(
         target_commission_rates=strategy["target_commission_rates"],
         now=now,
     )
+
+
+def _filter_betfair_dislocation_signals(
+    signals: list[ValueSignal],
+    *,
+    max_betfair_spread_pct: float | None,
+) -> list[ValueSignal]:
+    if max_betfair_spread_pct is None:
+        return signals
+    filtered = []
+    for signal in signals:
+        if signal.target_bookmaker.casefold() not in BETFAIR_TARGET_BOOKMAKERS:
+            filtered.append(signal)
+            continue
+        if max_betfair_spread_pct is not None and (
+            signal.betfair_back_lay_spread_pct is None
+            or signal.betfair_back_lay_spread_pct > max_betfair_spread_pct
+        ):
+            continue
+        filtered.append(signal)
+    return filtered
 
 
 def _settle_finished_trades(
@@ -546,6 +581,9 @@ def _signal_row(signal: ValueSignal) -> dict[str, str]:
         "reference_probability": f"{signal.reference_probability:.4f}",
         "edge": f"{signal.edge:.4f}",
         "reference_bookmakers": ", ".join(signal.reference_bookmakers),
+        "betfair_fair_odds": _format_optional(signal.betfair_fair_odds),
+        "betfair_fair_edge": _format_optional(signal.betfair_fair_edge),
+        "betfair_back_lay_spread_pct": _format_optional(signal.betfair_back_lay_spread_pct),
     }
 
 
@@ -655,6 +693,12 @@ def _float(value: Any) -> float:
         return float(value or 0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _optional_float(value: Any) -> float | None:
+    if value in {None, ""}:
+        return None
+    return float(value)
 
 
 def _average(values) -> float:

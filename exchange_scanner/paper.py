@@ -46,6 +46,9 @@ class PaperTrade:
     best_lay_odds: float | None
     best_lay_available: float | None
     back_lay_spread_pct: float | None
+    betfair_fair_odds: float | None
+    betfair_fair_edge: float | None
+    betfair_back_lay_spread_pct: float | None
 
     @property
     def target_clv(self) -> float | None:
@@ -91,6 +94,9 @@ def init_paper_db(path: Path) -> None:
                 best_lay_odds REAL,
                 best_lay_available REAL,
                 back_lay_spread_pct REAL,
+                betfair_fair_odds REAL,
+                betfair_fair_edge REAL,
+                betfair_back_lay_spread_pct REAL,
                 UNIQUE(event_id, market_key, outcome_name)
             )
             """
@@ -108,6 +114,9 @@ def init_paper_db(path: Path) -> None:
                 "best_lay_odds": "REAL",
                 "best_lay_available": "REAL",
                 "back_lay_spread_pct": "REAL",
+                "betfair_fair_odds": "REAL",
+                "betfair_fair_edge": "REAL",
+                "betfair_back_lay_spread_pct": "REAL",
             },
         )
 
@@ -142,6 +151,9 @@ def log_signals(
                     reference_probability,
                     edge,
                     reference_bookmakers,
+                    betfair_fair_odds,
+                    betfair_fair_edge,
+                    betfair_back_lay_spread_pct,
                     stake,
                     matchbook_event_id,
                     matchbook_market_id,
@@ -153,7 +165,7 @@ def log_signals(
                     best_lay_odds,
                     best_lay_available,
                     back_lay_spread_pct
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     logged_at.isoformat(),
@@ -169,6 +181,9 @@ def log_signals(
                     signal.reference_probability,
                     signal.edge,
                     ", ".join(signal.reference_bookmakers),
+                    signal.betfair_fair_odds,
+                    signal.betfair_fair_edge,
+                    signal.betfair_back_lay_spread_pct,
                     stake,
                     _empty_to_none(liquidity.get("matchbook_event_id")),
                     _empty_to_none(liquidity.get("matchbook_market_id")),
@@ -404,6 +419,9 @@ def _trade_from_row(row: sqlite3.Row) -> PaperTrade:
         best_lay_odds=_optional_float(row["best_lay_odds"]),
         best_lay_available=_optional_float(row["best_lay_available"]),
         back_lay_spread_pct=_optional_float(row["back_lay_spread_pct"]),
+        betfair_fair_odds=_optional_float(row["betfair_fair_odds"]),
+        betfair_fair_edge=_optional_float(row["betfair_fair_edge"]),
+        betfair_back_lay_spread_pct=_optional_float(row["betfair_back_lay_spread_pct"]),
     )
 
 

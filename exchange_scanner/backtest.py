@@ -72,6 +72,7 @@ def run_backtest(
     allow_target_bookmakers_as_references: bool = False,
     reference_weights: dict[str, float] | None = None,
     target_commission_rates: dict[str, float] | None = None,
+    max_betfair_spread_pct: float | None = None,
 ) -> list[BacktestBet]:
     results = load_results(results_path)
     snapshots = load_historical_snapshots(historical_odds_path)
@@ -105,6 +106,10 @@ def run_backtest(
             reference_weights=reference_weights,
             target_commission_rates=target_commission_rates,
             now=snapshot.fetched_at,
+        )
+        signals = _filter_betfair_dislocation_signals(
+            signals,
+            max_betfair_spread_pct=max_betfair_spread_pct,
         )
         if unique_events:
             signals = _unique_event_signals(signals)
@@ -359,6 +364,27 @@ def _closing_line_for_signal(
                 )
 
     return _ClosingLine()
+
+
+def _filter_betfair_dislocation_signals(
+    signals: list[ValueSignal],
+    *,
+    max_betfair_spread_pct: float | None,
+) -> list[ValueSignal]:
+    if max_betfair_spread_pct is None:
+        return signals
+    filtered = []
+    for signal in signals:
+        if signal.target_bookmaker.casefold() not in {"betfair", "betfair_ex_uk", "betfair_ex_eu"}:
+            filtered.append(signal)
+            continue
+        if max_betfair_spread_pct is not None and (
+            signal.betfair_back_lay_spread_pct is None
+            or signal.betfair_back_lay_spread_pct > max_betfair_spread_pct
+        ):
+            continue
+        filtered.append(signal)
+    return filtered
 
 
 def _daily_decision_snapshots(

@@ -222,7 +222,7 @@ paper stake.
 scan-exchanges \
   --strategy exchange-clv \
   --sports-profile matchbook-h2h-expanded \
-  --markets h2h \
+  --markets h2h,h2h_lay \
   --max-api-requests 80 \
   --min-edge 0.025 \
   --min-reference-books 5 \
@@ -253,6 +253,12 @@ credentials or a temporary `BETFAIR_SESSION_TOKEN`; otherwise they are marked
 Certificate login is preferred because it creates a fresh Betfair session token
 per run. The workflow can also call Betfair `keepAlive` for short-term testing
 with a manually supplied session token.
+
+The current `exchange-clv` strategy also adds the target venue's own fair value
+as a `3.0` weight `Target Venue Fair Value` reference in the consensus. If The
+Odds API includes a matching lay market such as `h2h_lay`, the fair value uses
+the target venue's back/lay midpoint in implied-probability space; otherwise it
+falls back to that venue's regular h2h win/draw/win price.
 
 Export the paper log:
 

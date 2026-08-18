@@ -231,6 +231,15 @@ def paper_item(
         "edge": _decimal(signal.edge),
         "reference_bookmakers": list(signal.reference_bookmakers),
         "reference_bookmakers_text": ", ".join(signal.reference_bookmakers),
+        "betfair_fair_odds": _decimal(signal.betfair_fair_odds)
+        if signal.betfair_fair_odds is not None
+        else "",
+        "betfair_fair_edge": _decimal(signal.betfair_fair_edge)
+        if signal.betfair_fair_edge is not None
+        else "",
+        "betfair_back_lay_spread_pct": _decimal(signal.betfair_back_lay_spread_pct)
+        if signal.betfair_back_lay_spread_pct is not None
+        else "",
         "stake": _decimal(stake),
         "status": "open",
         "execution_mode": "paper",

@@ -236,6 +236,8 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
             <th>Liquidity</th>
             <th>Edge</th>
             <th>CLV</th>
+            <th>Venue Fair Edge</th>
+            <th>Venue Spread</th>
             <th>Profit</th>
             <th>Starts</th>
           </tr>
@@ -280,7 +282,7 @@ def _metric(label: str, value: object, extra: str = "") -> str:
 
 def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
     if not rows:
-        return '<tr><td colspan="11">No trades match the current filters.</td></tr>'
+        return '<tr><td colspan="13">No trades match the current filters.</td></tr>'
     return "\n".join(
         "<tr>"
         f"<td>{_short_time(row.get('logged_at'))}</td>"
@@ -292,6 +294,8 @@ def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
         f"<td>{_format_number(row.get('available_at_or_above_target'))}</td>"
         f"<td>{_format_pct(row.get('edge'))}</td>"
         f"<td>{_format_pct(row.get('target_clv'))}</td>"
+        f"<td>{_format_pct(row.get('betfair_fair_edge'))}</td>"
+        f"<td>{_format_pct(row.get('betfair_back_lay_spread_pct'))}</td>"
         f"<td>{_format_number(row.get('profit'))}</td>"
         f"<td>{_short_time(row.get('commence_time'))}</td>"
         "</tr>"
@@ -661,7 +665,10 @@ def _sport_family(sport_key: str) -> str:
 
 
 def _pretty_label(value: str) -> str:
-    return " ".join(word.upper() if len(word) <= 3 else word.title() for word in value.split("_"))
+    return " ".join(
+        word.upper() if len(word) <= 3 else word.title()
+        for word in value.replace("-", "_").split("_")
+    )
 
 
 def _escape(value: object) -> str:

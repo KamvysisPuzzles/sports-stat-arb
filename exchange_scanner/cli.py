@@ -46,11 +46,16 @@ MATCHBOOK_TARGET_BOOKMAKERS = {
     "matchbook",
 }
 
+BETFAIR_TARGET_BOOKMAKERS = {
+    "betfair",
+    "betfair_ex_uk",
+    "betfair_ex_eu",
+}
+
 EXCHANGE_CLV_TARGET_BOOKMAKERS = {
     "matchbook",
     "smarkets",
-    "betfair_ex_uk",
-    "betfair_ex_eu",
+    *BETFAIR_TARGET_BOOKMAKERS,
 }
 
 SHARPNESS_WEIGHTS = {
@@ -100,7 +105,7 @@ STRATEGIES = {
         "target_bookmakers": EXCHANGE_CLV_TARGET_BOOKMAKERS,
         "reference_bookmakers": None,
         "allow_target_bookmakers_as_references": True,
-        "reference_weights": SHARPNESS_WEIGHTS,
+        "reference_weights": {**SHARPNESS_WEIGHTS, "target venue fair value": 3.0},
         "target_commission_rates": EXCHANGE_CLV_COMMISSION_RATES,
     },
 }
@@ -508,6 +513,7 @@ def backtest(args: argparse.Namespace) -> list[BacktestBet]:
         ],
         reference_weights=strategy["reference_weights"],
         target_commission_rates=strategy["target_commission_rates"],
+        max_betfair_spread_pct=strategy.get("max_betfair_spread_pct"),
     )
 
 
@@ -598,6 +604,7 @@ def scan_the_odds_api(args: argparse.Namespace):
         reference_weights=reference_weights,
         target_commission_rates=strategy["target_commission_rates"],
     )
+    signals = _filter_signals_by_strategy_rules(signals, strategy)
     if not getattr(args, "paper_update_closing", False):
         signals = _filter_signals_by_max_edge(signals, max_edge=getattr(args, "max_edge", 0.10))
     if getattr(args, "unique_events", False):
@@ -624,6 +631,28 @@ def _reference_weights_for_scan(args: argparse.Namespace, strategy, allowed_mark
     merged_weights = dict(strategy["reference_weights"] or {"*": 0.20})
     merged_weights.update(learned_weights)
     return merged_weights
+
+
+def _filter_signals_by_strategy_rules(signals, strategy):
+    max_betfair_spread_pct = strategy.get("max_betfair_spread_pct")
+    if max_betfair_spread_pct is None:
+        return signals
+    output = []
+    for signal in signals:
+        if not _is_betfair_signal(signal):
+            output.append(signal)
+            continue
+        if max_betfair_spread_pct is not None and (
+            signal.betfair_back_lay_spread_pct is None
+            or signal.betfair_back_lay_spread_pct > max_betfair_spread_pct
+        ):
+            continue
+        output.append(signal)
+    return output
+
+
+def _is_betfair_signal(signal) -> bool:
+    return signal.target_bookmaker.casefold() in BETFAIR_TARGET_BOOKMAKERS
 
 
 def _filter_signals_by_max_edge(signals, *, max_edge: float):
@@ -748,6 +777,9 @@ def write_backtest_csv(bets: list[BacktestBet]) -> None:
         "reference_fair_odds",
         "edge",
         "reference_bookmakers",
+        "betfair_fair_odds",
+        "betfair_fair_edge",
+        "betfair_back_lay_spread_pct",
         "stake",
         "result",
         "won",
@@ -894,6 +926,12 @@ def _paper_row(trade: PaperTrade) -> dict[str, str | float | int | bool]:
         "reference_fair_odds": f"{trade.reference_fair_odds:.4f}",
         "edge": f"{trade.edge:.4f}",
         "reference_bookmakers": trade.reference_bookmakers,
+        "betfair_fair_odds": _format_optional_number(trade.betfair_fair_odds, decimals=4),
+        "betfair_fair_edge": _format_optional_number(trade.betfair_fair_edge, decimals=4),
+        "betfair_back_lay_spread_pct": _format_optional_number(
+            trade.betfair_back_lay_spread_pct,
+            decimals=4,
+        ),
         "stake": f"{trade.stake:.2f}",
         "matchbook_event_id": trade.matchbook_event_id or "",
         "matchbook_market_id": trade.matchbook_market_id or "",

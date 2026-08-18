@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 from urllib.parse import parse_qs
 
@@ -92,5 +91,5 @@ def _response(status_code: int, body: str, *, content_type: str) -> dict[str, ob
             "Content-Type": content_type,
             "Cache-Control": "no-store",
         },
-        "body": body if content_type != "application/json" else body,
+        "body": body,
     }
