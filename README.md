@@ -277,6 +277,56 @@ Important paper columns:
 - `closing_edge`: original paper price versus closing sharp fair odds.
 - `positive_closing_edge`: true when the original value still exists at close.
 
+## AWS Paper Trade Dashboard
+
+The repository includes a small read-only dashboard Lambda for the DynamoDB paper
+trade table. It shows total trades, open/settled counts, win/loss record, settled
+PnL, ROI, average booked odds, average confirmed liquidity, and CLV beat/miss/tie
+counts. The page also supports quick filters for open, settled, Matchbook,
+Betfair, sport key, and JSON output.
+
+Required Lambda configuration:
+
+```text
+Handler: lambda_function.lambda_handler
+Runtime: python3.11
+Environment:
+  DASHBOARD_TOKEN=<unguessable shared token>
+  PAPER_TRADES_TABLE=sports-stat-arb-paper-trades
+IAM:
+  dynamodb:Scan on the paper trades table
+```
+
+Expose it with either a Lambda Function URL or API Gateway HTTP API. Open the
+dashboard with:
+
+```text
+https://<dashboard-url>/?token=<DASHBOARD_TOKEN>
+```
+
+Useful query parameters:
+
+```text
+status=open
+status=settled
+bookmaker=Matchbook
+bookmaker=Betfair
+sport=soccer_epl
+format=json
+```
+
+Deploy updates from GitHub Actions by running the `Deploy Dashboard Lambda`
+workflow. Configure these repository secrets first:
+
+```text
+AWS_ROLE_ARN
+DASHBOARD_LAMBDA_FUNCTION_NAME
+LAMBDA_DEPLOY_BUCKET
+```
+
+`ODDS_S3_BUCKET` can be used instead of `LAMBDA_DEPLOY_BUCKET` if you want to
+reuse the existing odds storage bucket for Lambda deployment zips.
+
 ## GitHub Actions Live Test
 
 The repository includes `.github/workflows/paper-trade-log.yml` for unattended

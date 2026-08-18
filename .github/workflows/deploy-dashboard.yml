@@ -1,0 +1,81 @@
+name: Deploy Dashboard Lambda
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_REGION: eu-west-2
+      DASHBOARD_LAMBDA_FUNCTION_NAME: ${{ secrets.DASHBOARD_LAMBDA_FUNCTION_NAME }}
+      LAMBDA_DEPLOY_BUCKET: ${{ secrets.LAMBDA_DEPLOY_BUCKET }}
+      ODDS_S3_BUCKET: ${{ secrets.ODDS_S3_BUCKET }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Configure AWS credentials
+        if: ${{ env.AWS_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build Lambda package
+        run: |
+          rm -rf /tmp/dashboard_lambda_package /tmp/dashboard_lambda.zip
+          mkdir -p /tmp/dashboard_lambda_package/exchange_scanner
+          cp exchange_scanner/dashboard.py /tmp/dashboard_lambda_package/exchange_scanner/dashboard.py
+          touch /tmp/dashboard_lambda_package/exchange_scanner/__init__.py
+          cp lambda_functions/dashboard/lambda_function.py /tmp/dashboard_lambda_package/lambda_function.py
+          (cd /tmp/dashboard_lambda_package && zip -r /tmp/dashboard_lambda.zip .)
+          python - <<'PY'
+          from pathlib import Path
+
+          zip_path = Path("/tmp/dashboard_lambda.zip")
+          print(f"dashboard_lambda.zip size: {zip_path.stat().st_size / 1024:.1f} KB")
+          PY
+
+      - name: Deploy Lambda package
+        run: |
+          deploy_bucket="${LAMBDA_DEPLOY_BUCKET:-$ODDS_S3_BUCKET}"
+          if [ -z "$deploy_bucket" ]; then
+            echo "Missing LAMBDA_DEPLOY_BUCKET or ODDS_S3_BUCKET secret." >&2
+            exit 1
+          fi
+          if [ -z "$DASHBOARD_LAMBDA_FUNCTION_NAME" ]; then
+            echo "Missing DASHBOARD_LAMBDA_FUNCTION_NAME secret." >&2
+            exit 1
+          fi
+          deploy_key="lambda_deployments/dashboard-${GITHUB_SHA}.zip"
+          aws s3 cp /tmp/dashboard_lambda.zip "s3://${deploy_bucket}/${deploy_key}"
+          aws lambda update-function-code \
+            --region "$AWS_REGION" \
+            --function-name "$DASHBOARD_LAMBDA_FUNCTION_NAME" \
+            --s3-bucket "$deploy_bucket" \
+            --s3-key "$deploy_key" \
+            > /tmp/dashboard_update_code.json
+          aws lambda wait function-updated \
+            --region "$AWS_REGION" \
+            --function-name "$DASHBOARD_LAMBDA_FUNCTION_NAME"
+          aws lambda update-function-configuration \
+            --region "$AWS_REGION" \
+            --function-name "$DASHBOARD_LAMBDA_FUNCTION_NAME" \
+            --handler lambda_function.lambda_handler \
+            --runtime python3.11 \
+            --timeout 30 \
+            --memory-size 256 \
+            > /tmp/dashboard_update_config.json
+          aws lambda wait function-updated \
+            --region "$AWS_REGION" \
+            --function-name "$DASHBOARD_LAMBDA_FUNCTION_NAME"
