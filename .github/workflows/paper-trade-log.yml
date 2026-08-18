@@ -65,6 +65,7 @@ jobs:
             --max-edge "$MAX_EDGE" \
             --min-reference-books 1 \
             --max-age-seconds 900 \
+            --max-event-days 4 \
             --store-odds-snapshot \
             --market-db "$MARKET_DB" \
             --unique-bets \

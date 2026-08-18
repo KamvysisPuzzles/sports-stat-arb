@@ -375,7 +375,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-event-days",
         type=float,
-        default=2.0,
+        default=4.0,
         help="For The Odds API scans, ignore events commencing more than this many days from now.",
     )
     parser.add_argument(

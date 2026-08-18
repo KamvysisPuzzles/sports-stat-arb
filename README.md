@@ -88,7 +88,7 @@ The default scan uses:
 --sports-profile matchbook-h2h-expanded
 --regions uk,eu
 --markets h2h
---max-event-days 2
+--max-event-days 4
 ```
 
 For paper staking, pass a bankroll:
