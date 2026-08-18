@@ -394,13 +394,13 @@ settle-results
 
 Credit estimate for the deployed wider profile:
 
-- Candidate scan: about 73 credits per run.
-- Closing update: about 73 credits per run.
+- Candidate scan: about 75 credits per run.
+- Closing update: about 75 credits per run.
 - Result settlement: 2 credits per sport with open trades.
 
 The deployed workflow uses the `matchbook-h2h-expanded` profile. It scans h2h
-every hour and updates closing values every 2 hours. With the current 73-sport
-profile, base odds usage is roughly `78,840` credits per 30-day month before
+every hour and updates closing values every 2 hours. With the current 75-sport
+profile, base odds usage is roughly `81,000` credits per 30-day month before
 result settlement.
 
 Sharp books are treated as a reference-price proxy, not as guaranteed truth. The

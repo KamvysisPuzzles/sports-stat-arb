@@ -69,6 +69,8 @@ def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None
     assert "baseball_mlb" in sports
     assert "basketball_nba" in sports
     assert "icehockey_nhl" in sports
+    assert "soccer_league_of_ireland" in sports
+    assert "soccer_switzerland_superleague" in sports
     assert "tennis_atp_cincinnati_open" in sports
     assert all("winner" not in sport for sport in sports)
     assert len(sports) <= 80
