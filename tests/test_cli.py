@@ -8,6 +8,7 @@ import pytest
 
 from exchange_scanner.bookmaker_links import EventPageResolution
 from exchange_scanner.cli import (
+    ACTIVE_H2H_PROFILE,
     EXCHANGE_CLV_TARGET_BOOKMAKERS,
     MATCHBOOK_TARGET_BOOKMAKERS,
     SHARP_REFERENCE_BOOKMAKERS,
@@ -23,6 +24,7 @@ from exchange_scanner.cli import (
     _sport_keys,
     _unique_bet_signals,
     _unique_event_signals,
+    active_h2h_sports,
     scan_the_odds_api,
     write_value_csv,
 )
@@ -89,6 +91,38 @@ def test_sports_profile_combines_with_explicit_sports_without_duplicates() -> No
 
     assert sports.count("soccer_efl_champ") == 1
     assert "soccer_epl" in sports
+
+
+def test_active_h2h_profile_keeps_active_non_outright_sports() -> None:
+    sports = active_h2h_sports(
+        [
+            {"key": "basketball_nba", "active": True},
+            {"key": "basketball_nba_championship_winner", "active": True},
+            {"key": "politics_us_presidential_election_winner", "active": True},
+            {"key": "soccer_uefa_champs_league", "active": False},
+        ]
+    )
+
+    assert sports == ["basketball_nba"]
+
+
+def test_active_h2h_profile_uses_live_sports_client() -> None:
+    class FakeOddsClient:
+        def fetch_sports(self):
+            return [
+                {"key": "basketball_nba", "active": True},
+                {"key": "baseball_mlb_world_series_winner", "active": True},
+            ]
+
+    args = Namespace(
+        sports_profile=ACTIVE_H2H_PROFILE,
+        sports="soccer_epl,basketball_nba",
+        sport="football",
+    )
+
+    sports = _sport_keys(args, odds_client=FakeOddsClient())
+
+    assert sports == ["basketball_nba", "soccer_epl"]
 
 
 def test_unique_event_signals_keeps_highest_edge_per_event() -> None:

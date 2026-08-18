@@ -12,12 +12,14 @@ from pathlib import Path
 from typing import Any
 
 from exchange_scanner.cli import (
+    ACTIVE_H2H_PROFILE,
     BETFAIR_TARGET_BOOKMAKERS,
     SPORT_PROFILES,
     STRATEGIES,
     _filter_prices_by_event_horizon,
     _filter_signals_by_max_edge,
     _unique_bet_signals,
+    active_h2h_sports,
 )
 from exchange_scanner.dynamodb_paper import (
     LIQUIDITY_FIELDS,
@@ -56,11 +58,11 @@ class StrategyRunnerConfig:
     odds_s3_bucket: str
     aws_region: str = "eu-west-2"
     odds_s3_prefix: str = "odds_snapshots"
-    sports_profile: str = "matchbook-h2h-expanded"
+    sports_profile: str = ACTIVE_H2H_PROFILE
     markets: str = "h2h,h2h_lay"
     regions: str = "uk,eu"
     strategy: str = "exchange-clv"
-    max_api_requests: int = 80
+    max_api_requests: int = 100
     min_edge: float = 0.015
     max_edge: float = 0.10
     min_reference_books: int = 1
@@ -94,12 +96,12 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
             event.get("odds_s3_prefix") or env.get("ODDS_S3_PREFIX") or "odds_snapshots"
         ),
         sports_profile=str(
-            event.get("sports_profile") or env.get("SPORTS_PROFILE") or "matchbook-h2h-expanded"
+            event.get("sports_profile") or env.get("SPORTS_PROFILE") or ACTIVE_H2H_PROFILE
         ),
         markets=str(event.get("markets") or env.get("MARKETS") or "h2h,h2h_lay"),
         regions=str(event.get("regions") or env.get("REGIONS") or "uk,eu"),
         strategy=str(event.get("strategy") or env.get("STRATEGY") or "exchange-clv"),
-        max_api_requests=int(event.get("max_api_requests") or env.get("MAX_API_REQUESTS") or 80),
+        max_api_requests=int(event.get("max_api_requests") or env.get("MAX_API_REQUESTS") or 100),
         min_edge=float(event.get("min_edge") or env.get("MIN_EDGE") or 0.015),
         max_edge=float(event.get("max_edge") or env.get("MAX_EDGE") or 0.10),
         min_reference_books=int(
@@ -181,7 +183,7 @@ def run_paper_log(
     _validate_config(config)
     now = now or datetime.now(timezone.utc)
     odds_client = odds_client or TheOddsApiClient(api_key=config.odds_api_key)
-    sports = SPORT_PROFILES[config.sports_profile]
+    sports = _sports_for_profile(config.sports_profile, odds_client)
     if len(sports) > config.max_api_requests:
         raise ValueError(
             f"Refusing to make {len(sports)} The Odds API requests; "
@@ -670,6 +672,12 @@ def _validate_config(config: StrategyRunnerConfig) -> None:
         raise ValueError(f"Unknown sports profile: {config.sports_profile}")
     if config.strategy not in STRATEGIES:
         raise ValueError(f"Unknown strategy: {config.strategy}")
+
+
+def _sports_for_profile(sports_profile: str, odds_client: Any) -> list[str]:
+    if sports_profile == ACTIVE_H2H_PROFILE:
+        return active_h2h_sports(odds_client.fetch_sports())
+    return SPORT_PROFILES[sports_profile]
 
 
 def _log_result_dict(result: DynamoPaperLogResult) -> dict[str, int]:

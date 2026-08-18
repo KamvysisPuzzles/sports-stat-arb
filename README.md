@@ -53,18 +53,20 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Run the Matchbook h2h CLV scan:
+Run the broad exchange h2h CLV scan:
 
 ```bash
 scan-exchanges \
-  --sports-profile matchbook-h2h-expanded \
-  --markets h2h \
-  --max-api-requests 80 \
+  --strategy exchange-clv \
+  --sports-profile active-h2h \
+  --markets h2h,h2h_lay \
+  --max-api-requests 100 \
   --min-edge 0.015 \
   --max-edge 0.10 \
-  --min-reference-books 5 \
+  --min-reference-books 1 \
   --max-age-seconds 900 \
-  --unique-events
+  --max-event-days 4 \
+  --unique-bets
 ```
 
 `sharp-weighted-clv` only targets Matchbook for potential execution, but
@@ -85,7 +87,7 @@ The default scan uses:
 
 ```text
 --strategy sharp-weighted-clv
---sports-profile matchbook-h2h-expanded
+--sports-profile active-h2h
 --regions uk,eu
 --markets h2h
 --max-event-days 4
@@ -120,18 +122,23 @@ Important CSV columns:
 
 ## Sports Profiles
 
+`active-h2h` scans every currently active The Odds API sport except futures,
+outright winner markets, politics, and golf outrights. This is the deployed
+paper-trading profile so seasonal sports are picked up automatically when they
+become active.
+
 `matchbook-h2h-expanded` scans event-level h2h sports and competitions where
 Matchbook may have exchange markets. It excludes futures and outright winner
 markets.
 
 ```bash
-scan-exchanges --sports-profile matchbook-h2h-expanded --markets h2h --max-api-requests 80
+scan-exchanges --sports-profile active-h2h --markets h2h,h2h_lay --max-api-requests 100
 ```
 
 Estimate request count before a broad scan:
 
 ```bash
-scan-exchanges --sports-profile matchbook-h2h-expanded --markets h2h --dry-run-estimate
+scan-exchanges --sports-profile active-h2h --markets h2h,h2h_lay --dry-run-estimate
 ```
 
 ## Caching
@@ -221,9 +228,9 @@ paper stake.
 ```bash
 scan-exchanges \
   --strategy exchange-clv \
-  --sports-profile matchbook-h2h-expanded \
+  --sports-profile active-h2h \
   --markets h2h,h2h_lay \
-  --max-api-requests 80 \
+  --max-api-requests 100 \
   --min-edge 0.015 \
   --min-reference-books 1 \
   --max-age-seconds 900 \
@@ -366,9 +373,9 @@ Do not commit either file.
 
 The workflow now keeps one combined trade log:
 
-- Scans `matchbook-h2h-expanded` h2h markets every hour.
+- Scans `active-h2h` h2h and h2h_lay markets every hour.
 - Targets Matchbook, Smarkets, and Betfair Exchange prices.
-- Requires `2.5%` post-fee edge, at least 5 reference books, and at most `10%`
+- Requires `1.5%` post-fee edge, at least 1 sharp reference book, and at most `10%`
   edge.
 - Books only the best price when the same event/market/outcome appears on
   multiple exchanges.
@@ -400,24 +407,24 @@ update-closing
 settle-results
 ```
 
-Credit estimate for the deployed wider profile:
+Credit estimate for the deployed active profile:
 
-- Candidate scan: about 75 credits per run.
-- Closing update: about 75 credits per run.
+- Candidate scan: one odds request per active non-outright sport.
+- Closing update: one odds request per active non-outright sport.
 - Result settlement: 2 credits per sport with open trades.
 
-The deployed workflow uses the `matchbook-h2h-expanded` profile. It scans h2h
-every hour and updates closing values every 2 hours. With the current 75-sport
-profile, base odds usage is roughly `81,000` credits per 30-day month before
-result settlement.
+The deployed workflow uses the `active-h2h` profile. It scans h2h/h2h_lay every
+hour and updates closing values every 2 hours. On August 18, 2026, this profile
+planned 66 odds requests per scan, so base odds usage would be roughly `71,000`
+credits per 30-day month before result settlement. This number changes as sports
+move in and out of season.
 
 Sharp books are treated as a reference-price proxy, not as guaranteed truth. The
-strategy requires at least 5 reference books before logging a trade, which helps
-avoid trusting a single stale or low-liquidity quote. It also excludes new
-booked opportunities above `10%` edge by default, because very large edges are
-usually stale prices, market mismatches, or unusable exchange quotes rather than
-clean value. Matchbook liquidity is stored directly on trade rows when the
-selected best-price venue is Matchbook.
+strategy uses Pinnacle, Betfair, Smarkets, and Matchbook as equal-weight
+references. It excludes new booked opportunities above `10%` edge by default,
+because very large edges are usually stale prices, market mismatches, or unusable
+exchange quotes rather than clean value. Matchbook liquidity is stored directly
+on trade rows when the selected best-price venue is Matchbook.
 
 ## If Edge Is Proven
 

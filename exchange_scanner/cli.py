@@ -35,6 +35,8 @@ from exchange_scanner.the_odds_api import (
     normalise_odds_api_events,
 )
 
+ACTIVE_H2H_PROFILE = "active-h2h"
+
 SHARP_REFERENCE_BOOKMAKERS = {
     "pinnacle",
     "betfair",
@@ -111,6 +113,7 @@ STRATEGIES = {
 }
 
 SPORT_PROFILES = {
+    ACTIVE_H2H_PROFILE: [],
     "matchbook-h2h-expanded": [
         "americanfootball_cfl",
         "americanfootball_ncaaf",
@@ -346,7 +349,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sports-profile",
         choices=sorted(SPORT_PROFILES),
-        default="matchbook-h2h-expanded",
+        default=ACTIVE_H2H_PROFILE,
         help="Named sports profile to scan. Combines with --sports.",
     )
     parser.add_argument(
@@ -391,7 +394,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-api-requests",
         type=int,
-        default=int(os.getenv("ODDS_API_MAX_REQUESTS", "25")),
+        default=int(os.getenv("ODDS_API_MAX_REQUESTS", "100")),
         help="Abort The Odds API scans that would exceed this many odds requests.",
     )
     parser.add_argument(
@@ -534,10 +537,23 @@ def settle_paper_results(args: argparse.Namespace) -> int:
 
 
 def scan_the_odds_api(args: argparse.Namespace):
+    sport_keys: list[str] = []
     if args.fixtures:
         events = json.loads(args.fixtures.read_text())
     else:
-        sport_keys = _sport_keys(args)
+        client = None
+        if getattr(args, "sports_profile", "") == ACTIVE_H2H_PROFILE:
+            api_key = os.getenv("THE_ODDS_API_KEY")
+            if not api_key:
+                raise SystemExit("Missing required environment variable: THE_ODDS_API_KEY")
+            client = TheOddsApiClient(
+                api_key=api_key,
+                cache_dir=getattr(args, "odds_cache_dir", None),
+                cache_ttl_seconds=getattr(args, "odds_cache_ttl_seconds", 0),
+            )
+            sport_keys = _sport_keys(args, odds_client=client)
+        else:
+            sport_keys = _sport_keys(args)
         planned_requests = len(sport_keys)
         if args.dry_run_estimate:
             print(
@@ -565,11 +581,12 @@ def scan_the_odds_api(args: argparse.Namespace):
                 "Use --dry-run-estimate to inspect the plan or raise the cap intentionally."
             )
 
-        client = TheOddsApiClient(
-            api_key=api_key,
-            cache_dir=args.odds_cache_dir,
-            cache_ttl_seconds=args.odds_cache_ttl_seconds,
-        )
+        if client is None:
+            client = TheOddsApiClient(
+                api_key=api_key,
+                cache_dir=getattr(args, "odds_cache_dir", None),
+                cache_ttl_seconds=getattr(args, "odds_cache_ttl_seconds", 0),
+            )
         events = []
         for sport in sport_keys:
             events.extend(
@@ -591,7 +608,7 @@ def scan_the_odds_api(args: argparse.Namespace):
     )
 
     strategy = _strategy_config(args)
-    reference_weights = _reference_weights_for_scan(args, strategy, allowed_markets)
+    reference_weights = _reference_weights_for_scan(args, strategy, allowed_markets, sport_keys)
     signals = find_value_opportunities(
         prices,
         target_bookmakers=strategy["target_bookmakers"],
@@ -618,12 +635,17 @@ def _strategy_config(args: argparse.Namespace):
     return STRATEGIES[getattr(args, "strategy", "sharp-weighted-clv")]
 
 
-def _reference_weights_for_scan(args: argparse.Namespace, strategy, allowed_markets: set[str]):
+def _reference_weights_for_scan(
+    args: argparse.Namespace,
+    strategy,
+    allowed_markets: set[str],
+    sport_keys: list[str] | None = None,
+):
     if not getattr(args, "use_learned_sharpness_weights", False):
         return strategy["reference_weights"]
     learned_weights = sharpness_weight_mapping(
         args.market_db,
-        sport_keys=set(_sport_keys(args)),
+        sport_keys=set(sport_keys or _sport_keys(args)),
         market_keys=allowed_markets,
     )
     if not learned_weights:
@@ -694,10 +716,35 @@ def _filter_prices_by_event_horizon(prices, *, max_event_days: float, now: datet
     return [price for price in prices if price.commence_time <= latest_commence_time]
 
 
-def _sport_keys(args: argparse.Namespace) -> list[str]:
+def active_h2h_sports(sports_payload: list[dict[str, object]]) -> list[str]:
     sports = []
-    if getattr(args, "sports_profile", ""):
-        sports.extend(SPORT_PROFILES[args.sports_profile])
+    for sport in sports_payload:
+        key = str(sport.get("key", ""))
+        if not key or not sport.get("active", False):
+            continue
+        if _is_outright_or_non_h2h_sport(key):
+            continue
+        sports.append(key)
+    return sports
+
+
+def _is_outright_or_non_h2h_sport(sport_key: str) -> bool:
+    return (
+        sport_key.startswith(("politics_", "golf_"))
+        or sport_key.endswith("_winner")
+        or "_winner" in sport_key
+    )
+
+
+def _sport_keys(args: argparse.Namespace, *, odds_client=None) -> list[str]:
+    sports = []
+    sports_profile = getattr(args, "sports_profile", "")
+    if sports_profile == ACTIVE_H2H_PROFILE:
+        if odds_client is None:
+            raise ValueError("active-h2h sports profile requires an odds client")
+        sports.extend(active_h2h_sports(odds_client.fetch_sports()))
+    elif sports_profile:
+        sports.extend(SPORT_PROFILES[sports_profile])
     if args.sports:
         sports.extend(sport.strip() for sport in args.sports.split(",") if sport.strip())
     if not sports:

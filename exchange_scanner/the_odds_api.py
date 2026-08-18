@@ -128,6 +128,25 @@ class TheOddsApiClient:
         self.cache_dir = cache_dir
         self.cache_ttl_seconds = cache_ttl_seconds
 
+    def fetch_sports(self, *, all_sports: bool = False) -> list[dict[str, Any]]:
+        response = self.http.get(
+            "/sports",
+            params={
+                "apiKey": self.api_key,
+                "all": str(all_sports).lower(),
+            },
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            remaining = response.headers.get("x-requests-remaining")
+            used = response.headers.get("x-requests-used")
+            raise TheOddsApiError(
+                f"The Odds API sports request failed with HTTP {response.status_code}; "
+                f"requests_used={used or 'unknown'}, requests_remaining={remaining or 'unknown'}"
+            ) from None
+        return response.json()
+
     def fetch_odds(
         self,
         *,

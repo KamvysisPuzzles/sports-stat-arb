@@ -28,8 +28,8 @@ jobs:
       THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
       PAPER_ALERT_WEBHOOK_URL: ${{ secrets.PAPER_ALERT_WEBHOOK_URL }}
       PAPER_DB: data/paper_trades.sqlite3
-      SPORTS_PROFILE: matchbook-h2h-expanded
-      MAX_API_REQUESTS: "80"
+      SPORTS_PROFILE: active-h2h
+      MAX_API_REQUESTS: "100"
       MAX_EDGE: "0.10"
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       BETFAIR_LAMBDA_FUNCTION_NAME: ${{ secrets.BETFAIR_LAMBDA_FUNCTION_NAME }}
