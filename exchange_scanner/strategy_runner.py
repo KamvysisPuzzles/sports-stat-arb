@@ -14,6 +14,7 @@ from typing import Any
 from exchange_scanner.cli import (
     ACTIVE_H2H_PROFILE,
     BETFAIR_TARGET_BOOKMAKERS,
+    SHARP_REFERENCE_BOOKMAKER_TITLES,
     SPORT_PROFILES,
     STRATEGIES,
     _filter_prices_by_event_horizon,
@@ -387,6 +388,7 @@ def _find_signals(
         if config.max_betfair_spread_pct is not None
         else strategy.get("max_betfair_spread_pct")
     )
+    min_sharp_reference_books = strategy.get("min_sharp_reference_books", 0)
     signals = find_value_opportunities(
         prices,
         target_bookmakers=strategy["target_bookmakers"],
@@ -402,6 +404,7 @@ def _find_signals(
     signals = _filter_betfair_dislocation_signals(
         signals,
         max_betfair_spread_pct=max_betfair_spread_pct,
+        min_sharp_reference_books=min_sharp_reference_books,
     )
     signals = _filter_signals_by_max_edge(signals, max_edge=config.max_edge)
     return _unique_bet_signals(signals)
@@ -439,11 +442,14 @@ def _filter_betfair_dislocation_signals(
     signals: list[ValueSignal],
     *,
     max_betfair_spread_pct: float | None,
+    min_sharp_reference_books: int = 0,
 ) -> list[ValueSignal]:
-    if max_betfair_spread_pct is None:
+    if max_betfair_spread_pct is None and min_sharp_reference_books <= 0:
         return signals
     filtered = []
     for signal in signals:
+        if _sharp_reference_count(signal) < min_sharp_reference_books:
+            continue
         if signal.target_bookmaker.casefold() not in BETFAIR_TARGET_BOOKMAKERS:
             filtered.append(signal)
             continue
@@ -454,6 +460,14 @@ def _filter_betfair_dislocation_signals(
             continue
         filtered.append(signal)
     return filtered
+
+
+def _sharp_reference_count(signal: ValueSignal) -> int:
+    return sum(
+        1
+        for bookmaker in signal.reference_bookmakers
+        if bookmaker.casefold() in SHARP_REFERENCE_BOOKMAKER_TITLES
+    )
 
 
 def _settle_finished_trades(

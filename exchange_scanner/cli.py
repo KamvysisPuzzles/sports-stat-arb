@@ -44,6 +44,13 @@ SHARP_REFERENCE_BOOKMAKERS = {
     "matchbook",
 }
 
+SHARP_REFERENCE_BOOKMAKER_TITLES = {
+    "pinnacle",
+    "betfair",
+    "smarkets",
+    "matchbook",
+}
+
 MATCHBOOK_TARGET_BOOKMAKERS = {
     "matchbook",
 }
@@ -105,10 +112,11 @@ STRATEGIES = {
     },
     "exchange-clv": {
         "target_bookmakers": EXCHANGE_CLV_TARGET_BOOKMAKERS,
-        "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS,
+        "reference_bookmakers": None,
         "allow_target_bookmakers_as_references": True,
-        "reference_weights": None,
+        "reference_weights": SHARPNESS_WEIGHTS,
         "target_commission_rates": EXCHANGE_CLV_COMMISSION_RATES,
+        "min_sharp_reference_books": 1,
     },
 }
 
@@ -517,6 +525,8 @@ def backtest(args: argparse.Namespace) -> list[BacktestBet]:
         reference_weights=strategy["reference_weights"],
         target_commission_rates=strategy["target_commission_rates"],
         max_betfair_spread_pct=strategy.get("max_betfair_spread_pct"),
+        min_sharp_reference_books=strategy.get("min_sharp_reference_books", 0),
+        sharp_reference_bookmaker_titles=SHARP_REFERENCE_BOOKMAKER_TITLES,
     )
 
 
@@ -657,10 +667,13 @@ def _reference_weights_for_scan(
 
 def _filter_signals_by_strategy_rules(signals, strategy):
     max_betfair_spread_pct = strategy.get("max_betfair_spread_pct")
-    if max_betfair_spread_pct is None:
+    min_sharp_reference_books = strategy.get("min_sharp_reference_books", 0)
+    if max_betfair_spread_pct is None and min_sharp_reference_books <= 0:
         return signals
     output = []
     for signal in signals:
+        if _sharp_reference_count(signal) < min_sharp_reference_books:
+            continue
         if not _is_betfair_signal(signal):
             output.append(signal)
             continue
@@ -671,6 +684,14 @@ def _filter_signals_by_strategy_rules(signals, strategy):
             continue
         output.append(signal)
     return output
+
+
+def _sharp_reference_count(signal) -> int:
+    return sum(
+        1
+        for bookmaker in signal.reference_bookmakers
+        if bookmaker.casefold() in SHARP_REFERENCE_BOOKMAKER_TITLES
+    )
 
 
 def _is_betfair_signal(signal) -> bool:

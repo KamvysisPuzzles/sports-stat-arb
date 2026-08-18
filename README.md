@@ -262,12 +262,13 @@ per run. The workflow can also call Betfair `keepAlive` for short-term testing
 with a manually supplied session token.
 
 The current `exchange-clv` strategy targets Matchbook, Smarkets, and Betfair
-Exchange prices against an equal-weight sharp reference set: Pinnacle, Betfair,
-Smarkets, and Matchbook. It requires at least one complete sharp reference
-book per outcome. If The Odds API includes a matching lay market such as
-`h2h_lay`, the exported venue fair diagnostics use the target venue's back/lay
-midpoint in implied-probability space; otherwise they fall back to that venue's
-regular h2h win/draw/win price.
+Exchange prices against a weighted reference consensus. Pinnacle, Betfair,
+Smarkets, and Matchbook get the highest weights; stronger mainstream books get
+medium weights; unknown books get a low default weight. It still requires at
+least one complete sharp reference book per outcome. If The Odds API includes a
+matching lay market such as `h2h_lay`, the exported venue fair diagnostics use
+the target venue's back/lay midpoint in implied-probability space; otherwise
+they fall back to that venue's regular h2h win/draw/win price.
 
 Export the paper log:
 
@@ -420,11 +421,12 @@ credits per 30-day month before result settlement. This number changes as sports
 move in and out of season.
 
 Sharp books are treated as a reference-price proxy, not as guaranteed truth. The
-strategy uses Pinnacle, Betfair, Smarkets, and Matchbook as equal-weight
-references. It excludes new booked opportunities above `10%` edge by default,
-because very large edges are usually stale prices, market mismatches, or unusable
-exchange quotes rather than clean value. Matchbook liquidity is stored directly
-on trade rows when the selected best-price venue is Matchbook.
+strategy gives Pinnacle, Betfair, Smarkets, and Matchbook the highest reference
+weights, but allows softer books to contribute to coverage at lower weights. It
+excludes new booked opportunities above `10%` edge by default, because very
+large edges are usually stale prices, market mismatches, or unusable exchange
+quotes rather than clean value. Matchbook liquidity is stored directly on trade
+rows when the selected best-price venue is Matchbook.
 
 ## If Edge Is Proven
 

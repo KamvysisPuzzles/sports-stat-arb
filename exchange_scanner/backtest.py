@@ -73,6 +73,8 @@ def run_backtest(
     reference_weights: dict[str, float] | None = None,
     target_commission_rates: dict[str, float] | None = None,
     max_betfair_spread_pct: float | None = None,
+    min_sharp_reference_books: int = 0,
+    sharp_reference_bookmaker_titles: set[str] | None = None,
 ) -> list[BacktestBet]:
     results = load_results(results_path)
     snapshots = load_historical_snapshots(historical_odds_path)
@@ -110,6 +112,8 @@ def run_backtest(
         signals = _filter_betfair_dislocation_signals(
             signals,
             max_betfair_spread_pct=max_betfair_spread_pct,
+            min_sharp_reference_books=min_sharp_reference_books,
+            sharp_reference_bookmaker_titles=sharp_reference_bookmaker_titles,
         )
         if unique_events:
             signals = _unique_event_signals(signals)
@@ -370,11 +374,19 @@ def _filter_betfair_dislocation_signals(
     signals: list[ValueSignal],
     *,
     max_betfair_spread_pct: float | None,
+    min_sharp_reference_books: int = 0,
+    sharp_reference_bookmaker_titles: set[str] | None = None,
 ) -> list[ValueSignal]:
-    if max_betfair_spread_pct is None:
+    if max_betfair_spread_pct is None and min_sharp_reference_books <= 0:
         return signals
     filtered = []
     for signal in signals:
+        if (
+            min_sharp_reference_books > 0
+            and _sharp_reference_count(signal, sharp_reference_bookmaker_titles or set())
+            < min_sharp_reference_books
+        ):
+            continue
         if signal.target_bookmaker.casefold() not in {"betfair", "betfair_ex_uk", "betfair_ex_eu"}:
             filtered.append(signal)
             continue
@@ -385,6 +397,17 @@ def _filter_betfair_dislocation_signals(
             continue
         filtered.append(signal)
     return filtered
+
+
+def _sharp_reference_count(
+    signal: ValueSignal,
+    sharp_reference_bookmaker_titles: set[str],
+) -> int:
+    return sum(
+        1
+        for bookmaker in signal.reference_bookmakers
+        if bookmaker.casefold() in sharp_reference_bookmaker_titles
+    )
 
 
 def _daily_decision_snapshots(
