@@ -22,6 +22,7 @@ def dashboard_payload(
         "filters": {key: value for key, value in filters.items() if value},
         "summary": _summary(filtered),
         "all_summary": _summary(trades),
+        "venue_results": _venue_results(filtered),
         "trades": sorted(
             filtered,
             key=lambda item: item.get("logged_at", ""),
@@ -77,6 +78,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       z-index: 2;
     }}
     h1 {{ margin: 0 0 6px; font-size: 22px; }}
+    h2 {{ margin: 0 0 8px; font-size: 16px; }}
     .meta {{ color: var(--muted); font-size: 13px; line-height: 1.4; }}
     main {{ padding: 16px; max-width: 1200px; margin: 0 auto; }}
     .grid {{
@@ -117,6 +119,8 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       border-radius: 8px;
       background: var(--panel);
     }}
+    .venue-section {{ margin: 0 0 16px; }}
+    .venue-table {{ min-width: 760px; }}
     table {{ width: 100%; border-collapse: collapse; min-width: 980px; }}
     th, td {{
       text-align: left;
@@ -154,6 +158,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       <a href="{_href_attr(_filter_href(token, bookmaker='Betfair'))}">Betfair</a>
       <a href="{_href_attr(_filter_href(token, format='json'))}">JSON</a>
     </nav>
+    {_venue_results_html(payload.get("venue_results", []))}
     <div class="table-wrap">
       <table>
         <thead>
@@ -191,7 +196,7 @@ def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:
       {_metric("PnL", f"{summary['settled_profit']:.2f}", _class_for_number(summary["settled_profit"]))}
       {_metric("ROI", f"{summary['settled_roi']:.2%}", _class_for_number(summary["settled_roi"]))}
       {_metric("Avg Odds", f"{summary['average_booked_odds']:.2f}")}
-      {_metric("Avg Liquidity", f"{summary['average_confirmed_liquidity_at_target']:.2f}")}
+      {_metric("Median Liquidity", f"{summary['median_confirmed_liquidity_at_target']:.2f}")}
       {_metric("Avg CLV", f"{summary['average_clv']:.2%}", _class_for_number(summary["average_clv"]))}
       {_metric("CLV B/M/T", f"{summary['beat_closing_line']}/{summary['missed_closing_line']}/{summary['tied_closing_line']}")}
     </section>"""
@@ -229,6 +234,52 @@ def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
     )
 
 
+def _venue_results_html(venues: list[dict[str, Any]]) -> str:
+    rows = _venue_rows_html(venues)
+    return f"""<section class="venue-section">
+      <h2>Results by Venue</h2>
+      <div class="table-wrap venue-wrap">
+        <table class="venue-table">
+          <thead>
+            <tr>
+              <th>Venue</th>
+              <th>Trades</th>
+              <th>Open</th>
+              <th>Settled</th>
+              <th>Won/Lost</th>
+              <th>PnL</th>
+              <th>ROI</th>
+              <th>Median Liquidity</th>
+              <th>Avg CLV</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows}
+          </tbody>
+        </table>
+      </div>
+    </section>"""
+
+
+def _venue_rows_html(venues: list[dict[str, Any]]) -> str:
+    if not venues:
+        return '<tr><td colspan="9">No venue results for the current filters.</td></tr>'
+    return "\n".join(
+        "<tr>"
+        f"<td>{_escape(row['venue'])}</td>"
+        f"<td>{_escape(row['total_trades'])}</td>"
+        f"<td>{_escape(row['open_trades'])}</td>"
+        f"<td>{_escape(row['settled_trades'])}</td>"
+        f"<td>{_escape(row['settled_won'])}/{_escape(row['settled_lost'])}</td>"
+        f"<td class='{_class_for_number(row['settled_profit'])}'>{row['settled_profit']:.2f}</td>"
+        f"<td class='{_class_for_number(row['settled_roi'])}'>{row['settled_roi']:.2%}</td>"
+        f"<td>{row['median_confirmed_liquidity_at_target']:.2f}</td>"
+        f"<td class='{_class_for_number(row['average_clv'])}'>{row['average_clv']:.2%}</td>"
+        "</tr>"
+        for row in venues
+    )
+
+
 def _filter_href(token: str, **params: str) -> str:
     pairs = [("token", token), *params.items()]
     query = "&".join(
@@ -263,8 +314,10 @@ def _summary(trades: list[dict[str, Any]]) -> dict[str, Any]:
         "settled_profit": profit,
         "settled_roi": profit / staked if staked else 0.0,
         "average_booked_odds": _average(_float(item.get("target_odds")) for item in trades),
-        "average_confirmed_liquidity_at_target": _average(
-            _float(item.get("available_at_or_above_target")) for item in trades
+        "median_confirmed_liquidity_at_target": _median(
+            _float(item.get("available_at_or_above_target"))
+            for item in trades
+            if item.get("available_at_or_above_target") not in {None, ""}
         ),
         "average_clv": _average(_float(item.get("target_clv")) for item in clv_rows),
         "clv_trades": len(clv_rows),
@@ -272,6 +325,28 @@ def _summary(trades: list[dict[str, Any]]) -> dict[str, Any]:
         "missed_closing_line": len(miss),
         "tied_closing_line": tie,
     }
+
+
+def _venue_results(trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_venue: dict[str, list[dict[str, Any]]] = {}
+    for trade in trades:
+        venue = str(trade.get("target_bookmaker") or "Unknown")
+        by_venue.setdefault(venue, []).append(trade)
+
+    rows = []
+    for venue, venue_trades in by_venue.items():
+        summary = _summary(venue_trades)
+        rows.append(
+            {
+                "venue": venue,
+                **summary,
+            }
+        )
+    return sorted(
+        rows,
+        key=lambda item: (item["settled_profit"], item["total_trades"], item["venue"]),
+        reverse=True,
+    )
 
 
 def _apply_filters(
@@ -344,6 +419,16 @@ def _float(value: Any) -> float:
 def _average(values) -> float:
     items = list(values)
     return sum(items) / len(items) if items else 0.0
+
+
+def _median(values) -> float:
+    items = sorted(values)
+    if not items:
+        return 0.0
+    midpoint = len(items) // 2
+    if len(items) % 2:
+        return items[midpoint]
+    return (items[midpoint - 1] + items[midpoint]) / 2
 
 
 def _escape(value: object) -> str:

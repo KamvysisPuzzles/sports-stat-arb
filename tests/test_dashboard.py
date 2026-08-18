@@ -48,20 +48,52 @@ def trades():
             "stake": Decimal("1"),
             "status": "open",
         },
+        {
+            "trade_id": "paper#3",
+            "logged_at": "2026-08-18T12:00:00+00:00",
+            "sport_key": "soccer_epl",
+            "event_name": "Spurs v West Ham",
+            "commence_time": "2026-08-18T22:00:00+00:00",
+            "outcome_name": "Draw",
+            "target_bookmaker": "Smarkets",
+            "target_odds": Decimal("3.5"),
+            "available_at_or_above_target": Decimal("1000"),
+            "edge": Decimal("0.025"),
+            "target_clv": Decimal("-0.01"),
+            "stake": Decimal("1"),
+            "status": "settled",
+            "profit": Decimal("-1"),
+        },
     ]
 
 
 def test_dashboard_payload_summarises_and_filters_trades() -> None:
     payload = dashboard_payload(
         FakeTable(trades()),
-        filters={"status": "settled"},
+        filters={"status": "settled", "bookmaker": "Matchbook"},
         now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
     )
 
     assert payload["summary"]["total_trades"] == 1
     assert payload["summary"]["settled_profit"] == 3.136
-    assert payload["all_summary"]["total_trades"] == 2
+    assert payload["all_summary"]["total_trades"] == 3
+    assert payload["all_summary"]["median_confirmed_liquidity_at_target"] == 25.5
     assert payload["trades"][0]["target_bookmaker"] == "Matchbook"
+
+
+def test_dashboard_payload_includes_results_by_venue() -> None:
+    payload = dashboard_payload(
+        FakeTable(trades()),
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+
+    by_venue = {row["venue"]: row for row in payload["venue_results"]}
+
+    assert by_venue["Matchbook"]["settled_won"] == 1
+    assert by_venue["Matchbook"]["settled_profit"] == 3.136
+    assert by_venue["Betfair"]["open_trades"] == 1
+    assert by_venue["Smarkets"]["settled_lost"] == 1
+    assert by_venue["Smarkets"]["settled_roi"] == -1
 
 
 def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
@@ -76,6 +108,9 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "Sports Stat Arb Dashboard" in html
     assert "Arsenal v Chelsea" in html
     assert "Liverpool v Everton" in html
+    assert "Results by Venue" in html
+    assert "Median Liquidity" in html
+    assert "Smarkets" in html
     assert "token=secret&amp;status=open" in html
     assert "3.14" in html
 
@@ -105,4 +140,5 @@ def test_lambda_handler_returns_json(monkeypatch) -> None:
     assert response["statusCode"] == 200
     assert response["headers"]["Content-Type"] == "application/json"
     body = json.loads(response["body"])
-    assert body["summary"]["total_trades"] == 2
+    assert body["summary"]["total_trades"] == 3
+    assert body["venue_results"][0]["venue"] == "Matchbook"
