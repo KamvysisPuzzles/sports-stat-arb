@@ -178,6 +178,10 @@ class FakeTable:
             item["profit"] = ExpressionAttributeValues[":profit"]
         return {"ResponseMetadata": {"HTTPStatusCode": 200}}
 
+    def delete_item(self, *, Key):
+        self.items.pop(Key["trade_id"])
+        return {"ResponseMetadata": {"HTTPStatusCode": 200}}
+
 
 def test_run_paper_log_archives_snapshot_and_logs_liquidity_confirmed_trade(monkeypatch) -> None:
     monkeypatch.setitem(strategy_runner.SPORT_PROFILES, "test-profile", ["soccer_epl"])
@@ -231,6 +235,29 @@ def test_run_paper_log_archives_snapshot_and_logs_liquidity_confirmed_trade(monk
     item = next(iter(table.items.values()))
     assert item["liquidity_status"] == "available"
     assert item["available_at_or_above_target"] == 25
+
+
+def test_run_strategy_mode_can_clear_paper_trades() -> None:
+    table = FakeTable()
+    table.items = {
+        "paper#1": {"trade_id": "paper#1", "status": "open"},
+        "paper#2": {"trade_id": "paper#2", "status": "settled"},
+    }
+
+    result = strategy_runner.run_strategy_mode(
+        {
+            "mode": "clear-paper-trades",
+            "dynamodb_table_name": "paper-trades",
+        },
+        dynamodb_table=table,
+    )
+
+    assert result == {
+        "mode": "clear-paper-trades",
+        "table": "paper-trades",
+        "deleted": 2,
+    }
+    assert table.items == {}
 
 
 def test_run_paper_log_updates_and_settles_existing_open_trade(monkeypatch) -> None:

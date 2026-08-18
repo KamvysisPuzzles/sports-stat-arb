@@ -24,6 +24,7 @@ from exchange_scanner.dynamodb_paper import (
     DynamoClosingUpdateResult,
     DynamoPaperLogResult,
     DynamoSettlementResult,
+    delete_all_trades,
     list_all_trades,
     list_open_trades,
     log_signals_to_dynamodb,
@@ -147,6 +148,13 @@ def run_strategy_mode(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     config = config_from_event(event)
+    if config.mode == "clear-paper-trades":
+        table = dynamodb_table or _dynamodb_table(config)
+        return {
+            "mode": config.mode,
+            "table": config.dynamodb_table_name,
+            "deleted": delete_all_trades(table),
+        }
     if config.mode != "paper-log":
         raise ValueError(f"Unsupported strategy runner mode: {config.mode}")
     return run_paper_log(

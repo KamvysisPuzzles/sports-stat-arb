@@ -193,6 +193,14 @@ def list_all_trades(table: Any) -> list[dict[str, Any]]:
     return scan_all(table)
 
 
+def delete_all_trades(table: Any) -> int:
+    deleted = 0
+    for item in list_all_trades(table):
+        table.delete_item(Key={"trade_id": item["trade_id"]})
+        deleted += 1
+    return deleted
+
+
 def scan_all(table: Any, scan_kwargs: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     scan_kwargs = dict(scan_kwargs or {})
