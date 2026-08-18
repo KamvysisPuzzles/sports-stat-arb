@@ -86,6 +86,14 @@ def cricket_trade():
     }
 
 
+def next_day_trade():
+    row = dict(cricket_trade())
+    row["trade_id"] = "paper#5"
+    row["logged_at"] = "2026-08-19T09:00:00+00:00"
+    row["event_name"] = "Jamaica Kingsmen v Guyana Amazon Warriors"
+    return row
+
+
 def test_dashboard_payload_summarises_and_filters_trades() -> None:
     payload = dashboard_payload(
         FakeTable(trades()),
@@ -98,6 +106,23 @@ def test_dashboard_payload_summarises_and_filters_trades() -> None:
     assert payload["all_summary"]["total_trades"] == 3
     assert payload["all_summary"]["median_confirmed_liquidity_at_target"] == 25.5
     assert payload["trades"][0]["target_bookmaker"] == "Matchbook"
+
+
+def test_dashboard_payload_includes_filtered_trades_per_day() -> None:
+    payload = dashboard_payload(
+        FakeTable([*trades(), cricket_trade(), next_day_trade()]),
+        now=datetime(2026, 8, 19, 12, tzinfo=timezone.utc),
+    )
+    cricket_payload = dashboard_payload(
+        FakeTable([*trades(), cricket_trade(), next_day_trade()]),
+        filters={"sport": ["cricket"]},
+        now=datetime(2026, 8, 19, 12, tzinfo=timezone.utc),
+    )
+
+    assert payload["summary"]["active_trade_days"] == 2
+    assert payload["summary"]["trades_per_day"] == 2.5
+    assert cricket_payload["summary"]["active_trade_days"] == 2
+    assert cricket_payload["summary"]["trades_per_day"] == 1
 
 
 def test_dashboard_payload_filters_multiple_sports_and_leagues() -> None:
@@ -151,6 +176,7 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "Arsenal v Chelsea" in html
     assert "Liverpool v Everton" in html
     assert "Results by Venue" in html
+    assert "Trades/Day" in html
     assert "Results by Sport" in html
     assert "Results by League" in html
     assert "Median Liquidity" in html

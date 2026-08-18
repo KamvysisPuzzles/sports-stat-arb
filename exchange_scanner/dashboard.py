@@ -246,6 +246,7 @@ def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:
       {_metric("Trades", summary["total_trades"], f"all {all_summary['total_trades']}")}
       {_metric("Open", summary["open_trades"])}
       {_metric("Settled", summary["settled_trades"])}
+      {_metric("Trades/Day", f"{summary['trades_per_day']:.2f}", f"{summary['active_trade_days']} days")}
       {_metric("Won/Lost", f"{summary['settled_won']}/{summary['settled_lost']}")}
       {_metric("PnL", f"{summary['settled_profit']:.2f}", _class_for_number(summary["settled_profit"]))}
       {_metric("ROI", f"{summary['settled_roi']:.2%}", _class_for_number(summary["settled_roi"]))}
@@ -438,10 +439,13 @@ def _summary(trades: list[dict[str, Any]]) -> dict[str, Any]:
     beat = [item for item in clv_rows if _float(item.get("target_clv")) > 0]
     miss = [item for item in clv_rows if _float(item.get("target_clv")) < 0]
     tie = len(clv_rows) - len(beat) - len(miss)
+    active_trade_days = len(_trade_dates(trades))
     return {
         "total_trades": len(trades),
         "open_trades": len(open_trades),
         "settled_trades": len(settled),
+        "active_trade_days": active_trade_days,
+        "trades_per_day": len(trades) / active_trade_days if active_trade_days else 0.0,
         "settled_won": wins,
         "settled_lost": losses,
         "settled_profit": profit,
@@ -594,6 +598,15 @@ def _median(values) -> float:
     if len(items) % 2:
         return items[midpoint]
     return (items[midpoint - 1] + items[midpoint]) / 2
+
+
+def _trade_dates(trades: list[dict[str, Any]]) -> set[str]:
+    dates = set()
+    for trade in trades:
+        logged_at = str(trade.get("logged_at") or "")
+        if len(logged_at) >= 10:
+            dates.add(logged_at[:10])
+    return dates
 
 
 def _filter_values(value: Any) -> list[str]:
