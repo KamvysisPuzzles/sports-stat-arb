@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import html
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -21,11 +21,11 @@ def dashboard_payload(
         "generated_at": now.isoformat(),
         "filters": {key: value for key, value in filters.items() if _filter_values(value)},
         "filter_options": _filter_options(trades),
-        "summary": _summary(filtered),
-        "all_summary": _summary(trades),
-        "venue_results": _venue_results(filtered),
-        "sport_results": _group_results(filtered, group_key="sport_family", label_key="sport"),
-        "league_results": _group_results(filtered, group_key="sport_key", label_key="league"),
+        "summary": _summary(filtered, now=now),
+        "all_summary": _summary(trades, now=now),
+        "venue_results": _venue_results(filtered, now=now),
+        "sport_results": _group_results(filtered, group_key="sport_family", label_key="sport", now=now),
+        "league_results": _group_results(filtered, group_key="sport_key", label_key="league", now=now),
         "trades": sorted(
             filtered,
             key=lambda item: item.get("logged_at", ""),
@@ -256,7 +256,7 @@ def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:
       {_metric("Trades", summary["total_trades"], f"all {all_summary['total_trades']}")}
       {_metric("Open", summary["open_trades"])}
       {_metric("Settled", summary["settled_trades"])}
-      {_metric("Trades/Day", f"{summary['trades_per_day']:.2f}", f"{summary['active_trade_days']} days")}
+      {_metric("Trades Last 24h", summary["trades_last_24h"])}
       {_metric("Won/Lost", f"{summary['settled_won']}/{summary['settled_lost']}")}
       {_metric("PnL", f"{summary['settled_profit']:.2f}", _class_for_number(summary["settled_profit"]))}
       {_metric("ROI", f"{summary['settled_roi']:.2%}", _class_for_number(summary["settled_roi"]))}
@@ -441,7 +441,8 @@ def _href_attr(value: str) -> str:
     return html.escape(value, quote=True)
 
 
-def _summary(trades: list[dict[str, Any]]) -> dict[str, Any]:
+def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> dict[str, Any]:
+    now = now or datetime.now(timezone.utc)
     settled = [item for item in trades if item.get("status") == "settled"]
     open_trades = [item for item in trades if item.get("status") == "open"]
     clv_rows = [item for item in trades if item.get("target_clv") not in {None, ""}]
@@ -452,13 +453,12 @@ def _summary(trades: list[dict[str, Any]]) -> dict[str, Any]:
     beat = [item for item in clv_rows if _float(item.get("target_clv")) > 0]
     miss = [item for item in clv_rows if _float(item.get("target_clv")) < 0]
     tie = len(clv_rows) - len(beat) - len(miss)
-    active_trade_days = len(_trade_dates(trades))
+    trades_last_24h = sum(1 for item in trades if _is_logged_in_last_24h(item, now=now))
     return {
         "total_trades": len(trades),
         "open_trades": len(open_trades),
         "settled_trades": len(settled),
-        "active_trade_days": active_trade_days,
-        "trades_per_day": len(trades) / active_trade_days if active_trade_days else 0.0,
+        "trades_last_24h": trades_last_24h,
         "settled_won": wins,
         "settled_lost": losses,
         "settled_profit": profit,
@@ -477,8 +477,8 @@ def _summary(trades: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _venue_results(trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return _group_results(trades, group_key="target_bookmaker", label_key="venue")
+def _venue_results(trades: list[dict[str, Any]], *, now: datetime | None = None) -> list[dict[str, Any]]:
+    return _group_results(trades, group_key="target_bookmaker", label_key="venue", now=now)
 
 
 def _group_results(
@@ -486,7 +486,9 @@ def _group_results(
     *,
     group_key: str,
     label_key: str,
+    now: datetime | None = None,
 ) -> list[dict[str, Any]]:
+    now = now or datetime.now(timezone.utc)
     grouped: dict[str, list[dict[str, Any]]] = {}
     for trade in trades:
         label = _group_label(trade, group_key=group_key)
@@ -494,7 +496,7 @@ def _group_results(
 
     rows = []
     for label, grouped_trades in grouped.items():
-        summary = _summary(grouped_trades)
+        summary = _summary(grouped_trades, now=now)
         rows.append(
             {
                 label_key: label,
@@ -613,13 +615,30 @@ def _median(values) -> float:
     return (items[midpoint - 1] + items[midpoint]) / 2
 
 
-def _trade_dates(trades: list[dict[str, Any]]) -> set[str]:
-    dates = set()
-    for trade in trades:
-        logged_at = str(trade.get("logged_at") or "")
-        if len(logged_at) >= 10:
-            dates.add(logged_at[:10])
-    return dates
+def _is_logged_in_last_24h(trade: dict[str, Any], *, now: datetime) -> bool:
+    logged_at = _parse_datetime(trade.get("logged_at"))
+    if logged_at is None:
+        return False
+    now_utc = _as_utc(now)
+    return now_utc - timedelta(hours=24) <= logged_at <= now_utc
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return _as_utc(value)
+    text = str(value or "")
+    if not text:
+        return None
+    try:
+        return _as_utc(datetime.fromisoformat(text.replace("Z", "+00:00")))
+    except ValueError:
+        return None
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _filter_values(value: Any) -> list[str]:
