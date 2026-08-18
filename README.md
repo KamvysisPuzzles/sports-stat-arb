@@ -60,7 +60,7 @@ scan-exchanges \
   --sports-profile matchbook-h2h-expanded \
   --markets h2h \
   --max-api-requests 80 \
-  --min-edge 0.025 \
+  --min-edge 0.015 \
   --max-edge 0.10 \
   --min-reference-books 5 \
   --max-age-seconds 900 \
@@ -95,7 +95,7 @@ For paper staking, pass a bankroll:
 
 ```bash
 scan-exchanges \
-  --min-edge 0.025 \
+  --min-edge 0.015 \
   --min-reference-books 5 \
   --max-age-seconds 900 \
   --unique-events \
@@ -224,7 +224,7 @@ scan-exchanges \
   --sports-profile matchbook-h2h-expanded \
   --markets h2h,h2h_lay \
   --max-api-requests 80 \
-  --min-edge 0.025 \
+  --min-edge 0.015 \
   --min-reference-books 3 \
   --max-age-seconds 900 \
   --unique-bets > data/latest_opportunities.csv

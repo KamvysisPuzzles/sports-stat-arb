@@ -61,7 +61,7 @@ class StrategyRunnerConfig:
     regions: str = "uk,eu"
     strategy: str = "exchange-clv"
     max_api_requests: int = 80
-    min_edge: float = 0.025
+    min_edge: float = 0.015
     max_edge: float = 0.10
     min_reference_books: int = 3
     max_age_seconds: int = 900
@@ -100,7 +100,7 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
         regions=str(event.get("regions") or env.get("REGIONS") or "uk,eu"),
         strategy=str(event.get("strategy") or env.get("STRATEGY") or "exchange-clv"),
         max_api_requests=int(event.get("max_api_requests") or env.get("MAX_API_REQUESTS") or 80),
-        min_edge=float(event.get("min_edge") or env.get("MIN_EDGE") or 0.025),
+        min_edge=float(event.get("min_edge") or env.get("MIN_EDGE") or 0.015),
         max_edge=float(event.get("max_edge") or env.get("MAX_EDGE") or 0.10),
         min_reference_books=int(
             event.get("min_reference_books") or env.get("MIN_REFERENCE_BOOKS") or 3

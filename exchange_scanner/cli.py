@@ -444,7 +444,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use learned weights from --market-db for weighted CLV scans when available.",
     )
-    parser.add_argument("--min-edge", type=float, default=float(os.getenv("MIN_EDGE", "0.02")))
+    parser.add_argument("--min-edge", type=float, default=float(os.getenv("MIN_EDGE", "0.015")))
     parser.add_argument(
         "--max-edge",
         type=float,
