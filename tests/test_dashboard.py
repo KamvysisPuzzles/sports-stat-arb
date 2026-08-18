@@ -179,6 +179,9 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "Trades/Day" in html
     assert "Results by Sport" in html
     assert "Results by League" in html
+    assert '<details class="advanced-filters">' in html
+    assert "<summary>Advanced Filters</summary>" in html
+    assert '<details class="advanced-filters" open>' not in html
     assert "Median Liquidity" in html
     assert "Smarkets" in html
     assert 'name="sport" value="soccer"' in html

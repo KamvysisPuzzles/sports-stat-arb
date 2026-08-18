@@ -117,15 +117,25 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       padding: 7px 10px;
       font-size: 13px;
     }}
+    .advanced-filters {{
+      margin: 0 0 16px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }}
+    .advanced-filters summary {{
+      cursor: pointer;
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 13px;
+      user-select: none;
+    }}
+    .advanced-filters summary::marker {{ color: var(--muted); }}
     .filter-panel {{
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       gap: 10px;
-      margin: 0 0 16px;
-      padding: 12px;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      padding: 0 12px 12px;
     }}
     .filter-group {{
       display: flex;
@@ -371,24 +381,27 @@ def _multi_filter_html(
     status = _first_filter_value(active_filters.get("status"))
     bookmaker = _first_filter_value(active_filters.get("bookmaker"))
     format_value = _first_filter_value(active_filters.get("format"))
-    return f"""<form class="filter-panel" method="get">
-      <input type="hidden" name="token" value="{_escape(token)}">
-      {_hidden_input("status", status)}
-      {_hidden_input("bookmaker", bookmaker)}
-      {_hidden_input("format", format_value)}
-      <div class="filter-group">
-        <div class="filter-group-title">Sports</div>
-        {_checkboxes("sport", filter_options.get("sports", []), sport_values)}
-      </div>
-      <div class="filter-group">
-        <div class="filter-group-title">Leagues</div>
-        {_checkboxes("league", filter_options.get("leagues", []), league_values)}
-      </div>
-      <div class="filter-actions">
-        <button type="submit">Apply</button>
-        <a href="{_href_attr(_filter_href(token))}">Clear</a>
-      </div>
-    </form>"""
+    return f"""<details class="advanced-filters">
+      <summary>Advanced Filters</summary>
+      <form class="filter-panel" method="get">
+        <input type="hidden" name="token" value="{_escape(token)}">
+        {_hidden_input("status", status)}
+        {_hidden_input("bookmaker", bookmaker)}
+        {_hidden_input("format", format_value)}
+        <div class="filter-group">
+          <div class="filter-group-title">Sports</div>
+          {_checkboxes("sport", filter_options.get("sports", []), sport_values)}
+        </div>
+        <div class="filter-group">
+          <div class="filter-group-title">Leagues</div>
+          {_checkboxes("league", filter_options.get("leagues", []), league_values)}
+        </div>
+        <div class="filter-actions">
+          <button type="submit">Apply</button>
+          <a href="{_href_attr(_filter_href(token))}">Clear</a>
+        </div>
+      </form>
+    </details>"""
 
 
 def _checkboxes(
