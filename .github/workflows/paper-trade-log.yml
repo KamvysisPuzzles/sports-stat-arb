@@ -59,7 +59,7 @@ jobs:
           scan-exchanges \
             --strategy exchange-clv \
             --sports-profile "$SPORTS_PROFILE" \
-            --markets h2h,h2h_lay \
+            --markets h2h,h2h_lay,totals,spreads \
             --max-api-requests "$MAX_API_REQUESTS" \
             --min-edge 0.015 \
             --max-edge "$MAX_EDGE" \
@@ -169,7 +169,7 @@ jobs:
             --paper-db "$PAPER_DB" \
             --paper-update-closing \
             --sports-profile "$SPORTS_PROFILE" \
-            --markets h2h,h2h_lay \
+            --markets h2h,h2h_lay,totals,spreads \
             --max-api-requests "$MAX_API_REQUESTS" \
             --max-event-days 7 \
             --min-edge -999 \

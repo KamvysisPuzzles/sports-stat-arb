@@ -118,6 +118,7 @@ STRATEGIES = {
         "target_commission_rates": EXCHANGE_CLV_COMMISSION_RATES,
         "min_sharp_reference_books": 1,
         "min_betfair_fair_edge": 0.005,
+        "matchbook_soccer_only_markets": {"spreads", "totals"},
     },
 }
 
@@ -529,6 +530,7 @@ def backtest(args: argparse.Namespace) -> list[BacktestBet]:
         min_sharp_reference_books=strategy.get("min_sharp_reference_books", 0),
         sharp_reference_bookmaker_titles=SHARP_REFERENCE_BOOKMAKER_TITLES,
         min_betfair_fair_edge=strategy.get("min_betfair_fair_edge"),
+        matchbook_soccer_only_markets=strategy.get("matchbook_soccer_only_markets"),
     )
 
 
@@ -549,6 +551,7 @@ def settle_paper_results(args: argparse.Namespace) -> int:
 
 
 def scan_the_odds_api(args: argparse.Namespace):
+    strategy = _strategy_config(args)
     sport_keys: list[str] = []
     if args.fixtures:
         events = json.loads(args.fixtures.read_text())
@@ -575,6 +578,13 @@ def scan_the_odds_api(args: argparse.Namespace):
                         "planned_odds_requests": planned_requests,
                         "sports": sport_keys,
                         "markets": args.markets,
+                        "market_requests": [
+                            {
+                                "sport": sport,
+                                "markets": _markets_for_sport(sport, args.markets, strategy),
+                            }
+                            for sport in sport_keys
+                        ],
                         "regions": args.regions,
                     },
                     indent=2,
@@ -601,11 +611,14 @@ def scan_the_odds_api(args: argparse.Namespace):
             )
         events = []
         for sport in sport_keys:
+            markets = _markets_for_sport(sport, args.markets, strategy)
+            if not markets:
+                continue
             events.extend(
                 client.fetch_odds(
                     sport=sport,
                     regions=args.regions,
-                    markets=args.markets,
+                    markets=markets,
                 )
             )
     prices = normalise_odds_api_events(events)
@@ -619,7 +632,6 @@ def scan_the_odds_api(args: argparse.Namespace):
         max_event_days=getattr(args, "max_event_days", 2.0),
     )
 
-    strategy = _strategy_config(args)
     reference_weights = _reference_weights_for_scan(args, strategy, allowed_markets, sport_keys)
     signals = find_value_opportunities(
         prices,
@@ -647,6 +659,16 @@ def _strategy_config(args: argparse.Namespace):
     return STRATEGIES[getattr(args, "strategy", "sharp-weighted-clv")]
 
 
+def _markets_for_sport(sport_key: str, markets: str, strategy) -> str:
+    requested_markets = [market.strip() for market in markets.split(",") if market.strip()]
+    matchbook_soccer_only_markets = strategy.get("matchbook_soccer_only_markets") or set()
+    if not matchbook_soccer_only_markets or sport_key.startswith("soccer_"):
+        return ",".join(requested_markets)
+    return ",".join(
+        market for market in requested_markets if market not in matchbook_soccer_only_markets
+    )
+
+
 def _reference_weights_for_scan(
     args: argparse.Namespace,
     strategy,
@@ -671,14 +693,18 @@ def _filter_signals_by_strategy_rules(signals, strategy):
     max_betfair_spread_pct = strategy.get("max_betfair_spread_pct")
     min_sharp_reference_books = strategy.get("min_sharp_reference_books", 0)
     min_betfair_fair_edge = strategy.get("min_betfair_fair_edge")
+    matchbook_soccer_only_markets = strategy.get("matchbook_soccer_only_markets") or set()
     if (
         max_betfair_spread_pct is None
         and min_sharp_reference_books <= 0
         and min_betfair_fair_edge is None
+        and not matchbook_soccer_only_markets
     ):
         return signals
     output = []
     for signal in signals:
+        if not _allowed_by_matchbook_soccer_market_rule(signal, matchbook_soccer_only_markets):
+            continue
         if _sharp_reference_count(signal) < min_sharp_reference_books:
             continue
         if not _is_betfair_signal(signal):
@@ -696,6 +722,12 @@ def _filter_signals_by_strategy_rules(signals, strategy):
             continue
         output.append(signal)
     return output
+
+
+def _allowed_by_matchbook_soccer_market_rule(signal, markets: set[str]) -> bool:
+    if signal.market_key not in markets:
+        return True
+    return signal.target_bookmaker.casefold() == "matchbook" and signal.sport_key.startswith("soccer_")
 
 
 def _sharp_reference_count(signal) -> int:

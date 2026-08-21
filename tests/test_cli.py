@@ -20,6 +20,7 @@ from exchange_scanner.cli import (
     _filter_signals_by_max_edge,
     _filter_signals_by_strategy_rules,
     _fractional_odds,
+    _markets_for_sport,
     _recommended_value_stake,
     _sport_keys,
     _unique_bet_signals,
@@ -67,6 +68,7 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
     assert strategy["reference_weights"] == SHARPNESS_WEIGHTS
     assert strategy["min_sharp_reference_books"] == 1
     assert strategy["min_betfair_fair_edge"] == pytest.approx(0.005)
+    assert strategy["matchbook_soccer_only_markets"] == {"spreads", "totals"}
 
 
 def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None:
@@ -125,6 +127,19 @@ def test_active_h2h_profile_uses_live_sports_client() -> None:
     sports = _sport_keys(args, odds_client=FakeOddsClient())
 
     assert sports == ["basketball_nba", "soccer_epl"]
+
+
+def test_markets_for_sport_limits_matchbook_soccer_only_markets() -> None:
+    strategy = {"matchbook_soccer_only_markets": {"spreads", "totals"}}
+
+    assert (
+        _markets_for_sport("soccer_epl", "h2h,h2h_lay,totals,spreads", strategy)
+        == "h2h,h2h_lay,totals,spreads"
+    )
+    assert (
+        _markets_for_sport("basketball_wnba", "h2h,h2h_lay,totals,spreads", strategy)
+        == "h2h,h2h_lay"
+    )
 
 
 def test_unique_event_signals_keeps_highest_edge_per_event() -> None:
@@ -428,6 +443,76 @@ def test_filter_strategy_rules_requires_betfair_fair_edge_for_betfair_only() -> 
         [betfair_negative, matchbook, betfair_positive],
         {"min_betfair_fair_edge": 0.005},
     ) == [matchbook, betfair_positive]
+
+
+def test_filter_strategy_rules_limits_extra_markets_to_matchbook_soccer() -> None:
+    matchbook_soccer_total = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="totals",
+        outcome_name="Over 2.5",
+        target_bookmaker="Matchbook",
+        target_odds=2.2,
+        reference_fair_odds=2.1,
+        reference_probability=0.4762,
+        edge=0.0476,
+        reference_bookmakers=("Pinnacle",),
+    )
+    smarkets_soccer_total = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-2",
+        event_name="Liverpool v Everton",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="totals",
+        outcome_name="Under 2.5",
+        target_bookmaker="Smarkets",
+        target_odds=2.2,
+        reference_fair_odds=2.1,
+        reference_probability=0.4762,
+        edge=0.0476,
+        reference_bookmakers=("Pinnacle",),
+    )
+    matchbook_basketball_spread = ValueSignal(
+        sport_key="basketball_wnba",
+        event_id="event-3",
+        event_name="Mystics v Dream",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="spreads",
+        outcome_name="Mystics -1.5",
+        target_bookmaker="Matchbook",
+        target_odds=2.2,
+        reference_fair_odds=2.1,
+        reference_probability=0.4762,
+        edge=0.0476,
+        reference_bookmakers=("Pinnacle",),
+    )
+    betfair_h2h = ValueSignal(
+        sport_key="basketball_wnba",
+        event_id="event-4",
+        event_name="Toronto Tempo v Indiana Fever",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Toronto Tempo",
+        target_bookmaker="Betfair",
+        target_odds=5.2,
+        reference_fair_odds=4.9,
+        reference_probability=0.2041,
+        edge=0.0612,
+        reference_bookmakers=("Pinnacle",),
+        betfair_fair_edge=0.01,
+    )
+
+    assert _filter_signals_by_strategy_rules(
+        [
+            smarkets_soccer_total,
+            matchbook_basketball_spread,
+            matchbook_soccer_total,
+            betfair_h2h,
+        ],
+        {"matchbook_soccer_only_markets": {"spreads", "totals"}},
+    ) == [matchbook_soccer_total, betfair_h2h]
 
 
 def test_filter_prices_by_event_horizon_excludes_events_more_than_two_days_out() -> None:

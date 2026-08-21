@@ -59,7 +59,7 @@ Run the broad exchange h2h CLV scan:
 scan-exchanges \
   --strategy exchange-clv \
   --sports-profile active-h2h \
-  --markets h2h,h2h_lay \
+  --markets h2h,h2h_lay,totals,spreads \
   --max-api-requests 100 \
   --min-edge 0.015 \
   --max-edge 0.10 \
@@ -132,13 +132,13 @@ Matchbook may have exchange markets. It excludes futures and outright winner
 markets.
 
 ```bash
-scan-exchanges --sports-profile active-h2h --markets h2h,h2h_lay --max-api-requests 100
+scan-exchanges --sports-profile active-h2h --markets h2h,h2h_lay,totals,spreads --max-api-requests 100
 ```
 
 Estimate request count before a broad scan:
 
 ```bash
-scan-exchanges --sports-profile active-h2h --markets h2h,h2h_lay --dry-run-estimate
+scan-exchanges --sports-profile active-h2h --markets h2h,h2h_lay,totals,spreads --dry-run-estimate
 ```
 
 ## Caching
@@ -229,7 +229,7 @@ paper stake.
 scan-exchanges \
   --strategy exchange-clv \
   --sports-profile active-h2h \
-  --markets h2h,h2h_lay \
+  --markets h2h,h2h_lay,totals,spreads \
   --max-api-requests 100 \
   --min-edge 0.015 \
   --min-reference-books 1 \
@@ -271,6 +271,8 @@ the target venue's back/lay midpoint in implied-probability space; otherwise
 they fall back to that venue's regular h2h win/draw/win price.
 Betfair target signals also require at least `0.5%` edge versus Betfair's own
 top-of-book fair value.
+Totals and spreads/handicaps are currently restricted to Matchbook soccer
+targets; h2h remains available across Matchbook, Smarkets, and Betfair targets.
 
 Export the paper log:
 
@@ -376,8 +378,9 @@ Do not commit either file.
 
 The workflow now keeps one combined trade log:
 
-- Scans `active-h2h` h2h and h2h_lay markets every hour.
+- Scans `active-h2h` h2h, h2h_lay, totals, and spreads markets every hour.
 - Targets Matchbook, Smarkets, and Betfair Exchange prices.
+- Restricts totals and spreads/handicaps to Matchbook soccer targets.
 - Requires `1.5%` post-fee edge, at least 1 sharp reference book, and at most `10%`
   edge.
 - Requires Betfair target prices to beat Betfair top-of-book fair value by at
@@ -418,8 +421,9 @@ Credit estimate for the deployed active profile:
 - Closing update: one odds request per active non-outright sport.
 - Result settlement: 2 credits per sport with open trades.
 
-The deployed workflow uses the `active-h2h` profile. It scans h2h/h2h_lay every
-hour and updates closing values every 2 hours. On August 18, 2026, this profile
+The deployed workflow uses the `active-h2h` profile. It scans h2h/h2h_lay plus
+Matchbook soccer totals/spreads every hour and updates closing values every 2
+hours. On August 18, 2026, this profile
 planned 66 odds requests per scan, so base odds usage would be roughly `71,000`
 credits per 30-day month before result settlement. This number changes as sports
 move in and out of season.
@@ -450,11 +454,12 @@ Planned next steps:
    because of its deeper liquidity, if API access is worth the setup cost.
    BETDAQ can be reviewed later as an incremental venue.
 
-3. Test markets beyond h2h.
-   Spreads/handicaps and totals are the first candidates, followed by selected
-   soccer secondary markets such as draw no bet, both teams to score, double
-   chance, and to qualify. Each market needs exact line matching, liquidity
-   tracking, and separate CLV validation before any live execution.
+3. Test additional non-h2h markets.
+   Matchbook soccer spreads/handicaps and totals are now included in paper
+   trading. Selected soccer secondary markets such as draw no bet, both teams to
+   score, double chance, and to qualify remain future candidates. Each market
+   needs exact line matching, liquidity tracking, and separate CLV validation
+   before any live execution.
 
 Scaling target:
 

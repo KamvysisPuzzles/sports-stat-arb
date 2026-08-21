@@ -19,6 +19,7 @@ from exchange_scanner.cli import (
     STRATEGIES,
     _filter_prices_by_event_horizon,
     _filter_signals_by_max_edge,
+    _markets_for_sport,
     _unique_bet_signals,
     active_h2h_sports,
 )
@@ -60,7 +61,7 @@ class StrategyRunnerConfig:
     aws_region: str = "eu-west-2"
     odds_s3_prefix: str = "odds_snapshots"
     sports_profile: str = ACTIVE_H2H_PROFILE
-    markets: str = "h2h,h2h_lay"
+    markets: str = "h2h,h2h_lay,totals,spreads"
     regions: str = "uk,eu"
     strategy: str = "exchange-clv"
     max_api_requests: int = 100
@@ -99,7 +100,9 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
         sports_profile=str(
             event.get("sports_profile") or env.get("SPORTS_PROFILE") or ACTIVE_H2H_PROFILE
         ),
-        markets=str(event.get("markets") or env.get("MARKETS") or "h2h,h2h_lay"),
+        markets=str(
+            event.get("markets") or env.get("MARKETS") or "h2h,h2h_lay,totals,spreads"
+        ),
         regions=str(event.get("regions") or env.get("REGIONS") or "uk,eu"),
         strategy=str(event.get("strategy") or env.get("STRATEGY") or "exchange-clv"),
         max_api_requests=int(event.get("max_api_requests") or env.get("MAX_API_REQUESTS") or 100),
@@ -192,12 +195,16 @@ def run_paper_log(
         )
 
     events = []
+    strategy = STRATEGIES[config.strategy]
     for sport in sports:
+        markets = _markets_for_sport(sport, config.markets, strategy)
+        if not markets:
+            continue
         events.extend(
             odds_client.fetch_odds(
                 sport=sport,
                 regions=config.regions,
-                markets=config.markets,
+                markets=markets,
             )
         )
     prices = normalise_odds_api_events(events)
@@ -390,6 +397,7 @@ def _find_signals(
     )
     min_sharp_reference_books = strategy.get("min_sharp_reference_books", 0)
     min_betfair_fair_edge = strategy.get("min_betfair_fair_edge")
+    matchbook_soccer_only_markets = strategy.get("matchbook_soccer_only_markets") or set()
     signals = find_value_opportunities(
         prices,
         target_bookmakers=strategy["target_bookmakers"],
@@ -407,6 +415,7 @@ def _find_signals(
         max_betfair_spread_pct=max_betfair_spread_pct,
         min_sharp_reference_books=min_sharp_reference_books,
         min_betfair_fair_edge=min_betfair_fair_edge,
+        matchbook_soccer_only_markets=matchbook_soccer_only_markets,
     )
     signals = _filter_signals_by_max_edge(signals, max_edge=config.max_edge)
     return _unique_bet_signals(signals)
@@ -446,15 +455,20 @@ def _filter_betfair_dislocation_signals(
     max_betfair_spread_pct: float | None,
     min_sharp_reference_books: int = 0,
     min_betfair_fair_edge: float | None = None,
+    matchbook_soccer_only_markets: set[str] | None = None,
 ) -> list[ValueSignal]:
+    matchbook_soccer_only_markets = matchbook_soccer_only_markets or set()
     if (
         max_betfair_spread_pct is None
         and min_sharp_reference_books <= 0
         and min_betfair_fair_edge is None
+        and not matchbook_soccer_only_markets
     ):
         return signals
     filtered = []
     for signal in signals:
+        if not _allowed_by_matchbook_soccer_market_rule(signal, matchbook_soccer_only_markets):
+            continue
         if _sharp_reference_count(signal) < min_sharp_reference_books:
             continue
         if signal.target_bookmaker.casefold() not in BETFAIR_TARGET_BOOKMAKERS:
@@ -472,6 +486,12 @@ def _filter_betfair_dislocation_signals(
             continue
         filtered.append(signal)
     return filtered
+
+
+def _allowed_by_matchbook_soccer_market_rule(signal: ValueSignal, markets: set[str]) -> bool:
+    if signal.market_key not in markets:
+        return True
+    return signal.target_bookmaker.casefold() == "matchbook" and signal.sport_key.startswith("soccer_")
 
 
 def _sharp_reference_count(signal: ValueSignal) -> int:

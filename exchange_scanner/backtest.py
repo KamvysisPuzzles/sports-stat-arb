@@ -76,6 +76,7 @@ def run_backtest(
     min_sharp_reference_books: int = 0,
     sharp_reference_bookmaker_titles: set[str] | None = None,
     min_betfair_fair_edge: float | None = None,
+    matchbook_soccer_only_markets: set[str] | None = None,
 ) -> list[BacktestBet]:
     results = load_results(results_path)
     snapshots = load_historical_snapshots(historical_odds_path)
@@ -116,6 +117,7 @@ def run_backtest(
             min_sharp_reference_books=min_sharp_reference_books,
             sharp_reference_bookmaker_titles=sharp_reference_bookmaker_titles,
             min_betfair_fair_edge=min_betfair_fair_edge,
+            matchbook_soccer_only_markets=matchbook_soccer_only_markets,
         )
         if unique_events:
             signals = _unique_event_signals(signals)
@@ -379,15 +381,20 @@ def _filter_betfair_dislocation_signals(
     min_sharp_reference_books: int = 0,
     sharp_reference_bookmaker_titles: set[str] | None = None,
     min_betfair_fair_edge: float | None = None,
+    matchbook_soccer_only_markets: set[str] | None = None,
 ) -> list[ValueSignal]:
+    matchbook_soccer_only_markets = matchbook_soccer_only_markets or set()
     if (
         max_betfair_spread_pct is None
         and min_sharp_reference_books <= 0
         and min_betfair_fair_edge is None
+        and not matchbook_soccer_only_markets
     ):
         return signals
     filtered = []
     for signal in signals:
+        if not _allowed_by_matchbook_soccer_market_rule(signal, matchbook_soccer_only_markets):
+            continue
         if (
             min_sharp_reference_books > 0
             and _sharp_reference_count(signal, sharp_reference_bookmaker_titles or set())
@@ -409,6 +416,12 @@ def _filter_betfair_dislocation_signals(
             continue
         filtered.append(signal)
     return filtered
+
+
+def _allowed_by_matchbook_soccer_market_rule(signal: ValueSignal, markets: set[str]) -> bool:
+    if signal.market_key not in markets:
+        return True
+    return signal.target_bookmaker.casefold() == "matchbook" and signal.sport_key.startswith("soccer_")
 
 
 def _sharp_reference_count(
