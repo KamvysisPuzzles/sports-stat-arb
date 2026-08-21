@@ -77,6 +77,7 @@ def run_backtest(
     sharp_reference_bookmaker_titles: set[str] | None = None,
     min_betfair_fair_edge: float | None = None,
     matchbook_soccer_only_markets: set[str] | None = None,
+    line_market_min_reference_books: int = 0,
 ) -> list[BacktestBet]:
     results = load_results(results_path)
     snapshots = load_historical_snapshots(historical_odds_path)
@@ -118,6 +119,7 @@ def run_backtest(
             sharp_reference_bookmaker_titles=sharp_reference_bookmaker_titles,
             min_betfair_fair_edge=min_betfair_fair_edge,
             matchbook_soccer_only_markets=matchbook_soccer_only_markets,
+            line_market_min_reference_books=line_market_min_reference_books,
         )
         if unique_events:
             signals = _unique_event_signals(signals)
@@ -382,6 +384,7 @@ def _filter_betfair_dislocation_signals(
     sharp_reference_bookmaker_titles: set[str] | None = None,
     min_betfair_fair_edge: float | None = None,
     matchbook_soccer_only_markets: set[str] | None = None,
+    line_market_min_reference_books: int = 0,
 ) -> list[ValueSignal]:
     matchbook_soccer_only_markets = matchbook_soccer_only_markets or set()
     if (
@@ -389,18 +392,23 @@ def _filter_betfair_dislocation_signals(
         and min_sharp_reference_books <= 0
         and min_betfair_fair_edge is None
         and not matchbook_soccer_only_markets
+        and line_market_min_reference_books <= 0
     ):
         return signals
     filtered = []
     for signal in signals:
         if not _allowed_by_matchbook_soccer_market_rule(signal, matchbook_soccer_only_markets):
             continue
-        if (
-            min_sharp_reference_books > 0
-            and _sharp_reference_count(signal, sharp_reference_bookmaker_titles or set())
-            < min_sharp_reference_books
-        ):
-            continue
+        if signal.market_key in matchbook_soccer_only_markets:
+            if len(signal.reference_bookmakers) < line_market_min_reference_books:
+                continue
+        else:
+            if (
+                min_sharp_reference_books > 0
+                and _sharp_reference_count(signal, sharp_reference_bookmaker_titles or set())
+                < min_sharp_reference_books
+            ):
+                continue
         if signal.target_bookmaker.casefold() not in {"betfair", "betfair_ex_uk", "betfair_ex_eu"}:
             filtered.append(signal)
             continue

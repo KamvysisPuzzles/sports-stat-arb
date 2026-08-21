@@ -69,6 +69,7 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
     assert strategy["min_sharp_reference_books"] == 1
     assert strategy["min_betfair_fair_edge"] == pytest.approx(0.005)
     assert strategy["matchbook_soccer_only_markets"] == {"spreads", "totals"}
+    assert strategy["line_market_min_reference_books"] == 8
 
 
 def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None:
@@ -458,7 +459,7 @@ def test_filter_strategy_rules_limits_extra_markets_to_matchbook_soccer() -> Non
         reference_fair_odds=2.1,
         reference_probability=0.4762,
         edge=0.0476,
-        reference_bookmakers=("Pinnacle",),
+        reference_bookmakers=tuple(f"Book {index}" for index in range(8)),
     )
     smarkets_soccer_total = ValueSignal(
         sport_key="soccer_epl",
@@ -513,6 +514,60 @@ def test_filter_strategy_rules_limits_extra_markets_to_matchbook_soccer() -> Non
         ],
         {"matchbook_soccer_only_markets": {"spreads", "totals"}},
     ) == [matchbook_soccer_total, betfair_h2h]
+
+
+def test_filter_strategy_rules_requires_reference_depth_for_line_markets() -> None:
+    enough_refs = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="totals",
+        outcome_name="Over 2.5",
+        target_bookmaker="Matchbook",
+        target_odds=2.2,
+        reference_fair_odds=2.1,
+        reference_probability=0.4762,
+        edge=0.0476,
+        reference_bookmakers=tuple(f"Book {index}" for index in range(8)),
+    )
+    too_few_refs = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-2",
+        event_name="Liverpool v Everton",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="spreads",
+        outcome_name="Liverpool -1.5",
+        target_bookmaker="Matchbook",
+        target_odds=2.2,
+        reference_fair_odds=2.1,
+        reference_probability=0.4762,
+        edge=0.0476,
+        reference_bookmakers=tuple(f"Book {index}" for index in range(7)),
+    )
+    h2h_with_sharp_ref = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-3",
+        event_name="Leeds v Norwich",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Leeds",
+        target_bookmaker="Matchbook",
+        target_odds=2.2,
+        reference_fair_odds=2.1,
+        reference_probability=0.4762,
+        edge=0.0476,
+        reference_bookmakers=("Pinnacle",),
+    )
+
+    assert _filter_signals_by_strategy_rules(
+        [too_few_refs, enough_refs, h2h_with_sharp_ref],
+        {
+            "matchbook_soccer_only_markets": {"spreads", "totals"},
+            "line_market_min_reference_books": 8,
+            "min_sharp_reference_books": 1,
+        },
+    ) == [enough_refs, h2h_with_sharp_ref]
 
 
 def test_filter_prices_by_event_horizon_excludes_events_more_than_two_days_out() -> None:

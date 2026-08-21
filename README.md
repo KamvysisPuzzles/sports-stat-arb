@@ -265,14 +265,16 @@ The current `exchange-clv` strategy targets Matchbook, Smarkets, and Betfair
 Exchange prices against a weighted reference consensus. Pinnacle, Betfair,
 Smarkets, and Matchbook get the highest weights; stronger mainstream books get
 medium weights; unknown books get a low default weight. It still requires at
-least one complete sharp reference book per outcome. If The Odds API includes a
-matching lay market such as `h2h_lay`, the exported venue fair diagnostics use
-the target venue's back/lay midpoint in implied-probability space; otherwise
-they fall back to that venue's regular h2h win/draw/win price.
+least one complete sharp reference book per h2h outcome. If The Odds API
+includes a matching lay market such as `h2h_lay`, the exported venue fair
+diagnostics use the target venue's back/lay midpoint in implied-probability
+space; otherwise they fall back to that venue's regular h2h win/draw/win price.
 Betfair target signals also require at least `0.5%` edge versus Betfair's own
 top-of-book fair value.
 Totals and spreads/handicaps are currently restricted to Matchbook soccer
-targets; h2h remains available across Matchbook, Smarkets, and Betfair targets.
+targets and require at least 8 same-line reference books rather than a sharp
+same-line reference. H2h remains available across Matchbook, Smarkets, and
+Betfair targets.
 
 Export the paper log:
 
@@ -381,8 +383,10 @@ The workflow now keeps one combined trade log:
 - Scans `active-h2h` h2h, h2h_lay, totals, and spreads markets every hour.
 - Targets Matchbook, Smarkets, and Betfair Exchange prices.
 - Restricts totals and spreads/handicaps to Matchbook soccer targets.
-- Requires `1.5%` post-fee edge, at least 1 sharp reference book, and at most `10%`
-  edge.
+- Requires `1.5%` post-fee edge and at most `10%` edge.
+- Requires h2h signals to have at least 1 sharp reference book.
+- Requires Matchbook soccer totals/spreads to have at least 8 same-line
+  reference books.
 - Requires Betfair target prices to beat Betfair top-of-book fair value by at
   least `0.5%`.
 - Books only the best price when the same event/market/outcome appears on

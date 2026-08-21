@@ -398,6 +398,7 @@ def _find_signals(
     min_sharp_reference_books = strategy.get("min_sharp_reference_books", 0)
     min_betfair_fair_edge = strategy.get("min_betfair_fair_edge")
     matchbook_soccer_only_markets = strategy.get("matchbook_soccer_only_markets") or set()
+    line_market_min_reference_books = strategy.get("line_market_min_reference_books", 0)
     signals = find_value_opportunities(
         prices,
         target_bookmakers=strategy["target_bookmakers"],
@@ -416,6 +417,7 @@ def _find_signals(
         min_sharp_reference_books=min_sharp_reference_books,
         min_betfair_fair_edge=min_betfair_fair_edge,
         matchbook_soccer_only_markets=matchbook_soccer_only_markets,
+        line_market_min_reference_books=line_market_min_reference_books,
     )
     signals = _filter_signals_by_max_edge(signals, max_edge=config.max_edge)
     return _unique_bet_signals(signals)
@@ -456,6 +458,7 @@ def _filter_betfair_dislocation_signals(
     min_sharp_reference_books: int = 0,
     min_betfair_fair_edge: float | None = None,
     matchbook_soccer_only_markets: set[str] | None = None,
+    line_market_min_reference_books: int = 0,
 ) -> list[ValueSignal]:
     matchbook_soccer_only_markets = matchbook_soccer_only_markets or set()
     if (
@@ -463,14 +466,19 @@ def _filter_betfair_dislocation_signals(
         and min_sharp_reference_books <= 0
         and min_betfair_fair_edge is None
         and not matchbook_soccer_only_markets
+        and line_market_min_reference_books <= 0
     ):
         return signals
     filtered = []
     for signal in signals:
         if not _allowed_by_matchbook_soccer_market_rule(signal, matchbook_soccer_only_markets):
             continue
-        if _sharp_reference_count(signal) < min_sharp_reference_books:
-            continue
+        if signal.market_key in matchbook_soccer_only_markets:
+            if len(signal.reference_bookmakers) < line_market_min_reference_books:
+                continue
+        else:
+            if _sharp_reference_count(signal) < min_sharp_reference_books:
+                continue
         if signal.target_bookmaker.casefold() not in BETFAIR_TARGET_BOOKMAKERS:
             filtered.append(signal)
             continue

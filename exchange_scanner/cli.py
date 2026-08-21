@@ -119,6 +119,7 @@ STRATEGIES = {
         "min_sharp_reference_books": 1,
         "min_betfair_fair_edge": 0.005,
         "matchbook_soccer_only_markets": {"spreads", "totals"},
+        "line_market_min_reference_books": 8,
     },
 }
 
@@ -531,6 +532,7 @@ def backtest(args: argparse.Namespace) -> list[BacktestBet]:
         sharp_reference_bookmaker_titles=SHARP_REFERENCE_BOOKMAKER_TITLES,
         min_betfair_fair_edge=strategy.get("min_betfair_fair_edge"),
         matchbook_soccer_only_markets=strategy.get("matchbook_soccer_only_markets"),
+        line_market_min_reference_books=strategy.get("line_market_min_reference_books", 0),
     )
 
 
@@ -694,19 +696,25 @@ def _filter_signals_by_strategy_rules(signals, strategy):
     min_sharp_reference_books = strategy.get("min_sharp_reference_books", 0)
     min_betfair_fair_edge = strategy.get("min_betfair_fair_edge")
     matchbook_soccer_only_markets = strategy.get("matchbook_soccer_only_markets") or set()
+    line_market_min_reference_books = strategy.get("line_market_min_reference_books", 0)
     if (
         max_betfair_spread_pct is None
         and min_sharp_reference_books <= 0
         and min_betfair_fair_edge is None
         and not matchbook_soccer_only_markets
+        and line_market_min_reference_books <= 0
     ):
         return signals
     output = []
     for signal in signals:
         if not _allowed_by_matchbook_soccer_market_rule(signal, matchbook_soccer_only_markets):
             continue
-        if _sharp_reference_count(signal) < min_sharp_reference_books:
-            continue
+        if signal.market_key in matchbook_soccer_only_markets:
+            if len(signal.reference_bookmakers) < line_market_min_reference_books:
+                continue
+        else:
+            if _sharp_reference_count(signal) < min_sharp_reference_books:
+                continue
         if not _is_betfair_signal(signal):
             output.append(signal)
             continue
