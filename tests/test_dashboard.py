@@ -96,6 +96,15 @@ def next_day_trade():
     return row
 
 
+def mark_to_market_trade():
+    row = dict(trades()[1])
+    row["trade_id"] = "paper#6"
+    row["event_name"] = "Newcastle v Brighton"
+    row["commence_time"] = "2026-08-18T23:00:00+00:00"
+    row["target_clv"] = Decimal("0.03")
+    return row
+
+
 def test_dashboard_payload_summarises_and_filters_trades() -> None:
     payload = dashboard_payload(
         FakeTable(trades()),
@@ -108,6 +117,45 @@ def test_dashboard_payload_summarises_and_filters_trades() -> None:
     assert payload["all_summary"]["total_trades"] == 3
     assert payload["all_summary"]["median_confirmed_liquidity_at_target"] == 25.5
     assert payload["trades"][0]["target_bookmaker"] == "Matchbook"
+
+
+def test_dashboard_payload_splits_closed_clv_from_mark_to_market() -> None:
+    payload = dashboard_payload(
+        FakeTable([*trades(), mark_to_market_trade()]),
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+
+    assert payload["summary"]["closed_clv_trades"] == 2
+    assert payload["summary"]["average_closed_clv"] == 0.005
+    assert payload["summary"]["closed_clv_beats"] == 1
+    assert payload["summary"]["closed_clv_misses"] == 1
+    assert payload["summary"]["mark_to_market_clv_trades"] == 1
+    assert payload["summary"]["average_mark_to_market_clv"] == 0.03
+    assert payload["summary"]["mark_to_market_clv_beats"] == 1
+    assert payload["summary"]["average_clv"] == payload["summary"]["average_closed_clv"]
+
+
+def test_dashboard_payload_filters_by_clv_scope() -> None:
+    items = [*trades(), mark_to_market_trade()]
+    closed_payload = dashboard_payload(
+        FakeTable(items),
+        filters={"clv": "closed"},
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+    mtm_payload = dashboard_payload(
+        FakeTable(items),
+        filters={"clv": "mtm"},
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+    missing_payload = dashboard_payload(
+        FakeTable(items),
+        filters={"clv": "missing"},
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+
+    assert {row["trade_id"] for row in closed_payload["trades"]} == {"paper#1", "paper#3"}
+    assert {row["trade_id"] for row in mtm_payload["trades"]} == {"paper#6"}
+    assert {row["trade_id"] for row in missing_payload["trades"]} == {"paper#2"}
 
 
 def test_dashboard_payload_includes_filtered_trades_last_24h() -> None:
@@ -179,6 +227,8 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "Trades Last 24h" in html
     assert "Results by Sport" in html
     assert "Results by League" in html
+    assert "Closed CLV" in html
+    assert "MTM CLV" in html
     assert '<details class="advanced-filters">' in html
     assert "<summary>Advanced Filters</summary>" in html
     assert '<details class="advanced-filters" open>' not in html
@@ -186,6 +236,8 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "Smarkets" in html
     assert 'name="sport" value="soccer"' in html
     assert 'name="league" value="soccer_epl"' in html
+    assert 'name="clv" value="closed"' in html
+    assert "token=secret&amp;clv=closed" in html
     assert "token=secret&amp;status=open" in html
     assert "3.14" in html
 
@@ -208,15 +260,15 @@ def test_lambda_handler_returns_json(monkeypatch) -> None:
     )
 
     response = lambda_function.lambda_handler(
-        {"queryStringParameters": {"token": "secret", "format": "json"}},
+        {"queryStringParameters": {"token": "secret", "format": "json", "clv": "missing"}},
         None,
     )
 
     assert response["statusCode"] == 200
     assert response["headers"]["Content-Type"] == "application/json"
     body = json.loads(response["body"])
-    assert body["summary"]["total_trades"] == 3
-    assert body["venue_results"][0]["venue"] == "Matchbook"
+    assert body["summary"]["total_trades"] == 1
+    assert body["trades"][0]["trade_id"] == "paper#2"
 
 
 def test_lambda_handler_accepts_repeated_sport_and_league_params(monkeypatch) -> None:

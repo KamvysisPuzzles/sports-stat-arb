@@ -16,7 +16,7 @@ def dashboard_payload(
     now = now or datetime.now(timezone.utc)
     filters = filters or {}
     trades = [_normalise_item(item) for item in _scan_all(table)]
-    filtered = _apply_filters(trades, filters)
+    filtered = _apply_filters(trades, filters, now=now)
     return {
         "generated_at": now.isoformat(),
         "filters": {key: value for key, value in filters.items() if _filter_values(value)},
@@ -215,6 +215,8 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       <a href="{_href_attr(_filter_href(token))}">All</a>
       <a href="{_href_attr(_filter_href(token, status='open'))}">Open</a>
       <a href="{_href_attr(_filter_href(token, status='settled'))}">Settled</a>
+      <a href="{_href_attr(_filter_href(token, clv='closed'))}">Closed CLV</a>
+      <a href="{_href_attr(_filter_href(token, clv='mtm'))}">MTM CLV</a>
       <a href="{_href_attr(_filter_href(token, bookmaker='Matchbook'))}">Matchbook</a>
       <a href="{_href_attr(_filter_href(token, bookmaker='Betfair'))}">Betfair</a>
       <a href="{_href_attr(_filter_href(token, format='json'))}">JSON</a>
@@ -264,13 +266,15 @@ def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:
       {_metric("ROI", f"{summary['settled_roi']:.2%}", _class_for_number(summary["settled_roi"]))}
       {_metric("Avg Odds", f"{summary['average_booked_odds']:.2f}")}
       {_metric("Median Liquidity", f"{summary['median_confirmed_liquidity_at_target']:.2f}")}
-      {_metric("Avg CLV", f"{summary['average_clv']:.2%}", _class_for_number(summary["average_clv"]))}
-      {_metric("CLV B/M/T", f"{summary['beat_closing_line']}/{summary['missed_closing_line']}/{summary['tied_closing_line']}")}
+      {_metric("Closed CLV", f"{summary['average_closed_clv']:.2%}", f"n={summary['closed_clv_trades']}", tone=_class_for_number(summary["average_closed_clv"]))}
+      {_metric("Closed B/M/T", f"{summary['closed_clv_beats']}/{summary['closed_clv_misses']}/{summary['closed_clv_ties']}")}
+      {_metric("MTM CLV", f"{summary['average_mark_to_market_clv']:.2%}", f"n={summary['mark_to_market_clv_trades']}", tone=_class_for_number(summary["average_mark_to_market_clv"]))}
+      {_metric("MTM B/M/T", f"{summary['mark_to_market_clv_beats']}/{summary['mark_to_market_clv_misses']}/{summary['mark_to_market_clv_ties']}")}
     </section>"""
 
 
-def _metric(label: str, value: object, extra: str = "") -> str:
-    class_name = extra if extra in {"good", "bad", "warn"} else ""
+def _metric(label: str, value: object, extra: str = "", *, tone: str = "") -> str:
+    class_name = tone or (extra if extra in {"good", "bad", "warn"} else "")
     subtitle = "" if extra in {"", "good", "bad", "warn"} else f'<div class="label">{_escape(extra)}</div>'
     return (
         '<div class="metric">'
@@ -319,7 +323,7 @@ def _venue_results_html(venues: list[dict[str, Any]]) -> str:
               <th>PnL</th>
               <th>ROI</th>
               <th>Median Liquidity</th>
-              <th>Avg CLV</th>
+              <th>Closed CLV</th>
             </tr>
           </thead>
           <tbody>
@@ -345,7 +349,7 @@ def _group_results_html(title: str, rows: list[dict[str, Any]], label: str) -> s
               <th>PnL</th>
               <th>ROI</th>
               <th>Median Liquidity</th>
-              <th>Avg CLV</th>
+              <th>Closed CLV</th>
             </tr>
           </thead>
           <tbody>
@@ -385,6 +389,7 @@ def _multi_filter_html(
     status = _first_filter_value(active_filters.get("status"))
     bookmaker = _first_filter_value(active_filters.get("bookmaker"))
     format_value = _first_filter_value(active_filters.get("format"))
+    clv_value = _first_filter_value(active_filters.get("clv"))
     return f"""<details class="advanced-filters">
       <summary>Advanced Filters</summary>
       <form class="filter-panel" method="get">
@@ -392,6 +397,13 @@ def _multi_filter_html(
         {_hidden_input("status", status)}
         {_hidden_input("bookmaker", bookmaker)}
         {_hidden_input("format", format_value)}
+        <div class="filter-group">
+          <div class="filter-group-title">CLV</div>
+          {_radio("clv", "", "All", clv_value)}
+          {_radio("clv", "closed", "Closed market", clv_value)}
+          {_radio("clv", "mtm", "Mark to market", clv_value)}
+          {_radio("clv", "missing", "Missing", clv_value)}
+        </div>
         <div class="filter-group">
           <div class="filter-group-title">Sports</div>
           {_checkboxes("sport", filter_options.get("sports", []), sport_values)}
@@ -425,6 +437,16 @@ def _checkboxes(
     )
 
 
+def _radio(name: str, value: str, label: str, selected_value: str) -> str:
+    return (
+        '<label class="check">'
+        f'<input type="radio" name="{_escape(name)}" value="{_escape(value)}"'
+        f"{' checked' if value == selected_value else ''}>"
+        f"{_escape(label)}"
+        "</label>"
+    )
+
+
 def _hidden_input(name: str, value: str) -> str:
     if not value:
         return ""
@@ -449,15 +471,20 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
     now = now or datetime.now(timezone.utc)
     settled = [item for item in trades if item.get("status") == "settled"]
     open_trades = [item for item in trades if item.get("status") == "open"]
-    clv_rows = [item for item in trades if item.get("target_clv") not in {None, ""}]
+    clv_rows = [item for item in trades if _has_clv(item)]
+    closed_clv_rows = [item for item in clv_rows if _market_has_closed(item, now=now)]
+    mark_to_market_clv_rows = [item for item in clv_rows if not _market_has_closed(item, now=now)]
     staked = sum(_float(item.get("stake")) for item in settled)
     profit = sum(_float(item.get("profit")) for item in settled)
     wins = sum(1 for item in settled if _float(item.get("profit")) > 0)
     losses = len(settled) - wins
-    beat = [item for item in clv_rows if _float(item.get("target_clv")) > 0]
-    miss = [item for item in clv_rows if _float(item.get("target_clv")) < 0]
-    tie = len(clv_rows) - len(beat) - len(miss)
+    closed_counts = _clv_counts(closed_clv_rows)
+    mark_to_market_counts = _clv_counts(mark_to_market_clv_rows)
     trades_last_24h = sum(1 for item in trades if _is_logged_in_last_24h(item, now=now))
+    average_closed_clv = _average(_float(item.get("target_clv")) for item in closed_clv_rows)
+    average_mark_to_market_clv = _average(
+        _float(item.get("target_clv")) for item in mark_to_market_clv_rows
+    )
     return {
         "total_trades": len(trades),
         "open_trades": len(open_trades),
@@ -473,11 +500,42 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
             for item in trades
             if item.get("available_at_or_above_target") not in {None, ""}
         ),
-        "average_clv": _average(_float(item.get("target_clv")) for item in clv_rows),
-        "clv_trades": len(clv_rows),
-        "beat_closing_line": len(beat),
-        "missed_closing_line": len(miss),
-        "tied_closing_line": tie,
+        "average_clv": average_closed_clv,
+        "clv_trades": len(closed_clv_rows),
+        "beat_closing_line": closed_counts["beats"],
+        "missed_closing_line": closed_counts["misses"],
+        "tied_closing_line": closed_counts["ties"],
+        "average_closed_clv": average_closed_clv,
+        "closed_clv_trades": len(closed_clv_rows),
+        "closed_clv_beats": closed_counts["beats"],
+        "closed_clv_misses": closed_counts["misses"],
+        "closed_clv_ties": closed_counts["ties"],
+        "average_mark_to_market_clv": average_mark_to_market_clv,
+        "mark_to_market_clv_trades": len(mark_to_market_clv_rows),
+        "mark_to_market_clv_beats": mark_to_market_counts["beats"],
+        "mark_to_market_clv_misses": mark_to_market_counts["misses"],
+        "mark_to_market_clv_ties": mark_to_market_counts["ties"],
+    }
+
+
+def _has_clv(item: dict[str, Any]) -> bool:
+    return item.get("target_clv") not in {None, ""}
+
+
+def _market_has_closed(item: dict[str, Any], *, now: datetime) -> bool:
+    if str(item.get("status", "")).casefold() == "settled":
+        return True
+    commence_time = _parse_datetime(item.get("commence_time"))
+    return commence_time is not None and commence_time <= _as_utc(now)
+
+
+def _clv_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    beats = sum(1 for item in rows if _float(item.get("target_clv")) > 0)
+    misses = sum(1 for item in rows if _float(item.get("target_clv")) < 0)
+    return {
+        "beats": beats,
+        "misses": misses,
+        "ties": len(rows) - beats - misses,
     }
 
 
@@ -534,9 +592,12 @@ def _filter_options(trades: list[dict[str, Any]]) -> dict[str, list[dict[str, st
 def _apply_filters(
     trades: list[dict[str, Any]],
     filters: dict[str, Any],
+    *,
+    now: datetime,
 ) -> list[dict[str, Any]]:
     status = _first_filter_value(filters.get("status")).casefold()
     bookmaker = _first_filter_value(filters.get("bookmaker")).casefold()
+    clv = _first_filter_value(filters.get("clv")).casefold()
     sports = {value.casefold() for value in _filter_values(filters.get("sport"))}
     leagues = {value.casefold() for value in _filter_values(filters.get("league"))}
     output = trades
@@ -552,7 +613,20 @@ def _apply_filters(
         output = [item for item in output if str(item.get("sport_family", "")).casefold() in sports]
     if leagues:
         output = [item for item in output if str(item.get("sport_key", "")).casefold() in leagues]
+    if clv:
+        output = [item for item in output if _matches_clv_filter(item, clv=clv, now=now)]
     return output
+
+
+def _matches_clv_filter(item: dict[str, Any], *, clv: str, now: datetime) -> bool:
+    has_clv = _has_clv(item)
+    if clv == "closed":
+        return has_clv and _market_has_closed(item, now=now)
+    if clv == "mtm":
+        return has_clv and not _market_has_closed(item, now=now)
+    if clv == "missing":
+        return not has_clv
+    return True
 
 
 def _normalise_item(item: dict[str, Any]) -> dict[str, Any]:

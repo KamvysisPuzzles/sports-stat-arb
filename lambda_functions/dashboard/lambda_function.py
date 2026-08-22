@@ -27,6 +27,7 @@ def lambda_handler(event, context):
         "bookmaker": params.get("bookmaker", ""),
         "sport": params.get("sport", []),
         "league": params.get("league", []),
+        "clv": params.get("clv", ""),
         "format": params.get("format", ""),
     }
     payload = dashboard_payload(table, filters=filters)
