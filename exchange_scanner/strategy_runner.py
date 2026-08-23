@@ -224,6 +224,7 @@ def run_paper_log(
     )
 
     signals = _find_signals(config, prices, now=now)
+    signals = _filter_execution_signals_by_strategy_limits(config, signals)
     rows = _signal_rows(signals)
     rows = _enrich_matchbook_rows(config, rows, matchbook_client=matchbook_client, now=now)
     rows = _enrich_betfair_rows(config, rows, lambda_client=lambda_client)
@@ -446,6 +447,17 @@ def _find_closing_signals(
         reference_weights=strategy["reference_weights"],
         now=now,
     )
+
+
+def _filter_execution_signals_by_strategy_limits(
+    config: StrategyRunnerConfig,
+    signals: list[ValueSignal],
+) -> list[ValueSignal]:
+    strategy = STRATEGIES[config.strategy]
+    max_target_odds = strategy.get("max_target_odds")
+    if max_target_odds is None:
+        return signals
+    return [signal for signal in signals if signal.target_odds <= max_target_odds]
 
 
 def _filter_betfair_dislocation_signals(

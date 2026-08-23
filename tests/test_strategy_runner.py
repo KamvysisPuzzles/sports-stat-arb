@@ -83,6 +83,15 @@ class FakeOddsClient:
         ]
 
 
+class FakeLongshotOddsClient(FakeOddsClient):
+    def fetch_odds(self, *, sport, regions, markets):
+        self.odds_calls += 1
+        payload = super().fetch_odds(sport=sport, regions=regions, markets=markets)
+        payload[0]["bookmakers"][0]["markets"][0]["outcomes"][0]["price"] = 7.2
+        payload[0]["bookmakers"][0]["markets"][0]["outcomes"][1]["price"] = 1.01
+        return payload
+
+
 class FakeMatchbookClient:
     def fetch_events(self, *, start, end, currency, minimum_liquidity):
         return [
@@ -306,3 +315,31 @@ def test_run_paper_log_updates_and_settles_existing_open_trade(monkeypatch) -> N
     item = next(iter(table.items.values()))
     assert item["status"] == "settled"
     assert item["result"] == "Arsenal"
+
+
+def test_run_paper_log_does_not_log_exchange_clv_longshots(monkeypatch) -> None:
+    monkeypatch.setitem(strategy_runner.SPORT_PROFILES, "test-profile", ["soccer_epl"])
+    table = FakeTable()
+    config = StrategyRunnerConfig(
+        mode="paper-log",
+        odds_api_key="test-key",
+        dynamodb_table_name="paper-trades",
+        odds_s3_bucket="odds-bucket",
+        sports_profile="test-profile",
+        max_api_requests=1,
+        min_reference_books=2,
+        use_betfair_lambda=False,
+    )
+
+    result = run_paper_log(
+        config,
+        odds_client=FakeLongshotOddsClient(),
+        matchbook_client=FakeMatchbookClient(),
+        dynamodb_table=table,
+        s3_client=FakeS3Client(),
+        now=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+    )
+
+    assert result["candidate_signals"] == 0
+    assert result["paper_log"]["inserted"] == 0
+    assert table.items == {}
