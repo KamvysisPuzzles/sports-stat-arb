@@ -36,6 +36,7 @@ from exchange_scanner.the_odds_api import (
 )
 
 ACTIVE_H2H_PROFILE = "active-h2h"
+SOCCER_H2H_PROFILE = "soccer-h2h"
 
 SHARP_REFERENCE_BOOKMAKERS = {
     "pinnacle",
@@ -65,6 +66,26 @@ EXCHANGE_CLV_TARGET_BOOKMAKERS = {
     "matchbook",
     "smarkets",
     *BETFAIR_TARGET_BOOKMAKERS,
+}
+
+EXCHANGE_CLV_TARGET_REFERENCE_BOOKMAKERS = {
+    frozenset({"matchbook"}): {
+        "pinnacle",
+        "betfair",
+        "betfair_ex_uk",
+        "betfair_ex_eu",
+        "smarkets",
+    },
+    frozenset({"smarkets"}): {
+        "pinnacle",
+        "betfair",
+        "betfair_ex_uk",
+        "betfair_ex_eu",
+    },
+    frozenset(BETFAIR_TARGET_BOOKMAKERS): {
+        "pinnacle",
+        "smarkets",
+    },
 }
 
 SHARPNESS_WEIGHTS = {
@@ -112,19 +133,69 @@ STRATEGIES = {
     },
     "exchange-clv": {
         "target_bookmakers": EXCHANGE_CLV_TARGET_BOOKMAKERS,
-        "reference_bookmakers": None,
-        "allow_target_bookmakers_as_references": True,
-        "reference_weights": SHARPNESS_WEIGHTS,
+        "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS | BETFAIR_TARGET_BOOKMAKERS,
+        "target_reference_bookmakers": EXCHANGE_CLV_TARGET_REFERENCE_BOOKMAKERS,
+        "allow_target_bookmakers_as_references": False,
+        "reference_weights": None,
         "target_commission_rates": EXCHANGE_CLV_COMMISSION_RATES,
-        "min_sharp_reference_books": 1,
-        "min_betfair_fair_edge": 0.005,
-        "matchbook_soccer_only_markets": {"spreads", "totals"},
-        "line_market_min_reference_books": 8,
+        "allowed_sport_prefixes": ("soccer_",),
+        "allowed_markets": {"h2h"},
+        "max_target_odds": 6.0,
+        "max_betfair_spread_pct": 0.06,
     },
 }
 
 SPORT_PROFILES = {
     ACTIVE_H2H_PROFILE: [],
+    SOCCER_H2H_PROFILE: [
+        "soccer_argentina_primera_division",
+        "soccer_austria_bundesliga",
+        "soccer_belgium_first_div",
+        "soccer_brazil_campeonato",
+        "soccer_brazil_serie_b",
+        "soccer_chile_campeonato",
+        "soccer_china_superleague",
+        "soccer_concacaf_leagues_cup",
+        "soccer_conmebol_copa_libertadores",
+        "soccer_conmebol_copa_sudamericana",
+        "soccer_denmark_superliga",
+        "soccer_efl_champ",
+        "soccer_england_efl_cup",
+        "soccer_england_league1",
+        "soccer_england_league2",
+        "soccer_epl",
+        "soccer_finland_veikkausliiga",
+        "soccer_france_ligue_one",
+        "soccer_france_ligue_two",
+        "soccer_germany_bundesliga",
+        "soccer_germany_bundesliga2",
+        "soccer_germany_dfb_pokal",
+        "soccer_germany_liga3",
+        "soccer_greece_super_league",
+        "soccer_italy_coppa_italia",
+        "soccer_italy_serie_a",
+        "soccer_italy_serie_b",
+        "soccer_japan_j_league",
+        "soccer_korea_kleague1",
+        "soccer_league_of_ireland",
+        "soccer_mexico_ligamx",
+        "soccer_netherlands_eredivisie",
+        "soccer_norway_eliteserien",
+        "soccer_poland_ekstraklasa",
+        "soccer_portugal_primeira_liga",
+        "soccer_russia_premier_league",
+        "soccer_saudi_arabia_pro_league",
+        "soccer_spain_la_liga",
+        "soccer_spain_segunda_division",
+        "soccer_spl",
+        "soccer_sweden_allsvenskan",
+        "soccer_sweden_superettan",
+        "soccer_switzerland_superleague",
+        "soccer_turkey_super_league",
+        "soccer_uefa_champs_league_qualification",
+        "soccer_uefa_nations_league",
+        "soccer_usa_mls",
+    ],
     "matchbook-h2h-expanded": [
         "americanfootball_cfl",
         "americanfootball_ncaaf",
@@ -458,7 +529,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use learned weights from --market-db for weighted CLV scans when available.",
     )
-    parser.add_argument("--min-edge", type=float, default=float(os.getenv("MIN_EDGE", "0.015")))
+    parser.add_argument("--min-edge", type=float, default=float(os.getenv("MIN_EDGE", "0.005")))
     parser.add_argument(
         "--max-edge",
         type=float,
@@ -571,6 +642,7 @@ def scan_the_odds_api(args: argparse.Namespace):
             sport_keys = _sport_keys(args, odds_client=client)
         else:
             sport_keys = _sport_keys(args)
+        sport_keys = _filter_sports_by_strategy_scope(sport_keys, strategy)
         planned_requests = len(sport_keys)
         if args.dry_run_estimate:
             print(
@@ -635,17 +707,14 @@ def scan_the_odds_api(args: argparse.Namespace):
     )
 
     reference_weights = _reference_weights_for_scan(args, strategy, allowed_markets, sport_keys)
-    signals = find_value_opportunities(
+    signals = find_strategy_value_opportunities(
         prices,
-        target_bookmakers=strategy["target_bookmakers"],
-        reference_bookmakers=strategy["reference_bookmakers"],
+        strategy=strategy,
         min_edge=args.min_edge,
         max_age_seconds=args.max_age_seconds,
         min_reference_books=args.min_reference_books,
         include_started=args.include_started,
-        allow_target_bookmakers_as_references=strategy["allow_target_bookmakers_as_references"],
         reference_weights=reference_weights,
-        target_commission_rates=strategy["target_commission_rates"],
     )
     signals = _filter_signals_by_strategy_rules(signals, strategy)
     if not getattr(args, "paper_update_closing", False):
@@ -663,6 +732,9 @@ def _strategy_config(args: argparse.Namespace):
 
 def _markets_for_sport(sport_key: str, markets: str, strategy) -> str:
     requested_markets = [market.strip() for market in markets.split(",") if market.strip()]
+    allowed_markets = strategy.get("allowed_markets")
+    if allowed_markets:
+        requested_markets = [market for market in requested_markets if market in allowed_markets]
     matchbook_soccer_only_markets = strategy.get("matchbook_soccer_only_markets") or set()
     if not matchbook_soccer_only_markets or sport_key.startswith("soccer_"):
         return ",".join(requested_markets)
@@ -693,6 +765,7 @@ def _reference_weights_for_scan(
 
 def _filter_signals_by_strategy_rules(signals, strategy):
     max_betfair_spread_pct = strategy.get("max_betfair_spread_pct")
+    max_target_odds = strategy.get("max_target_odds")
     min_sharp_reference_books = strategy.get("min_sharp_reference_books", 0)
     min_betfair_fair_edge = strategy.get("min_betfair_fair_edge")
     matchbook_soccer_only_markets = strategy.get("matchbook_soccer_only_markets") or set()
@@ -703,10 +776,13 @@ def _filter_signals_by_strategy_rules(signals, strategy):
         and min_betfair_fair_edge is None
         and not matchbook_soccer_only_markets
         and line_market_min_reference_books <= 0
+        and max_target_odds is None
     ):
         return signals
     output = []
     for signal in signals:
+        if max_target_odds is not None and signal.target_odds > max_target_odds:
+            continue
         if not _allowed_by_matchbook_soccer_market_rule(signal, matchbook_soccer_only_markets):
             continue
         if signal.market_key in matchbook_soccer_only_markets:
@@ -730,6 +806,73 @@ def _filter_signals_by_strategy_rules(signals, strategy):
             continue
         output.append(signal)
     return output
+
+
+def find_strategy_value_opportunities(
+    prices,
+    *,
+    strategy,
+    min_edge: float,
+    max_age_seconds: int,
+    min_reference_books: int,
+    include_started: bool = False,
+    reference_weights=None,
+    now: datetime | None = None,
+):
+    prices = _filter_prices_by_strategy_scope(prices, strategy)
+    target_reference_bookmakers = strategy.get("target_reference_bookmakers")
+    if not target_reference_bookmakers:
+        return find_value_opportunities(
+            prices,
+            target_bookmakers=strategy["target_bookmakers"],
+            reference_bookmakers=strategy["reference_bookmakers"],
+            min_edge=min_edge,
+            max_age_seconds=max_age_seconds,
+            min_reference_books=min_reference_books,
+            include_started=include_started,
+            allow_target_bookmakers_as_references=strategy[
+                "allow_target_bookmakers_as_references"
+            ],
+            reference_weights=reference_weights,
+            target_commission_rates=strategy["target_commission_rates"],
+            now=now,
+        )
+
+    signals = []
+    for target_bookmakers, reference_bookmakers in target_reference_bookmakers.items():
+        signals.extend(
+            find_value_opportunities(
+                prices,
+                target_bookmakers=set(target_bookmakers),
+                reference_bookmakers=set(reference_bookmakers),
+                min_edge=min_edge,
+                max_age_seconds=max_age_seconds,
+                min_reference_books=min_reference_books,
+                include_started=include_started,
+                allow_target_bookmakers_as_references=False,
+                reference_weights=reference_weights,
+                target_commission_rates=strategy["target_commission_rates"],
+                now=now,
+            )
+        )
+    return sorted(signals, key=lambda signal: signal.edge, reverse=True)
+
+
+def _filter_prices_by_strategy_scope(prices, strategy):
+    allowed_prefixes = tuple(strategy.get("allowed_sport_prefixes") or ())
+    if allowed_prefixes:
+        prices = [price for price in prices if price.sport_key.startswith(allowed_prefixes)]
+    allowed_markets = strategy.get("allowed_markets")
+    if allowed_markets:
+        prices = [price for price in prices if price.market_key in allowed_markets]
+    return prices
+
+
+def _filter_sports_by_strategy_scope(sports: list[str], strategy) -> list[str]:
+    allowed_prefixes = tuple(strategy.get("allowed_sport_prefixes") or ())
+    if not allowed_prefixes:
+        return sports
+    return [sport for sport in sports if sport.startswith(allowed_prefixes)]
 
 
 def _allowed_by_matchbook_soccer_market_rule(signal, markets: set[str]) -> bool:

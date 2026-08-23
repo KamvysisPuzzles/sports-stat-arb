@@ -1,0 +1,10 @@
+{
+  "source": ".odds-api-cache/historical_backtest_3m",
+  "sqlite": "data/soccer_historical_odds_api_cache.sqlite3",
+  "files_seen": 13780,
+  "snapshots_in_db": 13780,
+  "events_in_db": 89340,
+  "bad_files": 0,
+  "size_mb": 87.7,
+  "imported_at": "2026-08-23T16:45:07Z"
+}

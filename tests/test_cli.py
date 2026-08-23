@@ -62,14 +62,37 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
         "betfair_ex_uk",
         "betfair_ex_eu",
     }
-    assert strategy["reference_bookmakers"] is None
-    assert strategy["allow_target_bookmakers_as_references"] is True
+    assert strategy["reference_bookmakers"] == {
+        "betfair",
+        "betfair_ex_eu",
+        "betfair_ex_uk",
+        "matchbook",
+        "pinnacle",
+        "smarkets",
+    }
+    assert strategy["target_reference_bookmakers"][frozenset({"matchbook"})] == {
+        "betfair",
+        "betfair_ex_eu",
+        "betfair_ex_uk",
+        "pinnacle",
+        "smarkets",
+    }
+    assert strategy["target_reference_bookmakers"][frozenset({"smarkets"})] == {
+        "betfair",
+        "betfair_ex_eu",
+        "betfair_ex_uk",
+        "pinnacle",
+    }
+    assert strategy["target_reference_bookmakers"][
+        frozenset({"betfair", "betfair_ex_uk", "betfair_ex_eu"})
+    ] == {"pinnacle", "smarkets"}
+    assert strategy["allow_target_bookmakers_as_references"] is False
     assert strategy["target_commission_rates"]["betfair"] == pytest.approx(0.02)
-    assert strategy["reference_weights"] == SHARPNESS_WEIGHTS
-    assert strategy["min_sharp_reference_books"] == 1
-    assert strategy["min_betfair_fair_edge"] == pytest.approx(0.005)
-    assert strategy["matchbook_soccer_only_markets"] == {"spreads", "totals"}
-    assert strategy["line_market_min_reference_books"] == 8
+    assert strategy["reference_weights"] is None
+    assert strategy["allowed_sport_prefixes"] == ("soccer_",)
+    assert strategy["allowed_markets"] == {"h2h"}
+    assert strategy["max_target_odds"] == pytest.approx(6.0)
+    assert strategy["max_betfair_spread_pct"] == pytest.approx(0.06)
 
 
 def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None:
