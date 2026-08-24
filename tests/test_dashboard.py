@@ -240,8 +240,8 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "Sports Stat Arb Dashboard" in html
     assert "Trading" in html
     assert "Live" in html
-    assert 'name="action" value="pause"' in html
-    assert "return confirm" in html
+    assert 'name="action"' not in html
+    assert "return confirm" not in html
     assert "Arsenal v Chelsea" in html
     assert "Liverpool v Everton" in html
     assert "Results by Venue" in html
@@ -263,7 +263,7 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "3.14" in html
 
 
-def test_render_dashboard_html_does_not_confirm_resume() -> None:
+def test_render_dashboard_html_shows_paused_without_resume_button() -> None:
     payload = dashboard_payload(
         FakeTable(
             [
@@ -284,7 +284,8 @@ def test_render_dashboard_html_does_not_confirm_resume() -> None:
     html = render_dashboard_html(payload)
 
     assert "Paused" in html
-    assert 'name="action" value="resume"' in html
+    assert 'name="action"' not in html
+    assert "Resume" not in html
     assert "return confirm" not in html
 
 
