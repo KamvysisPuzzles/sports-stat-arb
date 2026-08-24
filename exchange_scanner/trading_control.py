@@ -44,12 +44,18 @@ def is_control_item(item: dict[str, Any]) -> bool:
 
 
 def _get_control_item(table: Any) -> dict[str, Any]:
+    get_item_error: Exception | None = None
     if hasattr(table, "get_item"):
-        response = table.get_item(Key={"trade_id": CONTROL_TRADE_ID})
-        return response.get("Item") or {}
+        try:
+            response = table.get_item(Key={"trade_id": CONTROL_TRADE_ID})
+            return response.get("Item") or {}
+        except Exception as exc:  # noqa: BLE001 - fallback supports older read-only roles.
+            get_item_error = exc
     for item in _scan_all(table):
         if is_control_item(item):
             return item
+    if get_item_error is not None:
+        return {}
     return {}
 
 

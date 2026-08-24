@@ -28,6 +28,11 @@ class FakeTable:
         return {}
 
 
+class FakeScanOnlyControlTable(FakeTable):
+    def get_item(self, *, Key):
+        raise PermissionError("dynamodb:GetItem denied")
+
+
 def trades():
     return [
         {
@@ -285,6 +290,27 @@ def test_lambda_handler_returns_json(monkeypatch) -> None:
     assert body["summary"]["total_trades"] == 1
     assert body["trades"][0]["trade_id"] == "paper#2"
     assert body["trading_control"]["enabled"] is True
+
+
+def test_dashboard_payload_falls_back_to_scan_for_control_state() -> None:
+    payload = dashboard_payload(
+        FakeScanOnlyControlTable(
+            [
+                *trades(),
+                {
+                    "trade_id": "control#trading",
+                    "status": "control",
+                    "paused": True,
+                    "updated_at": "2026-08-18T11:00:00+00:00",
+                    "updated_by": "test",
+                },
+            ]
+        ),
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+
+    assert payload["trading_control"]["paused"] is True
+    assert payload["summary"]["total_trades"] == 3
 
 
 def test_lambda_handler_can_pause_and_resume_trading(monkeypatch) -> None:
