@@ -58,7 +58,7 @@ def _query_params(event) -> dict[str, object]:
             }
         )
     body = event.get("body")
-    if body and str(event.get("requestContext", {}).get("http", {}).get("method", "")).upper() == "POST":
+    if body and _request_method(event) == "POST":
         parsed.update(
             {
                 str(key): [str(item) for item in values if item]
@@ -77,6 +77,15 @@ def _query_params(event) -> dict[str, object]:
         if isinstance(value, list) and len(value) == 1:
             parsed[key] = value[0]
     return parsed
+
+
+def _request_method(event) -> str:
+    if not isinstance(event, dict):
+        return ""
+    request_context = event.get("requestContext") or {}
+    http_context = request_context.get("http") if isinstance(request_context, dict) else {}
+    method = http_context.get("method") if isinstance(http_context, dict) else ""
+    return str(method or event.get("httpMethod") or "").upper()
 
 
 def _dashboard_url(token: str) -> str:

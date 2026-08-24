@@ -370,6 +370,25 @@ def test_lambda_handler_can_pause_and_resume_trading(monkeypatch) -> None:
     assert table.get_item(Key={"trade_id": "control#trading"})["Item"]["paused"] is False
 
 
+def test_lambda_handler_accepts_rest_api_post_shape(monkeypatch) -> None:
+    table = FakeTable(trades())
+    monkeypatch.setenv("DASHBOARD_TOKEN", "secret")
+    monkeypatch.setenv("PAPER_TRADES_TABLE", "paper")
+    monkeypatch.setattr(lambda_function, "_dynamodb_table", lambda name, region: table)
+
+    response = lambda_function.lambda_handler(
+        {
+            "httpMethod": "POST",
+            "rawQueryString": "token=secret",
+            "body": "action=pause",
+        },
+        None,
+    )
+
+    assert response["statusCode"] == 303
+    assert table.get_item(Key={"trade_id": "control#trading"})["Item"]["paused"] is True
+
+
 def test_lambda_handler_accepts_repeated_sport_and_league_params(monkeypatch) -> None:
     monkeypatch.setenv("DASHBOARD_TOKEN", "secret")
     monkeypatch.setenv("PAPER_TRADES_TABLE", "paper")
