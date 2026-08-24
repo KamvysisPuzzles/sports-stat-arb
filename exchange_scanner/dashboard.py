@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
+from exchange_scanner.trading_control import is_control_item, trading_control_state
+
 
 def dashboard_payload(
     table: Any,
@@ -15,10 +17,12 @@ def dashboard_payload(
 ) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     filters = filters or {}
-    trades = [_normalise_item(item) for item in _scan_all(table)]
+    control = trading_control_state(table)
+    trades = [_normalise_item(item) for item in _scan_all(table) if not is_control_item(item)]
     filtered = _apply_filters(trades, filters, now=now)
     return {
         "generated_at": now.isoformat(),
+        "trading_control": _jsonable(control),
         "filters": {key: value for key, value in filters.items() if _filter_values(value)},
         "filter_options": _filter_options(trades),
         "summary": _summary(filtered, now=now),
@@ -41,6 +45,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
     generated = _escape(payload["generated_at"])
     active_filters = payload.get("filters", {})
     filter_options = payload.get("filter_options", {})
+    trading_control = payload.get("trading_control", {})
     token = str(payload.get("token", ""))
     filter_label = (
         ", ".join(f"{key}={', '.join(_filter_values(value))}" for key, value in active_filters.items())
@@ -116,6 +121,35 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       border-radius: 999px;
       padding: 7px 10px;
       font-size: 13px;
+    }}
+    .control {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 0 16px;
+      padding: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }}
+    .control-actions {{
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }}
+    .control button {{
+      min-width: 86px;
+    }}
+    .control .danger {{
+      background: var(--bad);
+      color: #17080a;
+      border-color: var(--bad);
+    }}
+    .control .success {{
+      background: var(--good);
+      color: #06140e;
+      border-color: var(--good);
     }}
     .advanced-filters {{
       margin: 0 0 16px;
@@ -210,6 +244,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
     <div class="meta">Generated {generated}<br>Active filters: {_escape(filter_label)}</div>
   </header>
   <main>
+    {_trading_control_html(token, trading_control)}
     {_metrics_html(summary, all_summary)}
     <nav class="filters">
       <a href="{_href_attr(_filter_href(token))}">All</a>
@@ -253,6 +288,27 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
 </body>
 </html>
 """
+
+
+def _trading_control_html(token: str, control: dict[str, Any]) -> str:
+    paused = bool(control.get("paused"))
+    status = "Paused" if paused else "Live"
+    tone = "bad" if paused else "good"
+    updated_at = control.get("updated_at") or "not changed"
+    action = "resume" if paused else "pause"
+    button_label = "Resume" if paused else "Pause"
+    button_class = "success" if paused else "danger"
+    return f"""<section class="control">
+      <div>
+        <div class="label">Trading</div>
+        <div class="value {tone}">{_escape(status)}</div>
+        <div class="meta">Last changed: {_escape(updated_at)}</div>
+      </div>
+      <form class="control-actions" method="post" action="{_href_attr(_filter_href(token))}">
+        <input type="hidden" name="action" value="{_escape(action)}">
+        <button class="{button_class}" type="submit">{_escape(button_label)}</button>
+      </form>
+    </section>"""
 
 
 def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:

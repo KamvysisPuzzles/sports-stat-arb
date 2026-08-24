@@ -153,11 +153,16 @@ class FakeTable:
     def __init__(self) -> None:
         self.items = {}
 
-    def put_item(self, *, Item, ConditionExpression):
-        assert ConditionExpression == "attribute_not_exists(trade_id)"
-        if Item["trade_id"] in self.items:
+    def put_item(self, *, Item, ConditionExpression=None):
+        if ConditionExpression is not None:
+            assert ConditionExpression == "attribute_not_exists(trade_id)"
+        if ConditionExpression is not None and Item["trade_id"] in self.items:
             raise ConditionalCheckFailedException()
         self.items[Item["trade_id"]] = Item
+
+    def get_item(self, *, Key):
+        item = self.items.get(Key["trade_id"])
+        return {"Item": item} if item else {}
 
     def scan(self, **kwargs):
         if not kwargs:
@@ -343,3 +348,44 @@ def test_run_paper_log_does_not_log_exchange_clv_longshots(monkeypatch) -> None:
     assert result["candidate_signals"] == 0
     assert result["paper_log"]["inserted"] == 0
     assert table.items == {}
+
+
+def test_run_paper_log_skips_new_trades_when_trading_is_paused(monkeypatch) -> None:
+    monkeypatch.setitem(strategy_runner.SPORT_PROFILES, "test-profile", ["soccer_epl"])
+    table = FakeTable()
+    table.put_item(
+        Item={
+            "trade_id": "control#trading",
+            "status": "control",
+            "control_type": "trading",
+            "paused": True,
+            "updated_at": "2026-08-14T11:00:00+00:00",
+            "updated_by": "test",
+        }
+    )
+    s3_client = FakeS3Client()
+    config = StrategyRunnerConfig(
+        mode="paper-log",
+        odds_api_key="test-key",
+        dynamodb_table_name="paper-trades",
+        odds_s3_bucket="odds-bucket",
+        sports_profile="test-profile",
+        max_api_requests=1,
+        min_reference_books=2,
+        use_betfair_lambda=False,
+    )
+
+    result = run_paper_log(
+        config,
+        odds_client=FakeOddsClient(),
+        matchbook_client=FakeMatchbookClient(),
+        dynamodb_table=table,
+        s3_client=s3_client,
+        now=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+    )
+
+    assert result["trading_control"]["paused"] is True
+    assert result["candidate_signals"] == 0
+    assert result["paper_log"]["inserted"] == 0
+    assert result["portfolio_summary"]["total_trades"] == 0
+    assert list(table.items) == ["control#trading"]

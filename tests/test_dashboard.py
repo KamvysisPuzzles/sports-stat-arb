@@ -15,6 +15,18 @@ class FakeTable:
     def scan(self, **kwargs):
         return {"Items": self.items}
 
+    def put_item(self, *, Item):
+        self.items = [
+            item for item in self.items if item.get("trade_id") != Item.get("trade_id")
+        ]
+        self.items.append(Item)
+
+    def get_item(self, *, Key):
+        for item in self.items:
+            if item.get("trade_id") == Key["trade_id"]:
+                return {"Item": item}
+        return {}
+
 
 def trades():
     return [
@@ -221,6 +233,9 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     html = render_dashboard_html(payload)
 
     assert "Sports Stat Arb Dashboard" in html
+    assert "Trading" in html
+    assert "Live" in html
+    assert 'name="action" value="pause"' in html
     assert "Arsenal v Chelsea" in html
     assert "Liverpool v Everton" in html
     assert "Results by Venue" in html
@@ -269,6 +284,38 @@ def test_lambda_handler_returns_json(monkeypatch) -> None:
     body = json.loads(response["body"])
     assert body["summary"]["total_trades"] == 1
     assert body["trades"][0]["trade_id"] == "paper#2"
+    assert body["trading_control"]["enabled"] is True
+
+
+def test_lambda_handler_can_pause_and_resume_trading(monkeypatch) -> None:
+    table = FakeTable(trades())
+    monkeypatch.setenv("DASHBOARD_TOKEN", "secret")
+    monkeypatch.setenv("PAPER_TRADES_TABLE", "paper")
+    monkeypatch.setattr(lambda_function, "_dynamodb_table", lambda name, region: table)
+
+    pause_response = lambda_function.lambda_handler(
+        {
+            "requestContext": {"http": {"method": "POST"}},
+            "rawQueryString": "token=secret",
+            "body": "action=pause",
+        },
+        None,
+    )
+
+    assert pause_response["statusCode"] == 303
+    assert table.get_item(Key={"trade_id": "control#trading"})["Item"]["paused"] is True
+
+    resume_response = lambda_function.lambda_handler(
+        {
+            "requestContext": {"http": {"method": "POST"}},
+            "rawQueryString": "token=secret",
+            "body": "action=resume",
+        },
+        None,
+    )
+
+    assert resume_response["statusCode"] == 303
+    assert table.get_item(Key={"trade_id": "control#trading"})["Item"]["paused"] is False
 
 
 def test_lambda_handler_accepts_repeated_sport_and_league_params(monkeypatch) -> None:

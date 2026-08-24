@@ -299,12 +299,13 @@ Important paper columns:
 
 ## AWS Paper Trade Dashboard
 
-The repository includes a small read-only dashboard Lambda for the DynamoDB paper
+The repository includes a small dashboard Lambda for the DynamoDB paper
 trade table. It shows total trades, open/settled counts, win/loss record, settled
 PnL, ROI, trades logged in the last 24 hours, average booked odds, median confirmed
 liquidity, CLV beat/miss/tie counts, results by venue, results by sport, and
 results by league. The page also supports quick filters for open, settled,
-Matchbook, Betfair, multi-select sport and league inclusion, and JSON output.
+Matchbook, Betfair, multi-select sport and league inclusion, JSON output, and a
+pause/resume control for new paper trade logging.
 
 Required Lambda configuration:
 
@@ -315,7 +316,7 @@ Environment:
   DASHBOARD_TOKEN=<unguessable shared token>
   PAPER_TRADES_TABLE=sports-stat-arb-paper-trades
 IAM:
-  dynamodb:Scan on the paper trades table
+  dynamodb:GetItem, dynamodb:PutItem, and dynamodb:Scan on the paper trades table
 ```
 
 Expose it with either a Lambda Function URL or API Gateway HTTP API. Open the

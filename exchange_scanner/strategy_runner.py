@@ -52,6 +52,7 @@ from exchange_scanner.the_odds_api import (
     h2h_winners_from_scores,
     normalise_odds_api_events,
 )
+from exchange_scanner.trading_control import trading_control_state
 
 
 @dataclass(frozen=True)
@@ -222,6 +223,29 @@ def run_paper_log(
         odds_client=odds_client,
         table=table,
     )
+    trading_control = trading_control_state(table)
+    if trading_control["paused"]:
+        result = {
+            "mode": config.mode,
+            "sports": len(sports),
+            "odds_rows": len(prices),
+            "snapshot": snapshot,
+            "closing_update": _closing_result_dict(closing_update),
+            "settlement": _settlement_result_dict(settlement),
+            "trading_control": trading_control,
+            "candidate_signals": 0,
+            "liquidity_confirmed_signals": 0,
+            "paper_log": {"attempted": 0, "inserted": 0, "duplicates": 0},
+        }
+        portfolio_summary = build_portfolio_summary(table, generated_at=now)
+        result["portfolio_summary"] = portfolio_summary
+        result["summary"] = _write_latest_summary(
+            config,
+            s3_client=s3_client,
+            run_result=result,
+            generated_at=now,
+        )
+        return result
 
     signals = _find_signals(config, prices, now=now)
     signals = _filter_execution_signals_by_strategy_limits(config, signals)
@@ -251,6 +275,7 @@ def run_paper_log(
         "snapshot": snapshot,
         "closing_update": _closing_result_dict(closing_update),
         "settlement": _settlement_result_dict(settlement),
+        "trading_control": trading_control,
         "candidate_signals": len(signals),
         "liquidity_confirmed_signals": len(executable_signals),
         "paper_log": _log_result_dict(log_result),

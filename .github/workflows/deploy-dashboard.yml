@@ -36,6 +36,7 @@ jobs:
           rm -rf /tmp/dashboard_lambda_package /tmp/dashboard_lambda.zip
           mkdir -p /tmp/dashboard_lambda_package/exchange_scanner
           cp exchange_scanner/dashboard.py /tmp/dashboard_lambda_package/exchange_scanner/dashboard.py
+          cp exchange_scanner/trading_control.py /tmp/dashboard_lambda_package/exchange_scanner/trading_control.py
           touch /tmp/dashboard_lambda_package/exchange_scanner/__init__.py
           cp lambda_functions/dashboard/lambda_function.py /tmp/dashboard_lambda_package/lambda_function.py
           (cd /tmp/dashboard_lambda_package && zip -r /tmp/dashboard_lambda.zip .)

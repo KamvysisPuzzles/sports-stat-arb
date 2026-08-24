@@ -8,6 +8,7 @@ from exchange_scanner.dashboard import (
     dashboard_payload,
     render_dashboard_html,
 )
+from exchange_scanner.trading_control import set_trading_paused
 
 
 def lambda_handler(event, context):
@@ -22,6 +23,14 @@ def lambda_handler(event, context):
     table_name = os.getenv("PAPER_TRADES_TABLE", "sports-stat-arb-paper-trades")
     region = os.getenv("AWS_REGION", "eu-west-2")
     table = _dynamodb_table(table_name, region=region)
+    action = _first_param(params.get("action", "")).casefold()
+    if action in {"pause", "resume"}:
+        set_trading_paused(
+            table,
+            paused=action == "pause",
+            updated_by="dashboard",
+        )
+        return _redirect(_dashboard_url(token))
     filters = {
         "status": params.get("status", ""),
         "bookmaker": params.get("bookmaker", ""),
@@ -48,6 +57,14 @@ def _query_params(event) -> dict[str, object]:
                 for key, values in parse_qs(str(event["rawQueryString"]), keep_blank_values=False).items()
             }
         )
+    body = event.get("body")
+    if body and str(event.get("requestContext", {}).get("http", {}).get("method", "")).upper() == "POST":
+        parsed.update(
+            {
+                str(key): [str(item) for item in values if item]
+                for key, values in parse_qs(str(body), keep_blank_values=False).items()
+            }
+        )
     multi_params = event.get("multiValueQueryStringParameters") or {}
     for key, values in multi_params.items():
         parsed[str(key)] = [str(item) for item in values if item is not None]
@@ -60,6 +77,10 @@ def _query_params(event) -> dict[str, object]:
         if isinstance(value, list) and len(value) == 1:
             parsed[key] = value[0]
     return parsed
+
+
+def _dashboard_url(token: str) -> str:
+    return f"?token={token}"
 
 
 def _token(event, params: dict[str, object]) -> str:
@@ -93,4 +114,15 @@ def _response(status_code: int, body: str, *, content_type: str) -> dict[str, ob
             "Cache-Control": "no-store",
         },
         "body": body,
+    }
+
+
+def _redirect(location: str) -> dict[str, object]:
+    return {
+        "statusCode": 303,
+        "headers": {
+            "Location": location,
+            "Cache-Control": "no-store",
+        },
+        "body": "",
     }

@@ -11,6 +11,7 @@ from exchange_scanner.the_odds_api import (
     ValueSignal,
     effective_decimal_odds,
 )
+from exchange_scanner.trading_control import is_control_item
 
 LIQUIDITY_FIELDS = [
     "matchbook_event_id",
@@ -190,7 +191,7 @@ def list_trades_by_status(table: Any, *, status: str) -> list[dict[str, Any]]:
 
 
 def list_all_trades(table: Any) -> list[dict[str, Any]]:
-    return scan_all(table)
+    return [item for item in scan_all(table) if not is_control_item(item)]
 
 
 def delete_all_trades(table: Any) -> int:
