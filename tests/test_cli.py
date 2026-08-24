@@ -89,6 +89,7 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
     assert strategy["allow_target_bookmakers_as_references"] is False
     assert strategy["target_commission_rates"]["betfair"] == pytest.approx(0.02)
     assert strategy["reference_weights"] is None
+    assert strategy["reference_aggregation"] == "median"
     assert strategy["allowed_sport_prefixes"] == ("soccer_",)
     assert strategy["allowed_markets"] == {"h2h"}
     assert strategy["max_target_odds"] == pytest.approx(6.0)

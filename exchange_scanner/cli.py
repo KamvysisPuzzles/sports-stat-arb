@@ -137,6 +137,7 @@ STRATEGIES = {
         "target_reference_bookmakers": EXCHANGE_CLV_TARGET_REFERENCE_BOOKMAKERS,
         "allow_target_bookmakers_as_references": False,
         "reference_weights": None,
+        "reference_aggregation": "median",
         "target_commission_rates": EXCHANGE_CLV_COMMISSION_RATES,
         "allowed_sport_prefixes": ("soccer_",),
         "allowed_markets": {"h2h"},
@@ -598,6 +599,7 @@ def backtest(args: argparse.Namespace) -> list[BacktestBet]:
         ],
         reference_weights=strategy["reference_weights"],
         target_commission_rates=strategy["target_commission_rates"],
+        reference_aggregation=strategy.get("reference_aggregation", "mean"),
         max_betfair_spread_pct=strategy.get("max_betfair_spread_pct"),
         min_sharp_reference_books=strategy.get("min_sharp_reference_books", 0),
         sharp_reference_bookmaker_titles=SHARP_REFERENCE_BOOKMAKER_TITLES,
@@ -835,6 +837,7 @@ def find_strategy_value_opportunities(
             ],
             reference_weights=reference_weights,
             target_commission_rates=strategy["target_commission_rates"],
+            reference_aggregation=strategy.get("reference_aggregation", "mean"),
             now=now,
         )
 
@@ -852,6 +855,7 @@ def find_strategy_value_opportunities(
                 allow_target_bookmakers_as_references=False,
                 reference_weights=reference_weights,
                 target_commission_rates=strategy["target_commission_rates"],
+                reference_aggregation=strategy.get("reference_aggregation", "mean"),
                 now=now,
             )
         )

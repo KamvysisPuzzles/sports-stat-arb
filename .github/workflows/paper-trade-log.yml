@@ -63,7 +63,7 @@ jobs:
             --max-api-requests "$MAX_API_REQUESTS" \
             --min-edge 0.005 \
             --max-edge "$MAX_EDGE" \
-            --min-reference-books 1 \
+            --min-reference-books 2 \
             --max-age-seconds 900 \
             --max-event-days 4 \
             --store-odds-snapshot \
@@ -173,7 +173,7 @@ jobs:
             --max-api-requests "$MAX_API_REQUESTS" \
             --max-event-days 7 \
             --min-edge -999 \
-            --min-reference-books 1 \
+            --min-reference-books 2 \
             --max-age-seconds 900
 
       - name: Settle recent results

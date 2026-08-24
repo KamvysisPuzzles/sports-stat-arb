@@ -981,6 +981,95 @@ def test_value_mode_supports_sharpness_weighted_reference_consensus() -> None:
     assert signals[0].reference_bookmakers == ("Pinnacle", "Weak Book")
 
 
+def test_value_mode_supports_median_devigged_reference_consensus() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "soccer_epl",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "target",
+                    "title": "Target",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.04},
+                                {"name": "Chelsea", "price": 1.9},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "ref_a",
+                    "title": "Ref A",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.0},
+                                {"name": "Chelsea", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "ref_b",
+                    "title": "Ref B",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.0},
+                                {"name": "Chelsea", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "ref_outlier",
+                    "title": "Ref Outlier",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 1.1111111111},
+                                {"name": "Chelsea", "price": 10.0},
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+    prices = normalise_odds_api_events(events)
+    signals = find_value_opportunities(
+        prices,
+        target_bookmakers={"target"},
+        reference_bookmakers={"ref_a", "ref_b", "ref_outlier"},
+        min_edge=0.01,
+        max_age_seconds=300,
+        min_reference_books=3,
+        reference_aggregation="median",
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )
+
+    assert len(signals) == 1
+    assert signals[0].outcome_name == "Arsenal"
+    assert signals[0].reference_probability == pytest.approx(0.5)
+    assert signals[0].reference_fair_odds == pytest.approx(2.0)
+    assert signals[0].edge == pytest.approx(0.02)
+    assert signals[0].reference_bookmakers == ("Ref A", "Ref B", "Ref Outlier")
+
+
 def test_odds_api_client_reuses_fresh_cache(tmp_path) -> None:
     calls = 0
 

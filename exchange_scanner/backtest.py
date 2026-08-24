@@ -72,6 +72,7 @@ def run_backtest(
     allow_target_bookmakers_as_references: bool = False,
     reference_weights: dict[str, float] | None = None,
     target_commission_rates: dict[str, float] | None = None,
+    reference_aggregation: str = "mean",
     max_betfair_spread_pct: float | None = None,
     min_sharp_reference_books: int = 0,
     sharp_reference_bookmaker_titles: set[str] | None = None,
@@ -110,6 +111,7 @@ def run_backtest(
             allow_target_bookmakers_as_references=allow_target_bookmakers_as_references,
             reference_weights=reference_weights,
             target_commission_rates=target_commission_rates,
+            reference_aggregation=reference_aggregation,
             now=snapshot.fetched_at,
         )
         signals = _filter_betfair_dislocation_signals(
@@ -152,6 +154,7 @@ def run_backtest(
                 allow_target_bookmakers_as_references=allow_target_bookmakers_as_references,
                 reference_weights=reference_weights,
                 target_commission_rates=target_commission_rates,
+                reference_aggregation=reference_aggregation,
             )
             bets.append(
                 BacktestBet(
@@ -337,6 +340,7 @@ def _closing_line_for_signal(
     allow_target_bookmakers_as_references: bool = False,
     reference_weights: dict[str, float] | None = None,
     target_commission_rates: dict[str, float] | None = None,
+    reference_aggregation: str = "mean",
 ) -> _ClosingLine:
     candidate_snapshots = [
         snapshot
@@ -359,6 +363,7 @@ def _closing_line_for_signal(
             allow_target_bookmakers_as_references=allow_target_bookmakers_as_references,
             reference_weights=reference_weights,
             target_commission_rates=target_commission_rates,
+            reference_aggregation=reference_aggregation,
             now=snapshot.fetched_at,
         )
         for closing_signal in closing_signals:

@@ -1,7 +1,7 @@
 # Matchbook CLV Paper Trader
 
-Read-only scanner for finding potential Matchbook h2h value bets by comparing
-Matchbook prices with a sharpness-weighted reference consensus.
+Read-only scanner for finding potential exchange h2h value bets by comparing
+target exchange prices with a sharp reference consensus.
 
 It does not place bets.
 
@@ -63,7 +63,7 @@ scan-exchanges \
   --max-api-requests 100 \
   --min-edge 0.015 \
   --max-edge 0.10 \
-  --min-reference-books 1 \
+  --min-reference-books 2 \
   --max-age-seconds 900 \
   --max-event-days 4 \
   --unique-bets
@@ -232,7 +232,7 @@ scan-exchanges \
   --markets h2h,h2h_lay,totals,spreads \
   --max-api-requests 100 \
   --min-edge 0.015 \
-  --min-reference-books 1 \
+  --min-reference-books 2 \
   --max-age-seconds 900 \
   --unique-bets > data/latest_opportunities.csv
 
@@ -262,10 +262,8 @@ per run. The workflow can also call Betfair `keepAlive` for short-term testing
 with a manually supplied session token.
 
 The current `exchange-clv` strategy targets Matchbook, Smarkets, and Betfair
-Exchange prices against a weighted reference consensus. Pinnacle, Betfair,
-Smarkets, and Matchbook get the highest weights; stronger mainstream books get
-medium weights; unknown books get a low default weight. It still requires at
-least one complete sharp reference book per h2h outcome. If The Odds API
+Exchange prices against a median de-vigged sharp reference consensus. It requires
+at least two complete sharp reference books per h2h outcome. If The Odds API
 includes a matching lay market such as `h2h_lay`, the exported venue fair
 diagnostics use the target venue's back/lay midpoint in implied-probability
 space; otherwise they fall back to that venue's regular h2h win/draw/win price.

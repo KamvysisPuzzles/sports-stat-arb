@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from statistics import median
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -190,6 +191,37 @@ class TheOddsApiClient:
             self._write_cache(cache_path, payload)
         return payload
 
+    def fetch_historical_odds(
+        self,
+        *,
+        sport: str,
+        regions: str,
+        markets: str,
+        date: datetime,
+        odds_format: str = "decimal",
+    ) -> dict[str, Any]:
+        response = self.http.get(
+            f"/historical/sports/{sport}/odds",
+            params={
+                "apiKey": self.api_key,
+                "regions": regions,
+                "markets": markets,
+                "oddsFormat": odds_format,
+                "date": date.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            },
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            remaining = response.headers.get("x-requests-remaining")
+            used = response.headers.get("x-requests-used")
+            raise TheOddsApiError(
+                f"The Odds API historical request failed with HTTP {response.status_code} "
+                f"for sport={sport!r}, markets={markets!r}, regions={regions!r}, date={date!s}; "
+                f"requests_used={used or 'unknown'}, requests_remaining={remaining or 'unknown'}"
+            ) from None
+        return response.json()
+
     def fetch_scores(
         self,
         *,
@@ -367,6 +399,7 @@ def find_value_opportunities(
     allow_target_bookmakers_as_references: bool = False,
     reference_weights: dict[str, float] | None = None,
     target_commission_rates: dict[str, float] | None = None,
+    reference_aggregation: str = "mean",
     now: datetime | None = None,
 ) -> list[ValueSignal]:
     now = now or datetime.now(timezone.utc)
@@ -414,6 +447,7 @@ def find_value_opportunities(
                 min_reference_books,
                 expected_outcomes=expected_outcomes,
                 reference_weights=reference_weights,
+                aggregation=reference_aggregation,
             )
             if target.comparable_outcome_name not in external_fair_probabilities:
                 continue
@@ -429,6 +463,7 @@ def find_value_opportunities(
                 min_reference_books,
                 expected_outcomes=expected_outcomes,
                 reference_weights=reference_weights,
+                aggregation=reference_aggregation,
             )
             fair_probability = fair_probabilities.get(target.comparable_outcome_name)
             if fair_probability is None:
@@ -559,6 +594,7 @@ def _fair_probabilities(
     *,
     expected_outcomes: int,
     reference_weights: dict[str, float] | None = None,
+    aggregation: str = "mean",
 ) -> dict[str, float]:
     by_bookmaker: dict[str, dict[str, OutcomePrice]] = {}
     for price in prices:
@@ -579,11 +615,15 @@ def _fair_probabilities(
                 ((1 / price.odds) / overround, weight)
             )
 
-    return {
-        outcome_name: _weighted_average(probabilities)
-        for outcome_name, probabilities in normalised_probs.items()
-        if len(probabilities) >= min_reference_books and sum(weight for _, weight in probabilities) > 0
-    }
+    if aggregation == "median":
+        return _median_probabilities(
+            normalised_probs,
+            min_reference_books=min_reference_books,
+            expected_outcomes=expected_outcomes,
+        )
+    if aggregation != "mean":
+        raise ValueError(f"Unsupported reference aggregation: {aggregation}")
+    return _mean_probabilities(normalised_probs, min_reference_books=min_reference_books)
 
 
 def _reference_weight(
@@ -598,6 +638,37 @@ def _reference_weight(
 def _weighted_average(probabilities: list[tuple[float, float]]) -> float:
     weight_sum = sum(weight for _, weight in probabilities)
     return sum(probability * weight for probability, weight in probabilities) / weight_sum
+
+
+def _mean_probabilities(
+    normalised_probs: dict[str, list[tuple[float, float]]],
+    *,
+    min_reference_books: int,
+) -> dict[str, float]:
+    return {
+        outcome_name: _weighted_average(probabilities)
+        for outcome_name, probabilities in normalised_probs.items()
+        if len(probabilities) >= min_reference_books and sum(weight for _, weight in probabilities) > 0
+    }
+
+
+def _median_probabilities(
+    normalised_probs: dict[str, list[tuple[float, float]]],
+    *,
+    min_reference_books: int,
+    expected_outcomes: int,
+) -> dict[str, float]:
+    medians = {
+        outcome_name: median(probability for probability, _ in probabilities)
+        for outcome_name, probabilities in normalised_probs.items()
+        if len(probabilities) >= min_reference_books
+    }
+    if len(medians) != expected_outcomes:
+        return {}
+    total = sum(medians.values())
+    if total <= 0:
+        return {}
+    return {outcome_name: probability / total for outcome_name, probability in medians.items()}
 
 
 def _expected_outcome_count(prices: list[OutcomePrice]) -> int:
