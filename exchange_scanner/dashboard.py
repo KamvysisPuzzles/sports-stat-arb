@@ -304,11 +304,18 @@ def _trading_control_html(token: str, control: dict[str, Any]) -> str:
         <div class="value {tone}">{_escape(status)}</div>
         <div class="meta">Last changed: {_escape(updated_at)}</div>
       </div>
-      <form class="control-actions" method="post" action="{_href_attr(_filter_href(token))}">
+      <form class="control-actions" method="post" action="{_href_attr(_filter_href(token))}"{_pause_confirm_attr(paused)}>
         <input type="hidden" name="action" value="{_escape(action)}">
         <button class="{button_class}" type="submit">{_escape(button_label)}</button>
       </form>
     </section>"""
+
+
+def _pause_confirm_attr(paused: bool) -> str:
+    if paused:
+        return ""
+    message = "Pause new paper trade logging? CLV updates and settlement will keep running."
+    return f' onsubmit="return confirm(\'{_escape(message)}\')"'
 
 
 def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:

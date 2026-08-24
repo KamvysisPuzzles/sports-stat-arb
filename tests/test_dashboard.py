@@ -241,6 +241,7 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "Trading" in html
     assert "Live" in html
     assert 'name="action" value="pause"' in html
+    assert "return confirm" in html
     assert "Arsenal v Chelsea" in html
     assert "Liverpool v Everton" in html
     assert "Results by Venue" in html
@@ -260,6 +261,31 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "token=secret&amp;clv=closed" in html
     assert "token=secret&amp;status=open" in html
     assert "3.14" in html
+
+
+def test_render_dashboard_html_does_not_confirm_resume() -> None:
+    payload = dashboard_payload(
+        FakeTable(
+            [
+                *trades(),
+                {
+                    "trade_id": "control#trading",
+                    "status": "control",
+                    "paused": True,
+                    "updated_at": "2026-08-18T11:00:00+00:00",
+                    "updated_by": "test",
+                },
+            ]
+        ),
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+    payload["token"] = "secret"
+
+    html = render_dashboard_html(payload)
+
+    assert "Paused" in html
+    assert 'name="action" value="resume"' in html
+    assert "return confirm" not in html
 
 
 def test_lambda_handler_requires_token(monkeypatch) -> None:
