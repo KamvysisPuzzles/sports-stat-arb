@@ -419,7 +419,7 @@ def _group_rows_html(rows: list[dict[str, Any]], *, label_key: str) -> str:
         f"<td>{_escape(row['settled_won'])}/{_escape(row['settled_lost'])}</td>"
         f"<td class='{_class_for_number(row['settled_profit'])}'>{row['settled_profit']:.2f}</td>"
         f"<td class='{_class_for_number(row['settled_roi'])}'>{row['settled_roi']:.2%}</td>"
-        f"<td>{row['median_confirmed_liquidity_at_target']:.2f}</td>"
+        f"<td>{row['median_available_risk_at_target']:.2f}</td>"
         f"<td class='{_class_for_number(row['average_clv'])}'>{row['average_clv']:.2%}</td>"
         f"<td class='{_class_for_number(row['average_closed_fair_edge'])}'>{row['average_closed_fair_edge']:.2%}</td>"
         "</tr>"

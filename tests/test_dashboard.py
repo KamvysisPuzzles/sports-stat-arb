@@ -245,8 +245,23 @@ def test_dashboard_payload_includes_results_by_venue() -> None:
     assert by_venue["Matchbook"]["settled_won"] == 1
     assert by_venue["Matchbook"]["settled_profit"] == 3.136
     assert by_venue["Betfair"]["open_trades"] == 1
+    assert by_venue["Betfair"]["median_confirmed_liquidity_at_target"] == 10
+    assert by_venue["Betfair"]["median_available_risk_at_target"] == 40
     assert by_venue["Smarkets"]["settled_lost"] == 1
     assert by_venue["Smarkets"]["settled_roi"] == -1
+
+
+def test_dashboard_grouped_tables_show_median_available_risk_liquidity() -> None:
+    html = render_dashboard_html(
+        dashboard_payload(
+            FakeTable(trades()),
+            filters={"bookmaker": "Betfair"},
+            now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+        )
+    )
+
+    assert "<td>40.00</td>" in html
+    assert "<td>10.00</td>" not in html
 
 
 def test_dashboard_payload_calculates_lay_liability_and_internal_entry_ev() -> None:
