@@ -145,7 +145,7 @@ STRATEGIES = {
     },
     "exchange-clv": {
         "target_bookmakers": EXCHANGE_CLV_TARGET_BOOKMAKERS,
-        "target_lay_bookmakers": {"matchbook"},
+        "target_lay_bookmakers": {"matchbook", "smarkets"},
         "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS | BETFAIR_TARGET_BOOKMAKERS,
         "target_reference_bookmakers": EXCHANGE_CLV_TARGET_REFERENCE_BOOKMAKERS,
         "allow_target_bookmakers_as_references": False,

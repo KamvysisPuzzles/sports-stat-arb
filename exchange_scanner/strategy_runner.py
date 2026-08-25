@@ -278,6 +278,7 @@ def run_paper_log(
             "settlement": _settlement_result_dict(settlement),
             "trading_control": trading_control,
             "candidate_signals": 0,
+            "paper_eligible_signals": 0,
             "liquidity_confirmed_signals": 0,
             "paper_log": {"attempted": 0, "inserted": 0, "duplicates": 0},
         }
@@ -296,10 +297,13 @@ def run_paper_log(
     rows = _signal_rows(signals)
     rows = _enrich_matchbook_rows(config, rows, matchbook_client=matchbook_client, now=now)
     rows = _enrich_betfair_rows(config, rows, lambda_client=lambda_client)
-    executable_rows = [row for row in rows if row.get("liquidity_status") == "available"]
+    executable_rows = [row for row in rows if _paper_loggable_row(row)]
     executable_keys = {_row_key(row) for row in executable_rows}
     executable_signals = [
         signal for signal in signals if signal_key(signal) in executable_keys
+    ]
+    liquidity_confirmed_rows = [
+        row for row in executable_rows if row.get("liquidity_status") == "available"
     ]
     liquidity_by_key = {
         _row_key(row): {field: row.get(field, "") for field in LIQUIDITY_FIELDS}
@@ -321,7 +325,8 @@ def run_paper_log(
         "settlement": _settlement_result_dict(settlement),
         "trading_control": trading_control,
         "candidate_signals": len(signals),
-        "liquidity_confirmed_signals": len(executable_signals),
+        "paper_eligible_signals": len(executable_signals),
+        "liquidity_confirmed_signals": len(liquidity_confirmed_rows),
         "paper_log": _log_result_dict(log_result),
     }
     portfolio_summary = build_portfolio_summary(table, generated_at=now)
@@ -397,6 +402,10 @@ def run_combined_paper_log(
         "candidate_signals": (
             soccer_result["candidate_signals"] + discovery_result["candidate_signals"]
         ),
+        "paper_eligible_signals": (
+            soccer_result["paper_eligible_signals"]
+            + discovery_result["paper_eligible_signals"]
+        ),
         "liquidity_confirmed_signals": (
             soccer_result["liquidity_confirmed_signals"]
             + discovery_result["liquidity_confirmed_signals"]
@@ -431,6 +440,7 @@ def _empty_branch_result() -> dict[str, Any]:
         "sports": 0,
         "odds_rows": 0,
         "candidate_signals": 0,
+        "paper_eligible_signals": 0,
         "liquidity_confirmed_signals": 0,
         "paper_log": {"attempted": 0, "inserted": 0, "duplicates": 0},
     }
@@ -573,6 +583,7 @@ def _summary_text(result: dict[str, Any]) -> str:
             f"- Sports scanned: {result['sports']}",
             f"- Odds rows stored: {result['odds_rows']}",
             f"- Candidate signals: {result['candidate_signals']}",
+            f"- Paper-eligible signals: {result['paper_eligible_signals']}",
             f"- Liquidity-confirmed signals: {result['liquidity_confirmed_signals']}",
             f"- New paper trades: {paper_log['inserted']}",
             f"- Duplicate paper trades: {paper_log['duplicates']}",
@@ -615,6 +626,7 @@ def _combined_summary_text(result: dict[str, Any]) -> str:
         f"- Sports scanned: {result['sports']}",
         f"- Odds rows stored: {result['odds_rows']}",
         f"- Candidate signals: {result['candidate_signals']}",
+        f"- Paper-eligible signals: {result['paper_eligible_signals']}",
         f"- Liquidity-confirmed signals: {result['liquidity_confirmed_signals']}",
         f"- New paper trades: {paper_log['inserted']}",
         f"- Duplicate paper trades: {paper_log['duplicates']}",
@@ -629,6 +641,7 @@ def _combined_summary_text(result: dict[str, Any]) -> str:
                 f"- {label}:",
                 f"  sports={branch['sports']}, odds_rows={branch['odds_rows']}, "
                 f"candidates={branch['candidate_signals']}, "
+                f"paper_eligible={branch['paper_eligible_signals']}, "
                 f"liquidity_confirmed={branch['liquidity_confirmed_signals']}, "
                 f"inserted={branch_log['inserted']}, duplicates={branch_log['duplicates']}",
             ]
@@ -788,6 +801,12 @@ def _allowed_by_matchbook_soccer_market_rule(signal: ValueSignal, markets: set[s
     if signal.market_key not in markets:
         return True
     return signal.target_bookmaker.casefold() == "matchbook" and signal.sport_key.startswith("soccer_")
+
+
+def _paper_loggable_row(row: dict[str, str]) -> bool:
+    if row.get("liquidity_status") == "available":
+        return True
+    return row.get("target_bookmaker", "").casefold() == "smarkets"
 
 
 def _sharp_reference_count(signal: ValueSignal) -> int:

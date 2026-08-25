@@ -82,6 +82,7 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
         "matchbook",
         "smarkets",
     }
+    assert strategy["target_lay_bookmakers"] == {"matchbook", "smarkets"}
     assert strategy["reference_bookmakers"] == {
         "betfair",
         "betfair_ex_eu",
