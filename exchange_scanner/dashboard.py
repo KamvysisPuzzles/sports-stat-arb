@@ -299,8 +299,8 @@ def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:
       {_metric("Won/Lost", f"{summary['settled_won']}/{summary['settled_lost']}")}
       {_metric("PnL", f"{summary['settled_profit']:.2f}", _class_for_number(summary["settled_profit"]))}
       {_metric("ROI", f"{summary['settled_roi']:.2%}", _class_for_number(summary["settled_roi"]))}
-      {_metric("Risk ROI", f"{summary['settled_risk_roi']:.2%}", "profit / liability", tone=_class_for_number(summary["settled_risk_roi"]))}
-      {_metric("Open Liability", f"{summary['open_liability']:.2f}")}
+      {_metric("Risk ROI", f"{summary['settled_risk_roi']:.2%}", "profit / risk", tone=_class_for_number(summary["settled_risk_roi"]))}
+      {_metric("Open Risk", f"{summary['open_liability']:.2f}")}
       {_metric("Entry EV", f"{summary['entry_expected_value']:.2f}", "risk adjusted", tone=_class_for_number(summary["entry_expected_value"]))}
       {_metric("Avg Risk Odds", f"{summary['average_risk_odds']:.2f}")}
       {_metric("Median Liquidity", f"{summary['median_available_risk_at_target']:.2f}", "risk")}

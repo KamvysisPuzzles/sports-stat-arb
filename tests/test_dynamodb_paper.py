@@ -168,6 +168,7 @@ def test_update_closing_values_in_dynamodb_prices_lay_edge_per_liability() -> No
     assert result.open_trades == 1
     assert result.updated == 1
     assert item["bet_side"] == "lay"
+    assert item["stake"] == Decimal("12.5")
     assert item["target_clv"] == Decimal("0.11111111111111116")
     assert item["closing_edge"] == Decimal("-0.021000000000000185")
     assert item["positive_closing_edge"] is False
@@ -208,4 +209,25 @@ def test_settle_results_in_dynamodb_sets_lay_profit_from_liability() -> None:
     assert result.settled == 1
     assert item["status"] == "settled"
     assert item["result"] == "Chelsea"
-    assert item["profit"] == Decimal("9.8")
+    assert item["stake"] == Decimal("12.5")
+    assert item["profit"] == Decimal("12.25")
+
+
+def test_settle_results_in_dynamodb_sets_lay_loss_to_configured_risk() -> None:
+    table = FakeTable()
+    logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
+    lay_signal = signal(
+        target_odds=1.8,
+        target_effective_odds=1.8,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.1125,
+        bet_side="lay",
+    )
+    log_signals_to_dynamodb(table, [lay_signal], stake=10, logged_at=logged_at)
+
+    settle_results_in_dynamodb(table, {"event-1": "Arsenal"})
+    item = next(iter(table.items.values()))
+
+    assert item["result"] == "Arsenal"
+    assert item["profit"] == Decimal("-10.0")

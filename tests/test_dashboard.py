@@ -282,7 +282,7 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "Not Everton" in html
     assert "side-badge" not in html
     assert "Risk ROI" in html
-    assert "Open Liability" in html
+    assert "Open Risk" in html
     assert "Entry EV" in html
     assert "Results by Venue" in html
     assert "Trades Last 24h" in html

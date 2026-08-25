@@ -62,7 +62,12 @@ def log_signals_to_dynamodb(
     duplicates = 0
     for signal in signals:
         liquidity = (liquidity_by_key or {}).get(signal_key(signal), {})
-        item = paper_item(signal, stake=stake, logged_at=logged_at, liquidity=liquidity)
+        item = paper_item(
+            signal,
+            stake=_risk_normalized_stake(signal, risk=stake),
+            logged_at=logged_at,
+            liquidity=liquidity,
+        )
         try:
             table.put_item(
                 Item=item,
@@ -336,3 +341,12 @@ def _commission_rate_for_bookmaker(bookmaker: str) -> float:
     if bookmaker.casefold() in {"matchbook", "smarkets", "betfair", "betfair_ex_uk", "betfair_ex_eu"}:
         return MATCHBOOK_COMMISSION_RATE
     return 0.0
+
+
+def _risk_normalized_stake(signal: ValueSignal, *, risk: float) -> float:
+    if signal.bet_side.casefold() != "lay":
+        return risk
+    liability_per_unit = signal.target_odds - 1
+    if liability_per_unit <= 0:
+        return 0.0
+    return risk / liability_per_unit

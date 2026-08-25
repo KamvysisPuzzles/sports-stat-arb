@@ -19,6 +19,7 @@ def signal(
     target_odds: float = 2.3,
     reference_fair_odds: float = 2.0,
     edge: float = 0.15,
+    bet_side: str = "back",
 ) -> ValueSignal:
     return ValueSignal(
         sport_key="soccer_epl",
@@ -33,6 +34,7 @@ def signal(
         reference_probability=1 / reference_fair_odds,
         edge=edge,
         reference_bookmakers=("Betfair", "Pinnacle"),
+        bet_side=bet_side,
     )
 
 
@@ -46,6 +48,18 @@ def test_log_signals_dedupes_same_event_market_outcome(tmp_path) -> None:
     assert len(trades) == 1
     assert trades[0].event_id == "event-1"
     assert trades[0].stake == 10
+
+
+def test_log_signals_treats_stake_as_lay_risk(tmp_path) -> None:
+    db_path = tmp_path / "paper.sqlite3"
+
+    assert log_signals(db_path, [signal(target_odds=1.8, bet_side="lay")], stake=10) == 1
+
+    trade = list_trades(db_path)[0]
+    assert trade.stake == pytest.approx(12.5)
+    assert settle_results(db_path, {"event-1": "Arsenal"}) == 1
+    settled = list_trades(db_path)[0]
+    assert settled.profit == pytest.approx(-10)
 
 
 def test_log_signals_allows_different_outcomes_on_same_event(tmp_path) -> None:

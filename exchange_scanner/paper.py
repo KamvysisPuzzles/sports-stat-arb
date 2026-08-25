@@ -141,6 +141,7 @@ def log_signals(
     with _connect(path) as db:
         for signal in signals:
             liquidity = (liquidity_by_key or {}).get(_signal_key(signal), {})
+            paper_stake = _risk_normalized_stake(signal, risk=stake)
             cursor = db.execute(
                 """
                 INSERT OR IGNORE INTO paper_trades (
@@ -192,7 +193,7 @@ def log_signals(
                     signal.betfair_fair_odds,
                     signal.betfair_fair_edge,
                     signal.betfair_back_lay_spread_pct,
-                    stake,
+                    paper_stake,
                     _empty_to_none(liquidity.get("matchbook_event_id")),
                     _empty_to_none(liquidity.get("matchbook_market_id")),
                     _empty_to_none(liquidity.get("matchbook_runner_id")),
@@ -404,6 +405,15 @@ def _commission_rate_for_bookmaker(bookmaker: str) -> float:
     if bookmaker.casefold() in {"matchbook", "smarkets", "betfair"}:
         return MATCHBOOK_COMMISSION_RATE
     return 0.0
+
+
+def _risk_normalized_stake(signal: ValueSignal, *, risk: float) -> float:
+    if signal.bet_side.casefold() != "lay":
+        return risk
+    liability_per_unit = signal.target_odds - 1
+    if liability_per_unit <= 0:
+        return 0.0
+    return risk / liability_per_unit
 
 
 def _trade_has_closed(trade: PaperTrade, now: datetime) -> bool:
