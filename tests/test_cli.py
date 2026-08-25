@@ -79,11 +79,8 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
 
     assert strategy["target_bookmakers"] == EXCHANGE_CLV_TARGET_BOOKMAKERS
     assert strategy["target_bookmakers"] == {
-        "betfair",
         "matchbook",
         "smarkets",
-        "betfair_ex_uk",
-        "betfair_ex_eu",
     }
     assert strategy["reference_bookmakers"] == {
         "betfair",
@@ -106,9 +103,6 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
         "betfair_ex_uk",
         "pinnacle",
     }
-    assert strategy["target_reference_bookmakers"][
-        frozenset({"betfair", "betfair_ex_uk", "betfair_ex_eu"})
-    ] == {"pinnacle", "smarkets"}
     assert strategy["allow_target_bookmakers_as_references"] is False
     assert strategy["target_commission_rates"]["betfair"] == pytest.approx(0.02)
     assert strategy["reference_weights"] is None

@@ -66,7 +66,6 @@ BETFAIR_TARGET_BOOKMAKERS = {
 EXCHANGE_CLV_TARGET_BOOKMAKERS = {
     "matchbook",
     "smarkets",
-    *BETFAIR_TARGET_BOOKMAKERS,
 }
 
 EXCHANGE_CLV_TARGET_REFERENCE_BOOKMAKERS = {
@@ -82,10 +81,6 @@ EXCHANGE_CLV_TARGET_REFERENCE_BOOKMAKERS = {
         "betfair",
         "betfair_ex_uk",
         "betfair_ex_eu",
-    },
-    frozenset(BETFAIR_TARGET_BOOKMAKERS): {
-        "pinnacle",
-        "smarkets",
     },
 }
 
