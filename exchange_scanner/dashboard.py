@@ -232,8 +232,6 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       <a href="{_href_attr(_filter_href(token))}">All</a>
       <a href="{_href_attr(_filter_href(token, status='open'))}">Open</a>
       <a href="{_href_attr(_filter_href(token, status='settled'))}">Settled</a>
-      <a href="{_href_attr(_filter_href(token, clv='closed'))}">Closed CLV</a>
-      <a href="{_href_attr(_filter_href(token, clv='mtm'))}">MTM CLV</a>
       <a href="{_href_attr(_filter_href(token, bookmaker='Matchbook'))}">Matchbook</a>
       <a href="{_href_attr(_filter_href(token, bookmaker='Smarkets'))}">Smarkets</a>
       <a href="{_href_attr(_filter_href(token, bookmaker='Betfair'))}">Betfair</a>

@@ -314,7 +314,7 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert 'name="sport" value="soccer"' in html
     assert 'name="league" value="soccer_epl"' in html
     assert 'name="clv" value="closed"' in html
-    assert "token=secret&amp;clv=closed" in html
+    assert "token=secret&amp;clv=closed" not in html
     assert "token=secret&amp;status=open" in html
     assert "3.14" in html
 
