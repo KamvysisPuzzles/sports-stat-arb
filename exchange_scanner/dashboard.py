@@ -199,6 +199,20 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
     .venue-section {{ margin: 0 0 16px; }}
     .venue-table {{ min-width: 760px; }}
     table {{ width: 100%; border-collapse: collapse; min-width: 980px; }}
+    .side-badge {{
+      display: inline-block;
+      min-width: 42px;
+      margin-right: 7px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+      letter-spacing: .02em;
+      color: var(--bg);
+    }}
+    .side-back {{ background: var(--good); }}
+    .side-lay {{ background: var(--warn); }}
     th, td {{
       text-align: left;
       padding: 9px 10px;
@@ -328,9 +342,9 @@ def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
         f"<td>{_short_time(row.get('logged_at'))}</td>"
         f"<td>{_escape(row.get('status', ''))}</td>"
         f"<td>{_escape(row.get('target_bookmaker', ''))}</td>"
-        f"<td>{_escape(row.get('bet_side', 'back'))}</td>"
+        f"<td>{_escape(_bet_side(row))}</td>"
         f"<td>{_escape(row.get('event_name', ''))}</td>"
-        f"<td>{_escape(row.get('outcome_name', ''))}</td>"
+        f"<td>{_side_badge_html(row)}{_escape(row.get('outcome_name', ''))}</td>"
         f"<td>{_format_number(row.get('target_odds'))}</td>"
         f"<td>{_format_number(row.get('available_at_or_above_target'))}</td>"
         f"<td>{_format_pct(row.get('edge'))}</td>"
@@ -343,6 +357,16 @@ def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
         "</tr>"
         for row in rows
     )
+
+
+def _bet_side(row: dict[str, Any]) -> str:
+    side = str(row.get("bet_side") or "back").casefold()
+    return "lay" if side == "lay" else "back"
+
+
+def _side_badge_html(row: dict[str, Any]) -> str:
+    side = _bet_side(row)
+    return f'<span class="side-badge side-{side}">{side.upper()}</span>'
 
 
 def _venue_results_html(venues: list[dict[str, Any]]) -> str:

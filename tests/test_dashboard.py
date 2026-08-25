@@ -62,6 +62,7 @@ def trades():
             "commence_time": "2026-08-18T21:00:00+00:00",
             "outcome_name": "Everton",
             "target_bookmaker": "Betfair",
+            "bet_side": "lay",
             "target_odds": Decimal("5.0"),
             "available_at_or_above_target": Decimal(10),
             "edge": Decimal("0.05"),
@@ -251,6 +252,9 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "return confirm" not in html
     assert "Arsenal v Chelsea" in html
     assert "Liverpool v Everton" in html
+    assert "<th>Side</th>" in html
+    assert '<span class="side-badge side-back">BACK</span>Arsenal' in html
+    assert '<span class="side-badge side-lay">LAY</span>Everton' in html
     assert "Results by Venue" in html
     assert "Trades Last 24h" in html
     assert "Results by Sport" in html
