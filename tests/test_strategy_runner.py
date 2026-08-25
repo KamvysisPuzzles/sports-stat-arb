@@ -161,6 +161,24 @@ class FakeSmarketsKeepAliveClient:
         raise AssertionError("Smarkets events should not be fetched without candidates")
 
 
+class FakeExpiredSmarketsClient(FakeSmarketsKeepAliveClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.login_calls = []
+        self.logged_in = False
+
+    def keep_alive(self):
+        self.keep_alive_calls += 1
+        if not self.logged_in:
+            raise RuntimeError("expired token")
+        return {"account": {"account_id": "test-account"}}
+
+    def login(self, *, username, password):
+        self.login_calls.append((username, password))
+        self.logged_in = True
+        return {"token": "fresh-token", "stop": "2026-08-14T12:30:00Z"}
+
+
 class FakeS3Client:
     def __init__(self) -> None:
         self.uploads = []
@@ -580,6 +598,40 @@ def test_run_paper_log_keeps_smarkets_token_alive_without_candidates(monkeypatch
     assert smarkets_client.keep_alive_calls == 1
     assert result["smarkets_keepalive"] == {"attempted": True, "status": "ok"}
     assert result["candidate_signals"] == 0
+
+
+def test_run_paper_log_relogs_smarkets_when_keepalive_fails(monkeypatch) -> None:
+    monkeypatch.setitem(strategy_runner.SPORT_PROFILES, "test-profile", ["soccer_epl"])
+    smarkets_client = FakeExpiredSmarketsClient()
+    config = StrategyRunnerConfig(
+        mode="paper-log",
+        odds_api_key="test-key",
+        dynamodb_table_name="paper-trades",
+        odds_s3_bucket="odds-bucket",
+        sports_profile="test-profile",
+        max_api_requests=1,
+        min_reference_books=2,
+        smarkets_session_token="expired-token",
+        smarkets_username="user@example.com",
+        smarkets_password="secret",
+        use_betfair_lambda=False,
+    )
+
+    result = run_paper_log(
+        config,
+        odds_client=FakeLongshotOddsClient(),
+        matchbook_client=FakeMatchbookClient(),
+        smarkets_client=smarkets_client,
+        dynamodb_table=FakeTable(),
+        s3_client=FakeS3Client(),
+        now=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+    )
+
+    assert smarkets_client.keep_alive_calls == 2
+    assert smarkets_client.login_calls == [("user@example.com", "secret")]
+    assert result["smarkets_keepalive"]["status"] == "relogged"
+    assert result["smarkets_keepalive"]["token_stop"] == "2026-08-14T12:30:00Z"
+    assert "secret" not in json.dumps(result["smarkets_keepalive"])
 
 
 def test_run_paper_log_skips_new_trades_when_trading_is_paused(monkeypatch) -> None:

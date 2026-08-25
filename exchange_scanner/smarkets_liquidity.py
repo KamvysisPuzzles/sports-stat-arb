@@ -44,10 +44,38 @@ class SmarketsLiquidityClient:
         self._contracts_by_market: dict[str, list[dict[str, Any]]] = {}
         self._quotes_by_market: dict[str, dict[str, Any]] = {}
 
+    def set_session_token(self, token: str) -> None:
+        self.session_token = token
+        self.http.headers["Authorization"] = f"Bearer {token}"
+
     def keep_alive(self) -> dict[str, Any]:
         response = self.http.get("/accounts/")
         response.raise_for_status()
         return response.json()
+
+    def login(
+        self,
+        *,
+        username: str,
+        password: str,
+        remember: bool = True,
+        use_auth_v2: bool = True,
+    ) -> dict[str, Any]:
+        response = self.http.post(
+            "/sessions/",
+            json={
+                "username": username,
+                "password": password,
+                "remember": remember,
+                "use_auth_v2": use_auth_v2,
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+        token = payload.get("token")
+        if token:
+            self.set_session_token(str(token))
+        return payload
 
     def fetch_football_events(
         self,

@@ -91,6 +91,8 @@ class StrategyRunnerConfig:
     matchbook_currency: str = "GBP"
     matchbook_minimum_liquidity: float = 2.0
     smarkets_session_token: str = ""
+    smarkets_username: str = ""
+    smarkets_password: str = ""
     settle_finished_trades: bool = True
     enable_matchbook_discovery: bool = False
     betfair_lambda_function_name: str = ""
@@ -157,6 +159,12 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
         ),
         smarkets_session_token=str(
             event.get("smarkets_session_token") or env.get("SMARKETS_SESSION_TOKEN") or ""
+        ),
+        smarkets_username=str(
+            event.get("smarkets_username") or env.get("SMARKETS_USERNAME") or ""
+        ),
+        smarkets_password=str(
+            event.get("smarkets_password") or env.get("SMARKETS_PASSWORD") or ""
         ),
         settle_finished_trades=_bool(
             event.get("settle_finished_trades", env.get("SETTLE_FINISHED_TRADES", "true"))
@@ -239,7 +247,7 @@ def run_paper_log(
     _validate_config(config)
     now = now or datetime.now(timezone.utc)
     smarkets_client = _ensure_smarkets_client(config, smarkets_client)
-    smarkets_keepalive = _keep_smarkets_session_alive(smarkets_client)
+    smarkets_keepalive = _keep_smarkets_session_alive(config, smarkets_client)
     odds_client = odds_client or TheOddsApiClient(api_key=config.odds_api_key)
     sports = _sports_for_profile(
         config.sports_profile,
@@ -854,21 +862,48 @@ def _ensure_smarkets_client(
 ) -> Any | None:
     if smarkets_client is not None:
         return smarkets_client
-    if not config.smarkets_session_token:
+    if not (
+        config.smarkets_session_token
+        or (config.smarkets_username and config.smarkets_password)
+    ):
         return None
     return SmarketsLiquidityClient(session_token=config.smarkets_session_token)
 
 
-def _keep_smarkets_session_alive(smarkets_client: Any | None) -> dict[str, Any]:
+def _keep_smarkets_session_alive(
+    config: StrategyRunnerConfig,
+    smarkets_client: Any | None,
+) -> dict[str, Any]:
     if smarkets_client is None:
         return {"attempted": False, "status": "not_configured"}
     try:
         smarkets_client.keep_alive()
     except Exception as exc:  # noqa: BLE001 - keep the strategy run alive if auth lapses.
+        keepalive_error = f"{type(exc).__name__}: {exc}"
+        if not (config.smarkets_username and config.smarkets_password):
+            return {
+                "attempted": True,
+                "status": "failed",
+                "error": keepalive_error,
+            }
+        try:
+            login_payload = smarkets_client.login(
+                username=config.smarkets_username,
+                password=config.smarkets_password,
+            )
+            smarkets_client.keep_alive()
+        except Exception as login_exc:  # noqa: BLE001 - report auth failure in the summary.
+            return {
+                "attempted": True,
+                "status": "login_failed",
+                "error": f"{type(login_exc).__name__}: {login_exc}",
+                "initial_error": keepalive_error,
+            }
         return {
             "attempted": True,
-            "status": "failed",
-            "error": f"{type(exc).__name__}: {exc}",
+            "status": "relogged",
+            "token_stop": str(login_payload.get("stop") or ""),
+            "initial_error": keepalive_error,
         }
     return {"attempted": True, "status": "ok"}
 
