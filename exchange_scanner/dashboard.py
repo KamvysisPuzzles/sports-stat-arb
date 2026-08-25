@@ -301,12 +301,16 @@ def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:
       {_metric("Avg Risk Odds", f"{summary['average_risk_odds']:.2f}")}
       {_metric("Median Liquidity", f"{summary['median_available_risk_at_target']:.2f}", "risk")}
       {_metric("Closed CLV", f"{summary['average_closed_clv']:.2%}", f"n={summary['closed_clv_trades']}", tone=_class_for_number(summary["average_closed_clv"]))}
+      {_metric("Median Closed CLV", f"{summary['median_closed_clv']:.2%}", f"n={summary['closed_clv_trades']}", tone=_class_for_number(summary["median_closed_clv"]))}
       {_metric("Closed B/M/T", f"{summary['closed_clv_beats']}/{summary['closed_clv_misses']}/{summary['closed_clv_ties']}")}
       {_metric("Closed Fair Edge", f"{summary['average_closed_fair_edge']:.2%}", f"n={summary['closed_fair_edge_trades']}", tone=_class_for_number(summary["average_closed_fair_edge"]))}
+      {_metric("Median Closed Fair", f"{summary['median_closed_fair_edge']:.2%}", f"n={summary['closed_fair_edge_trades']}", tone=_class_for_number(summary["median_closed_fair_edge"]))}
       {_metric("Closed Fair +", f"{summary['positive_closed_fair_edge_rate']:.2%}", f"{summary['positive_closed_fair_edge']}/{summary['closed_fair_edge_trades']}", tone=_class_for_number(summary["average_closed_fair_edge"]))}
       {_metric("MTM CLV", f"{summary['average_mark_to_market_clv']:.2%}", f"n={summary['mark_to_market_clv_trades']}", tone=_class_for_number(summary["average_mark_to_market_clv"]))}
+      {_metric("Median MTM CLV", f"{summary['median_mark_to_market_clv']:.2%}", f"n={summary['mark_to_market_clv_trades']}", tone=_class_for_number(summary["median_mark_to_market_clv"]))}
       {_metric("MTM B/M/T", f"{summary['mark_to_market_clv_beats']}/{summary['mark_to_market_clv_misses']}/{summary['mark_to_market_clv_ties']}")}
       {_metric("MTM Fair Edge", f"{summary['average_mark_to_market_fair_edge']:.2%}", f"n={summary['mark_to_market_fair_edge_trades']}", tone=_class_for_number(summary["average_mark_to_market_fair_edge"]))}
+      {_metric("Median MTM Fair", f"{summary['median_mark_to_market_fair_edge']:.2%}", f"n={summary['mark_to_market_fair_edge_trades']}", tone=_class_for_number(summary["median_mark_to_market_fair_edge"]))}
     </section>"""
 
 
@@ -368,8 +372,10 @@ def _venue_results_html(venues: list[dict[str, Any]]) -> str:
               <th>PnL</th>
               <th>ROI</th>
               <th>Median Liquidity</th>
-              <th>Closed CLV</th>
-              <th>Closed Fair Edge</th>
+              <th>Avg Closed CLV</th>
+              <th>Median Closed CLV</th>
+              <th>Avg Closed Fair</th>
+              <th>Median Closed Fair</th>
             </tr>
           </thead>
           <tbody>
@@ -395,8 +401,10 @@ def _group_results_html(title: str, rows: list[dict[str, Any]], label: str) -> s
               <th>PnL</th>
               <th>ROI</th>
               <th>Median Liquidity</th>
-              <th>Closed CLV</th>
-              <th>Closed Fair Edge</th>
+              <th>Avg Closed CLV</th>
+              <th>Median Closed CLV</th>
+              <th>Avg Closed Fair</th>
+              <th>Median Closed Fair</th>
             </tr>
           </thead>
           <tbody>
@@ -409,7 +417,7 @@ def _group_results_html(title: str, rows: list[dict[str, Any]], label: str) -> s
 
 def _group_rows_html(rows: list[dict[str, Any]], *, label_key: str) -> str:
     if not rows:
-        return '<tr><td colspan="10">No results for the current filters.</td></tr>'
+        return '<tr><td colspan="12">No results for the current filters.</td></tr>'
     return "\n".join(
         "<tr>"
         f"<td>{_escape(row[label_key])}</td>"
@@ -421,7 +429,9 @@ def _group_rows_html(rows: list[dict[str, Any]], *, label_key: str) -> str:
         f"<td class='{_class_for_number(row['settled_roi'])}'>{row['settled_roi']:.2%}</td>"
         f"<td>{row['median_available_risk_at_target']:.2f}</td>"
         f"<td class='{_class_for_number(row['average_clv'])}'>{row['average_clv']:.2%}</td>"
+        f"<td class='{_class_for_number(row['median_closed_clv'])}'>{row['median_closed_clv']:.2%}</td>"
         f"<td class='{_class_for_number(row['average_closed_fair_edge'])}'>{row['average_closed_fair_edge']:.2%}</td>"
+        f"<td class='{_class_for_number(row['median_closed_fair_edge'])}'>{row['median_closed_fair_edge']:.2%}</td>"
         "</tr>"
         for row in rows
     )
@@ -541,13 +551,23 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
     mark_to_market_counts = _clv_counts(mark_to_market_clv_rows)
     trades_last_24h = sum(1 for item in trades if _is_logged_in_last_24h(item, now=now))
     average_closed_clv = _average(_float(item.get("target_clv")) for item in closed_clv_rows)
+    median_closed_clv = _median(_float(item.get("target_clv")) for item in closed_clv_rows)
     average_mark_to_market_clv = _average(
+        _float(item.get("target_clv")) for item in mark_to_market_clv_rows
+    )
+    median_mark_to_market_clv = _median(
         _float(item.get("target_clv")) for item in mark_to_market_clv_rows
     )
     average_closed_fair_edge = _average(
         _float(item.get("closing_edge")) for item in closed_fair_edge_rows
     )
+    median_closed_fair_edge = _median(
+        _float(item.get("closing_edge")) for item in closed_fair_edge_rows
+    )
     average_mark_to_market_fair_edge = _average(
+        _float(item.get("closing_edge")) for item in mark_to_market_fair_edge_rows
+    )
+    median_mark_to_market_fair_edge = _median(
         _float(item.get("closing_edge")) for item in mark_to_market_fair_edge_rows
     )
     positive_closed_fair_edge = sum(
@@ -590,16 +610,19 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         "missed_closing_line": closed_counts["misses"],
         "tied_closing_line": closed_counts["ties"],
         "average_closed_clv": average_closed_clv,
+        "median_closed_clv": median_closed_clv,
         "closed_clv_trades": len(closed_clv_rows),
         "closed_clv_beats": closed_counts["beats"],
         "closed_clv_misses": closed_counts["misses"],
         "closed_clv_ties": closed_counts["ties"],
         "average_mark_to_market_clv": average_mark_to_market_clv,
+        "median_mark_to_market_clv": median_mark_to_market_clv,
         "mark_to_market_clv_trades": len(mark_to_market_clv_rows),
         "mark_to_market_clv_beats": mark_to_market_counts["beats"],
         "mark_to_market_clv_misses": mark_to_market_counts["misses"],
         "mark_to_market_clv_ties": mark_to_market_counts["ties"],
         "average_closed_fair_edge": average_closed_fair_edge,
+        "median_closed_fair_edge": median_closed_fair_edge,
         "closed_fair_edge_trades": len(closed_fair_edge_rows),
         "positive_closed_fair_edge": positive_closed_fair_edge,
         "positive_closed_fair_edge_rate": (
@@ -608,6 +631,7 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
             else 0.0
         ),
         "average_mark_to_market_fair_edge": average_mark_to_market_fair_edge,
+        "median_mark_to_market_fair_edge": median_mark_to_market_fair_edge,
         "mark_to_market_fair_edge_trades": len(mark_to_market_fair_edge_rows),
         "positive_mark_to_market_fair_edge": positive_mark_to_market_fair_edge,
         "positive_mark_to_market_fair_edge_rate": (
