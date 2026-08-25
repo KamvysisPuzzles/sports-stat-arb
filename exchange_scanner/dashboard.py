@@ -198,7 +198,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
     }}
     .venue-section {{ margin: 0 0 16px; }}
     .venue-table {{ min-width: 760px; }}
-    table {{ width: 100%; border-collapse: collapse; min-width: 980px; }}
+    table {{ width: 100%; border-collapse: collapse; min-width: 1160px; }}
     .side-badge {{
       display: inline-block;
       min-width: 42px;
@@ -268,7 +268,10 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
             <th>Selection</th>
             <th>Odds</th>
             <th>Liquidity</th>
+            <th>Liability</th>
             <th>Edge</th>
+            <th>Edge Basis</th>
+            <th>Entry EV</th>
             <th>CLV</th>
             <th>Closing Fair Edge</th>
             <th>Venue Fair Edge</th>
@@ -311,6 +314,9 @@ def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:
       {_metric("Won/Lost", f"{summary['settled_won']}/{summary['settled_lost']}")}
       {_metric("PnL", f"{summary['settled_profit']:.2f}", _class_for_number(summary["settled_profit"]))}
       {_metric("ROI", f"{summary['settled_roi']:.2%}", _class_for_number(summary["settled_roi"]))}
+      {_metric("Risk ROI", f"{summary['settled_risk_roi']:.2%}", "profit / liability", tone=_class_for_number(summary["settled_risk_roi"]))}
+      {_metric("Open Liability", f"{summary['open_liability']:.2f}")}
+      {_metric("Entry EV", f"{summary['entry_expected_value']:.2f}", "stake/liability adjusted", tone=_class_for_number(summary["entry_expected_value"]))}
       {_metric("Avg Odds", f"{summary['average_booked_odds']:.2f}")}
       {_metric("Median Liquidity", f"{summary['median_confirmed_liquidity_at_target']:.2f}")}
       {_metric("Closed CLV", f"{summary['average_closed_clv']:.2%}", f"n={summary['closed_clv_trades']}", tone=_class_for_number(summary["average_closed_clv"]))}
@@ -336,7 +342,7 @@ def _metric(label: str, value: object, extra: str = "", *, tone: str = "") -> st
 
 def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
     if not rows:
-        return '<tr><td colspan="15">No trades match the current filters.</td></tr>'
+        return '<tr><td colspan="18">No trades match the current filters.</td></tr>'
     return "\n".join(
         "<tr>"
         f"<td>{_short_time(row.get('logged_at'))}</td>"
@@ -347,7 +353,10 @@ def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
         f"<td>{_side_badge_html(row)}{_escape(row.get('outcome_name', ''))}</td>"
         f"<td>{_format_number(row.get('target_odds'))}</td>"
         f"<td>{_format_number(row.get('available_at_or_above_target'))}</td>"
+        f"<td>{_format_number(row.get('liability'))}</td>"
         f"<td>{_format_pct(row.get('edge'))}</td>"
+        f"<td>{_escape(row.get('edge_basis', 'stake'))}</td>"
+        f"<td>{_format_number(row.get('entry_expected_value'))}</td>"
         f"<td>{_format_pct(row.get('target_clv'))}</td>"
         f"<td>{_format_pct(row.get('closing_edge'))}</td>"
         f"<td>{_format_pct(row.get('betfair_fair_edge'))}</td>"
@@ -547,6 +556,10 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         item for item in fair_edge_rows if not _market_has_closed(item, now=now)
     ]
     staked = sum(_float(item.get("stake")) for item in settled)
+    settled_liability = sum(_trade_liability(item) for item in settled)
+    open_liability = sum(_trade_liability(item) for item in open_trades)
+    total_liability = sum(_trade_liability(item) for item in trades)
+    entry_expected_value = sum(_trade_expected_value(item) for item in trades)
     profit = sum(_float(item.get("profit")) for item in settled)
     wins = sum(1 for item in settled if _float(item.get("profit")) > 0)
     losses = len(settled) - wins
@@ -578,6 +591,11 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         "settled_lost": losses,
         "settled_profit": profit,
         "settled_roi": profit / staked if staked else 0.0,
+        "settled_liability": settled_liability,
+        "open_liability": open_liability,
+        "total_liability": total_liability,
+        "settled_risk_roi": profit / settled_liability if settled_liability else 0.0,
+        "entry_expected_value": entry_expected_value,
         "average_booked_odds": _average(_float(item.get("target_odds")) for item in trades),
         "median_confirmed_liquidity_at_target": _median(
             _float(item.get("available_at_or_above_target"))
@@ -737,6 +755,10 @@ def _normalise_item(item: dict[str, Any]) -> dict[str, Any]:
     normalised = {key: _jsonable(value) for key, value in item.items()}
     sport_key = str(normalised.get("sport_key") or "")
     normalised["sport_family"] = _sport_family(sport_key)
+    normalised["bet_side"] = _bet_side(normalised)
+    normalised["edge_basis"] = _edge_basis(normalised)
+    normalised["liability"] = _trade_liability(normalised)
+    normalised["entry_expected_value"] = _trade_expected_value(normalised)
     return normalised
 
 
@@ -760,6 +782,22 @@ def _format_number(value: object) -> str:
     if value in {None, ""}:
         return ""
     return f"{_float(value):.2f}"
+
+
+def _trade_liability(item: dict[str, Any]) -> float:
+    stake = _float(item.get("stake"))
+    odds = _float(item.get("target_odds"))
+    if _bet_side(item) == "lay":
+        return max(0.0, stake * max(0.0, odds - 1))
+    return stake
+
+
+def _trade_expected_value(item: dict[str, Any]) -> float:
+    return _trade_liability(item) * _float(item.get("edge"))
+
+
+def _edge_basis(item: dict[str, Any]) -> str:
+    return "liability" if _bet_side(item) == "lay" else "stake"
 
 
 def _short_time(value: object) -> str:

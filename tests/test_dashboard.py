@@ -236,6 +236,22 @@ def test_dashboard_payload_includes_results_by_venue() -> None:
     assert by_venue["Smarkets"]["settled_roi"] == -1
 
 
+def test_dashboard_payload_calculates_lay_liability_and_entry_ev() -> None:
+    payload = dashboard_payload(
+        FakeTable(trades()),
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+
+    lay = next(row for row in payload["trades"] if row["bet_side"] == "lay")
+
+    assert lay["edge_basis"] == "liability"
+    assert lay["liability"] == 4.0
+    assert lay["entry_expected_value"] == 0.2
+    assert payload["summary"]["open_liability"] == 4.0
+    assert payload["summary"]["total_liability"] == 6.0
+    assert payload["summary"]["entry_expected_value"] == pytest.approx(0.259)
+
+
 def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     payload = dashboard_payload(
         FakeTable(trades()),
@@ -253,8 +269,14 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "Arsenal v Chelsea" in html
     assert "Liverpool v Everton" in html
     assert "<th>Side</th>" in html
+    assert "<th>Liability</th>" in html
+    assert "<th>Edge Basis</th>" in html
+    assert "<th>Entry EV</th>" in html
     assert '<span class="side-badge side-back">BACK</span>Arsenal' in html
     assert '<span class="side-badge side-lay">LAY</span>Everton' in html
+    assert "Risk ROI" in html
+    assert "Open Liability" in html
+    assert "Entry EV" in html
     assert "Results by Venue" in html
     assert "Trades Last 24h" in html
     assert "Results by Sport" in html
