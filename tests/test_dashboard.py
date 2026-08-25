@@ -236,7 +236,7 @@ def test_dashboard_payload_includes_results_by_venue() -> None:
     assert by_venue["Smarkets"]["settled_roi"] == -1
 
 
-def test_dashboard_payload_calculates_lay_liability_and_entry_ev() -> None:
+def test_dashboard_payload_calculates_lay_liability_and_internal_entry_ev() -> None:
     payload = dashboard_payload(
         FakeTable(trades()),
         now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
@@ -277,13 +277,13 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "<th>Risk</th>" in html
     assert "<th>Liquidity</th>" in html
     assert "<th>Edge Basis</th>" not in html
-    assert "<th>Entry EV</th>" in html
+    assert "<th>Entry EV</th>" not in html
     assert "Arsenal" in html
     assert "Not Everton" in html
     assert "side-badge" not in html
-    assert "Risk ROI" in html
+    assert "Risk ROI" not in html
     assert "Open Risk" in html
-    assert "Entry EV" in html
+    assert "Entry EV" not in html
     assert "Results by Venue" in html
     assert "Trades Last 24h" in html
     assert "Results by Sport" in html

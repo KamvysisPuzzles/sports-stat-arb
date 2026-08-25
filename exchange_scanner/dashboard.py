@@ -256,7 +256,6 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
             <th>Risk</th>
             <th>Liquidity</th>
             <th>Edge</th>
-            <th>Entry EV</th>
             <th>CLV</th>
             <th>Closing Fair Edge</th>
             <th>Venue Fair Edge</th>
@@ -299,9 +298,7 @@ def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:
       {_metric("Won/Lost", f"{summary['settled_won']}/{summary['settled_lost']}")}
       {_metric("PnL", f"{summary['settled_profit']:.2f}", _class_for_number(summary["settled_profit"]))}
       {_metric("ROI", f"{summary['settled_roi']:.2%}", _class_for_number(summary["settled_roi"]))}
-      {_metric("Risk ROI", f"{summary['settled_risk_roi']:.2%}", "profit / risk", tone=_class_for_number(summary["settled_risk_roi"]))}
       {_metric("Open Risk", f"{summary['open_liability']:.2f}")}
-      {_metric("Entry EV", f"{summary['entry_expected_value']:.2f}", "risk adjusted", tone=_class_for_number(summary["entry_expected_value"]))}
       {_metric("Avg Risk Odds", f"{summary['average_risk_odds']:.2f}")}
       {_metric("Median Liquidity", f"{summary['median_available_risk_at_target']:.2f}", "risk")}
       {_metric("Closed CLV", f"{summary['average_closed_clv']:.2%}", f"n={summary['closed_clv_trades']}", tone=_class_for_number(summary["average_closed_clv"]))}
@@ -327,7 +324,7 @@ def _metric(label: str, value: object, extra: str = "", *, tone: str = "") -> st
 
 def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
     if not rows:
-        return '<tr><td colspan="17">No trades match the current filters.</td></tr>'
+        return '<tr><td colspan="16">No trades match the current filters.</td></tr>'
     return "\n".join(
         "<tr>"
         f"<td>{_short_time(row.get('logged_at'))}</td>"
@@ -340,7 +337,6 @@ def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
         f"<td>{_format_number(row.get('liability'))}</td>"
         f"<td>{_format_number(row.get('available_risk_at_target'))}</td>"
         f"<td>{_format_pct(row.get('edge'))}</td>"
-        f"<td>{_format_number(row.get('entry_expected_value'))}</td>"
         f"<td>{_format_pct(row.get('target_clv'))}</td>"
         f"<td>{_format_pct(row.get('closing_edge'))}</td>"
         f"<td>{_format_pct(row.get('betfair_fair_edge'))}</td>"
