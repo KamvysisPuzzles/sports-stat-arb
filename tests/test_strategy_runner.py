@@ -272,12 +272,12 @@ def test_run_paper_log_archives_snapshot_and_logs_liquidity_confirmed_trade(monk
     assert item["available_at_or_above_target"] == 25
 
 
-def test_smarkets_rows_are_paper_loggable_without_liquidity_check() -> None:
+def test_smarkets_rows_require_available_liquidity_to_paper_log() -> None:
     assert strategy_runner._paper_loggable_row(
-        {"target_bookmaker": "Smarkets", "liquidity_status": "not_applicable"}
+        {"target_bookmaker": "Smarkets", "liquidity_status": "available"}
     )
     assert not strategy_runner._paper_loggable_row(
-        {"target_bookmaker": "Matchbook", "liquidity_status": "not_applicable"}
+        {"target_bookmaker": "Smarkets", "liquidity_status": "not_applicable"}
     )
 
 

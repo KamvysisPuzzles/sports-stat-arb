@@ -44,11 +44,18 @@ from exchange_scanner.dynamodb_paper import (
 )
 from exchange_scanner.matchbook_liquidity import (
     MatchbookLiquidityClient,
-    unavailable_liquidity,
+    unavailable_liquidity as unavailable_matchbook_liquidity,
 )
 from exchange_scanner.matchbook_liquidity import match_liquidity as match_matchbook_liquidity
 from exchange_scanner.odds_parquet import export_latest_snapshot_parquet
 from exchange_scanner.sharpness import store_odds_snapshot
+from exchange_scanner.smarkets_liquidity import (
+    SmarketsLiquidityClient,
+)
+from exchange_scanner.smarkets_liquidity import match_liquidity as match_smarkets_liquidity
+from exchange_scanner.smarkets_liquidity import (
+    unavailable_liquidity as unavailable_smarkets_liquidity,
+)
 from exchange_scanner.the_odds_api import (
     TheOddsApiClient,
     ValueSignal,
@@ -83,6 +90,7 @@ class StrategyRunnerConfig:
     paper_stake: float = 1.0
     matchbook_currency: str = "GBP"
     matchbook_minimum_liquidity: float = 2.0
+    smarkets_session_token: str = ""
     settle_finished_trades: bool = True
     enable_matchbook_discovery: bool = False
     betfair_lambda_function_name: str = ""
@@ -147,6 +155,9 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
             or env.get("MATCHBOOK_MINIMUM_LIQUIDITY")
             or 2.0
         ),
+        smarkets_session_token=str(
+            event.get("smarkets_session_token") or env.get("SMARKETS_SESSION_TOKEN") or ""
+        ),
         settle_finished_trades=_bool(
             event.get("settle_finished_trades", env.get("SETTLE_FINISHED_TRADES", "true"))
         ),
@@ -175,6 +186,7 @@ def run_strategy_mode(
     *,
     odds_client: Any | None = None,
     matchbook_client: Any | None = None,
+    smarkets_client: Any | None = None,
     dynamodb_table: Any | None = None,
     s3_client: Any | None = None,
     lambda_client: Any | None = None,
@@ -193,6 +205,7 @@ def run_strategy_mode(
             config,
             odds_client=odds_client,
             matchbook_client=matchbook_client,
+            smarkets_client=smarkets_client,
             dynamodb_table=dynamodb_table,
             s3_client=s3_client,
             lambda_client=lambda_client,
@@ -204,6 +217,7 @@ def run_strategy_mode(
         config,
         odds_client=odds_client,
         matchbook_client=matchbook_client,
+        smarkets_client=smarkets_client,
         dynamodb_table=dynamodb_table,
         s3_client=s3_client,
         lambda_client=lambda_client,
@@ -216,6 +230,7 @@ def run_paper_log(
     *,
     odds_client: Any | None = None,
     matchbook_client: Any | None = None,
+    smarkets_client: Any | None = None,
     dynamodb_table: Any | None = None,
     s3_client: Any | None = None,
     lambda_client: Any | None = None,
@@ -296,6 +311,7 @@ def run_paper_log(
     signals = _filter_execution_signals_by_strategy_limits(config, signals)
     rows = _signal_rows(signals)
     rows = _enrich_matchbook_rows(config, rows, matchbook_client=matchbook_client, now=now)
+    rows = _enrich_smarkets_rows(config, rows, smarkets_client=smarkets_client, now=now)
     rows = _enrich_betfair_rows(config, rows, lambda_client=lambda_client)
     executable_rows = [row for row in rows if _paper_loggable_row(row)]
     executable_keys = {_row_key(row) for row in executable_rows}
@@ -345,6 +361,7 @@ def run_combined_paper_log(
     *,
     odds_client: Any | None = None,
     matchbook_client: Any | None = None,
+    smarkets_client: Any | None = None,
     dynamodb_table: Any | None = None,
     s3_client: Any | None = None,
     lambda_client: Any | None = None,
@@ -365,6 +382,7 @@ def run_combined_paper_log(
         soccer_config,
         odds_client=odds_client,
         matchbook_client=matchbook_client,
+        smarkets_client=smarkets_client,
         dynamodb_table=table,
         s3_client=s3_client,
         lambda_client=lambda_client,
@@ -381,6 +399,7 @@ def run_combined_paper_log(
             ),
             odds_client=odds_client,
             matchbook_client=matchbook_client,
+            smarkets_client=smarkets_client,
             dynamodb_table=table,
             s3_client=s3_client,
             lambda_client=lambda_client,
@@ -804,9 +823,7 @@ def _allowed_by_matchbook_soccer_market_rule(signal: ValueSignal, markets: set[s
 
 
 def _paper_loggable_row(row: dict[str, str]) -> bool:
-    if row.get("liquidity_status") == "available":
-        return True
-    return row.get("target_bookmaker", "").casefold() == "smarkets"
+    return row.get("liquidity_status") == "available"
 
 
 def _sharp_reference_count(signal: ValueSignal) -> int:
@@ -815,6 +832,16 @@ def _sharp_reference_count(signal: ValueSignal) -> int:
         for bookmaker in signal.reference_bookmakers
         if bookmaker.casefold() in SHARP_REFERENCE_BOOKMAKER_TITLES
     )
+
+
+def _parse_row_time(value: object) -> datetime | None:
+    text = str(value or "")
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        return None
 
 
 def _settle_finished_trades(
@@ -891,7 +918,7 @@ def _enrich_matchbook_rows(
     for row in rows:
         output = dict(row)
         if row.get("target_bookmaker", "").casefold() != "matchbook":
-            output.update(_liquidity_row(unavailable_liquidity("not_applicable")))
+            output.update(_liquidity_row(unavailable_matchbook_liquidity("not_applicable")))
         else:
             match = match_matchbook_liquidity(
                 events,
@@ -904,6 +931,73 @@ def _enrich_matchbook_rows(
             output.update(_liquidity_row(match))
         enriched.append(output)
     return enriched
+
+
+def _enrich_smarkets_rows(
+    config: StrategyRunnerConfig,
+    rows: list[dict[str, str]],
+    *,
+    smarkets_client: Any | None,
+    now: datetime,
+) -> list[dict[str, str]]:
+    if not rows or not any(row.get("target_bookmaker", "").casefold() == "smarkets" for row in rows):
+        return rows
+    if smarkets_client is None and not config.smarkets_session_token:
+        return [
+            _with_smarkets_liquidity(row, unavailable_smarkets_liquidity("not_configured"))
+            if row.get("target_bookmaker", "").casefold() == "smarkets"
+            else row
+            for row in rows
+        ]
+
+    smarkets_client = smarkets_client or SmarketsLiquidityClient(
+        session_token=config.smarkets_session_token
+    )
+    events = smarkets_client.fetch_football_events(
+        start=now,
+        end=now + timedelta(days=config.max_event_days),
+    )
+    enriched = []
+    for row in rows:
+        if row.get("target_bookmaker", "").casefold() != "smarkets":
+            enriched.append(row)
+            continue
+        match = match_smarkets_liquidity(
+            smarkets_client,
+            events,
+            event_name=row["event_name"],
+            commence_time=_parse_row_time(row.get("commence_time")),
+            market_key=row.get("market", "h2h"),
+            outcome_name=row["outcome_name"],
+            target_odds=float(row["target_odds"]),
+            bet_side=row.get("bet_side", "back"),
+        )
+        enriched.append(_with_smarkets_liquidity(row, match))
+    return enriched
+
+
+def _with_smarkets_liquidity(row: dict[str, str], match) -> dict[str, str]:
+    output = dict(row)
+    output.update(
+        {
+            "matchbook_event_id": str(match.smarkets_event_id or ""),
+            "matchbook_market_id": str(match.smarkets_market_id or ""),
+            "matchbook_runner_id": str(match.smarkets_contract_id or ""),
+            "match_score": f"{match.match_score:.4f}",
+            "best_back_odds": _format_optional(match.best_back_odds),
+            "best_back_available": f"{match.best_back_available:.2f}",
+            "available_at_or_above_target": f"{match.available_at_or_above_target:.2f}",
+            "best_lay_odds": _format_optional(match.best_lay_odds),
+            "best_lay_available": f"{match.best_lay_available:.2f}",
+            "back_lay_spread_pct": (
+                f"{match.back_lay_spread_pct:.4f}"
+                if match.back_lay_spread_pct is not None
+                else ""
+            ),
+            "liquidity_status": match.liquidity_status,
+        }
+    )
+    return output
 
 
 def _enrich_betfair_rows(
