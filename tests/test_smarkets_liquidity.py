@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import httpx
 import pytest
 
-from exchange_scanner.smarkets_liquidity import match_liquidity
+from exchange_scanner.smarkets_liquidity import SmarketsLiquidityClient, match_liquidity
 
 
 class FakeSmarketsClient:
@@ -98,3 +99,30 @@ def test_match_liquidity_marks_missing_smarkets_event() -> None:
     )
 
     assert match.liquidity_status == "not_matched"
+
+
+def test_smarkets_login_uses_classic_session_token_flow_by_default() -> None:
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            201,
+            json={"token": "fresh-token", "stop": "2026-08-14T12:30:00Z"},
+        )
+
+    client = SmarketsLiquidityClient()
+    client.http = httpx.Client(
+        base_url="https://api.smarkets.com/v3",
+        transport=httpx.MockTransport(handler),
+    )
+
+    response = client.login(username="user@example.com", password="secret")
+
+    assert response["token"] == "fresh-token"
+    assert client.http.headers["Authorization"] == "Bearer fresh-token"
+    assert requests[0].url.path == "/v3/sessions/"
+    assert requests[0].read().decode("utf-8") == (
+        '{"username":"user@example.com","password":"secret",'
+        '"remember":true,"use_auth_v2":false}'
+    )

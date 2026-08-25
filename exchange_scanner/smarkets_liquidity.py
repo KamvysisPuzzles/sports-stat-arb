@@ -59,7 +59,7 @@ class SmarketsLiquidityClient:
         username: str,
         password: str,
         remember: bool = True,
-        use_auth_v2: bool = True,
+        use_auth_v2: bool = False,
     ) -> dict[str, Any]:
         response = self.http.post(
             "/sessions/",
