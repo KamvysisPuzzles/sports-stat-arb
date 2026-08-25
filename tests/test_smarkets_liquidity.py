@@ -120,7 +120,7 @@ def test_smarkets_login_uses_classic_session_token_flow_by_default() -> None:
     response = client.login(username="user@example.com", password="secret")
 
     assert response["token"] == "fresh-token"
-    assert client.http.headers["Authorization"] == "Bearer fresh-token"
+    assert client.http.headers["Authorization"] == "Session-Token fresh-token"
     assert requests[0].url.path == "/v3/sessions/"
     assert requests[0].read().decode("utf-8") == (
         '{"username":"user@example.com","password":"secret",'

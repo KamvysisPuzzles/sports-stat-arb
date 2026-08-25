@@ -38,7 +38,7 @@ class SmarketsLiquidityClient:
         self.session_token = session_token or os.environ.get("SMARKETS_SESSION_TOKEN")
         headers = {"Accept": "application/json"}
         if self.session_token:
-            headers["Authorization"] = f"Bearer {self.session_token}"
+            headers["Authorization"] = f"Session-Token {self.session_token}"
         self.http = httpx.Client(base_url=SMARKETS_API_BASE, headers=headers, timeout=timeout)
         self._markets_by_event: dict[str, list[dict[str, Any]]] = {}
         self._contracts_by_market: dict[str, list[dict[str, Any]]] = {}
@@ -46,7 +46,7 @@ class SmarketsLiquidityClient:
 
     def set_session_token(self, token: str) -> None:
         self.session_token = token
-        self.http.headers["Authorization"] = f"Bearer {token}"
+        self.http.headers["Authorization"] = f"Session-Token {token}"
 
     def keep_alive(self) -> dict[str, Any]:
         response = self.http.get("/accounts/")
