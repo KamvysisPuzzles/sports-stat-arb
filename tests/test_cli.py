@@ -108,10 +108,9 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
     assert strategy["reference_weights"] is None
     assert strategy["reference_aggregation"] == "median"
     assert strategy["allowed_sport_prefixes"] == ("soccer_",)
-    assert strategy["allowed_markets"] == {"h2h", "h2h_lay", "totals", "spreads"}
+    assert strategy["allowed_markets"] == {"h2h", "h2h_lay"}
     assert strategy["max_target_odds"] == pytest.approx(6.0)
     assert strategy["max_betfair_spread_pct"] == pytest.approx(0.06)
-    assert strategy["matchbook_soccer_only_markets"] == {"totals", "spreads"}
     assert strategy["market_min_edges"] == {"totals": 0.02, "spreads": 0.02}
     assert strategy["poisson_total_conversion"] is True
 
@@ -223,6 +222,17 @@ def test_markets_for_sport_limits_matchbook_soccer_only_markets() -> None:
     )
     assert (
         _markets_for_sport("basketball_wnba", "h2h,h2h_lay,totals,spreads", strategy)
+        == "h2h,h2h_lay"
+    )
+
+
+def test_markets_for_sport_applies_exchange_clv_allowed_markets() -> None:
+    assert (
+        _markets_for_sport(
+            "soccer_epl",
+            "h2h,h2h_lay,totals,spreads",
+            STRATEGIES["exchange-clv"],
+        )
         == "h2h,h2h_lay"
     )
 

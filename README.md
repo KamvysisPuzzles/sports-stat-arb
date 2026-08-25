@@ -59,7 +59,7 @@ Run the broad exchange h2h CLV scan:
 scan-exchanges \
   --strategy exchange-clv \
   --sports-profile active-h2h \
-  --markets h2h,h2h_lay,totals,spreads \
+  --markets h2h,h2h_lay \
   --max-api-requests 100 \
   --min-edge 0.015 \
   --max-edge 0.10 \
@@ -132,13 +132,13 @@ Matchbook may have exchange markets. It excludes futures and outright winner
 markets.
 
 ```bash
-scan-exchanges --sports-profile active-h2h --markets h2h,h2h_lay,totals,spreads --max-api-requests 100
+scan-exchanges --sports-profile active-h2h --markets h2h,h2h_lay --max-api-requests 100
 ```
 
 Estimate request count before a broad scan:
 
 ```bash
-scan-exchanges --sports-profile active-h2h --markets h2h,h2h_lay,totals,spreads --dry-run-estimate
+scan-exchanges --sports-profile active-h2h --markets h2h,h2h_lay --dry-run-estimate
 ```
 
 ## Caching
@@ -229,7 +229,7 @@ paper stake.
 scan-exchanges \
   --strategy exchange-clv \
   --sports-profile active-h2h \
-  --markets h2h,h2h_lay,totals,spreads \
+  --markets h2h,h2h_lay \
   --max-api-requests 100 \
   --min-edge 0.015 \
   --min-reference-books 2 \
