@@ -69,7 +69,7 @@ def test_matchbook_sharp_h2h_targets_matchbook_against_sharp_refs() -> None:
         "smarkets",
     }
     assert strategy["reference_aggregation"] == "median"
-    assert strategy["allowed_markets"] == {"h2h", "totals"}
+    assert strategy["allowed_markets"] == {"h2h", "totals", "spreads"}
     assert strategy["poisson_total_conversion"] is True
     assert strategy["default_min_edge"] == 0.015
 
@@ -114,11 +114,11 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
     assert strategy["reference_weights"] is None
     assert strategy["reference_aggregation"] == "median"
     assert strategy["allowed_sport_prefixes"] == ("soccer_",)
-    assert strategy["allowed_markets"] == {"h2h", "totals"}
+    assert strategy["allowed_markets"] == {"h2h", "totals", "spreads"}
     assert strategy["max_target_odds"] == pytest.approx(6.0)
     assert strategy["max_betfair_spread_pct"] == pytest.approx(0.06)
-    assert strategy["matchbook_soccer_only_markets"] == {"totals"}
-    assert strategy["market_min_edges"] == {"totals": 0.02}
+    assert strategy["matchbook_soccer_only_markets"] == {"totals", "spreads"}
+    assert strategy["market_min_edges"] == {"totals": 0.02, "spreads": 0.02}
     assert strategy["poisson_total_conversion"] is True
 
 
@@ -689,11 +689,39 @@ def test_filter_strategy_rules_applies_market_specific_min_edge() -> None:
         edge=0.025,
         reference_bookmakers=("Pinnacle",),
     )
+    low_edge_spread = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-3",
+        event_name="Manchester City v Tottenham",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="spreads",
+        outcome_name="Manchester City -1.5",
+        target_bookmaker="Matchbook",
+        target_odds=2.1,
+        reference_fair_odds=2.05,
+        reference_probability=0.4878,
+        edge=0.015,
+        reference_bookmakers=("Pinnacle",),
+    )
+    high_edge_spread = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-4",
+        event_name="Real Madrid v Barcelona",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="spreads",
+        outcome_name="Real Madrid -0.25",
+        target_bookmaker="Matchbook",
+        target_odds=2.1,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.025,
+        reference_bookmakers=("Pinnacle",),
+    )
 
     assert _filter_signals_by_strategy_rules(
-        [low_edge_total, high_edge_total],
+        [low_edge_total, high_edge_total, low_edge_spread, high_edge_spread],
         STRATEGIES["exchange-clv"],
-    ) == [high_edge_total]
+    ) == [high_edge_total, high_edge_spread]
 
 
 def test_filter_prices_by_event_horizon_excludes_events_more_than_two_days_out() -> None:

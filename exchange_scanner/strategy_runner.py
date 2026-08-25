@@ -67,7 +67,7 @@ class StrategyRunnerConfig:
     aws_region: str = "eu-west-2"
     odds_s3_prefix: str = "odds_snapshots"
     sports_profile: str = SOCCER_H2H_PROFILE
-    markets: str = "h2h,totals"
+    markets: str = "h2h,totals,spreads"
     regions: str = "uk,eu"
     strategy: str = "exchange-clv"
     max_api_requests: int = 100
@@ -110,7 +110,7 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
         sports_profile=str(
             event.get("sports_profile") or env.get("SPORTS_PROFILE") or SOCCER_H2H_PROFILE
         ),
-        markets=str(event.get("markets") or env.get("MARKETS") or "h2h,totals"),
+        markets=str(event.get("markets") or env.get("MARKETS") or "h2h,totals,spreads"),
         regions=str(event.get("regions") or env.get("REGIONS") or "uk,eu"),
         strategy=strategy_name,
         max_api_requests=int(event.get("max_api_requests") or env.get("MAX_API_REQUESTS") or 100),

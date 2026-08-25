@@ -347,6 +347,12 @@ def test_matchbook_sharp_h2h_config_defaults_to_higher_edge() -> None:
     assert config.min_edge == 0.015
 
 
+def test_strategy_runner_default_markets_include_soccer_line_markets() -> None:
+    config = strategy_runner.config_from_event({})
+
+    assert config.markets == "h2h,totals,spreads"
+
+
 def test_run_strategy_mode_combined_defaults_to_active_soccer_only(monkeypatch) -> None:
     monkeypatch.setitem(strategy_runner.SPORT_PROFILES, "test-profile", ["soccer_epl"])
     table = FakeTable()
