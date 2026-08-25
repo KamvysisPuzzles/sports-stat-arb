@@ -131,6 +131,20 @@ def test_match_liquidity_marks_missing_target_price() -> None:
     assert match.available_at_or_above_target == 0
 
 
+def test_match_liquidity_uses_lay_prices_for_lay_bets() -> None:
+    match = match_liquidity(
+        matchbook_events(),
+        event_name="Grimsby Town v Exeter City",
+        outcome_name="Exeter City",
+        target_odds=5.1,
+        bet_side="lay",
+    )
+
+    assert match.liquidity_status == "available"
+    assert match.best_lay_odds == 5.1
+    assert match.available_at_or_above_target == pytest.approx(55)
+
+
 def test_match_liquidity_matches_total_markets_by_point() -> None:
     match = match_liquidity(
         matchbook_events(),

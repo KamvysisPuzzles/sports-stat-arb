@@ -10,6 +10,7 @@ from exchange_scanner.the_odds_api import (
     MATCHBOOK_COMMISSION_RATE,
     ValueSignal,
     effective_decimal_odds,
+    lay_edge_per_liability,
 )
 from exchange_scanner.trading_control import is_control_item
 
@@ -54,7 +55,7 @@ def log_signals_to_dynamodb(
     *,
     stake: float,
     logged_at: datetime | None = None,
-    liquidity_by_key: dict[tuple[str, str, str, str], dict[str, str]] | None = None,
+    liquidity_by_key: dict[tuple[str, str, str, str, str], dict[str, str]] | None = None,
 ) -> DynamoPaperLogResult:
     logged_at = logged_at or datetime.now(timezone.utc)
     inserted = 0
@@ -100,11 +101,21 @@ def update_closing_values_in_dynamodb(
         target_odds = float(item["target_odds"])
         closing_target_odds = signal.target_odds
         closing_reference_fair_odds = signal.reference_fair_odds
-        closing_edge = (
-            effective_decimal_odds(target_odds, _commission_rate_for_bookmaker(item["target_bookmaker"]))
-            / closing_reference_fair_odds
-        ) - 1
-        target_clv = (target_odds / closing_target_odds) - 1
+        commission_rate = _commission_rate_for_bookmaker(item["target_bookmaker"])
+        bet_side = str(item.get("bet_side") or "back").casefold()
+        if bet_side == "lay":
+            closing_edge = lay_edge_per_liability(
+                lay_odds=target_odds,
+                fair_probability=signal.reference_probability,
+                commission_rate=commission_rate,
+            )
+            target_clv = (closing_target_odds / target_odds) - 1
+        else:
+            closing_edge = (
+                effective_decimal_odds(target_odds, commission_rate)
+                / closing_reference_fair_odds
+            ) - 1
+            target_clv = (target_odds / closing_target_odds) - 1
         response = table.update_item(
             Key={"trade_id": item["trade_id"]},
             UpdateExpression=(
@@ -147,14 +158,17 @@ def settle_results_in_dynamodb(
         if winner is None:
             continue
         matched_results += 1
-        won = winner.casefold() == str(item["outcome_name"]).casefold()
+        bet_side = str(item.get("bet_side") or "back").casefold()
+        selection_won = winner.casefold() == str(item["outcome_name"]).casefold()
+        won = not selection_won if bet_side == "lay" else selection_won
         target_odds = float(item["target_odds"])
         stake = float(item["stake"])
-        effective_odds = effective_decimal_odds(
-            target_odds,
-            _commission_rate_for_bookmaker(str(item["target_bookmaker"])),
-        )
-        profit = stake * (effective_odds - 1) if won else -stake
+        commission_rate = _commission_rate_for_bookmaker(str(item["target_bookmaker"]))
+        if bet_side == "lay":
+            profit = stake * (1 - commission_rate) if won else -(stake * (target_odds - 1))
+        else:
+            effective_odds = effective_decimal_odds(target_odds, commission_rate)
+            profit = stake * (effective_odds - 1) if won else -stake
         response = table.update_item(
             Key={"trade_id": item["trade_id"]},
             UpdateExpression="SET #status = :settled, #result = :result, profit = :profit",
@@ -233,6 +247,7 @@ def paper_item(
         "market": signal.market_key,
         "outcome_name": signal.outcome_name,
         "target_bookmaker": signal.target_bookmaker,
+        "bet_side": signal.bet_side,
         "target_odds": _decimal(signal.target_odds),
         "target_effective_odds": _decimal(signal.effective_odds),
         "reference_fair_odds": _decimal(signal.reference_fair_odds),
@@ -265,27 +280,36 @@ def trade_id(signal: ValueSignal) -> str:
     key = (
         f"{signal.event_id.casefold()}|"
         f"{signal.market_key.casefold()}|"
-        f"{signal.outcome_name.casefold()}"
+        f"{signal.outcome_name.casefold()}|"
+        f"{signal.bet_side.casefold()}"
     )
+    if signal.bet_side.casefold() == "back":
+        key = (
+            f"{signal.event_id.casefold()}|"
+            f"{signal.market_key.casefold()}|"
+            f"{signal.outcome_name.casefold()}"
+        )
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:24]
     return f"paper#{digest}"
 
 
-def signal_key(signal: ValueSignal) -> tuple[str, str, str, str]:
+def signal_key(signal: ValueSignal) -> tuple[str, str, str, str, str]:
     return (
         signal.event_id.casefold(),
         signal.market_key.casefold(),
         signal.outcome_name.casefold(),
         signal.target_bookmaker.casefold(),
+        signal.bet_side.casefold(),
     )
 
 
-def item_key(item: dict[str, Any]) -> tuple[str, str, str, str]:
+def item_key(item: dict[str, Any]) -> tuple[str, str, str, str, str]:
     return (
         str(item["event_id"]).casefold(),
         str(item.get("market") or item.get("market_key", "h2h")).casefold(),
         str(item["outcome_name"]).casefold(),
         str(item["target_bookmaker"]).casefold(),
+        str(item.get("bet_side") or "back").casefold(),
     )
 
 

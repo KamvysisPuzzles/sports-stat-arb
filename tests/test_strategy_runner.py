@@ -350,7 +350,7 @@ def test_matchbook_sharp_h2h_config_defaults_to_higher_edge() -> None:
 def test_strategy_runner_default_markets_include_soccer_line_markets() -> None:
     config = strategy_runner.config_from_event({})
 
-    assert config.markets == "h2h,totals,spreads"
+    assert config.markets == "h2h,h2h_lay,totals,spreads"
 
 
 def test_run_strategy_mode_combined_defaults_to_active_soccer_only(monkeypatch) -> None:

@@ -67,7 +67,7 @@ class StrategyRunnerConfig:
     aws_region: str = "eu-west-2"
     odds_s3_prefix: str = "odds_snapshots"
     sports_profile: str = SOCCER_H2H_PROFILE
-    markets: str = "h2h,totals,spreads"
+    markets: str = "h2h,h2h_lay,totals,spreads"
     regions: str = "uk,eu"
     strategy: str = "exchange-clv"
     max_api_requests: int = 100
@@ -110,7 +110,9 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
         sports_profile=str(
             event.get("sports_profile") or env.get("SPORTS_PROFILE") or SOCCER_H2H_PROFILE
         ),
-        markets=str(event.get("markets") or env.get("MARKETS") or "h2h,totals,spreads"),
+        markets=str(
+            event.get("markets") or env.get("MARKETS") or "h2h,h2h_lay,totals,spreads"
+        ),
         regions=str(event.get("regions") or env.get("REGIONS") or "uk,eu"),
         strategy=strategy_name,
         max_api_requests=int(event.get("max_api_requests") or env.get("MAX_API_REQUESTS") or 100),
@@ -878,6 +880,7 @@ def _enrich_matchbook_rows(
                 market_key=row.get("market", "h2h"),
                 outcome_name=row["outcome_name"],
                 target_odds=float(row["target_odds"]),
+                bet_side=row.get("bet_side", "back"),
             )
             output.update(_liquidity_row(match))
         enriched.append(output)
@@ -921,8 +924,10 @@ def _signal_row(signal: ValueSignal) -> dict[str, str]:
         "commence_time": signal.commence_time.isoformat(),
         "market": signal.market_key,
         "outcome_name": signal.outcome_name,
+        "bet_side": signal.bet_side,
         "bet_to_place": (
-            f"Back {signal.outcome_name} with {signal.target_bookmaker} at {signal.target_odds:g}"
+            f"{signal.bet_side.title()} {signal.outcome_name} with "
+            f"{signal.target_bookmaker} at {signal.target_odds:g}"
         ),
         "target_bookmaker": signal.target_bookmaker,
         "target_odds": f"{signal.target_odds:.4f}",
@@ -980,12 +985,13 @@ def _read_lambda_payload(response: dict[str, Any]) -> dict[str, Any]:
     return json.loads(raw or "{}")
 
 
-def _row_key(row: dict[str, str]) -> tuple[str, str, str, str]:
+def _row_key(row: dict[str, str]) -> tuple[str, str, str, str, str]:
     return (
         row["event_id"].casefold(),
         row.get("market", "h2h").casefold(),
         row["outcome_name"].casefold(),
         row["target_bookmaker"].casefold(),
+        row.get("bet_side", "back").casefold(),
     )
 
 

@@ -112,6 +112,7 @@ def enrich_opportunities_csv(
                 market_key=row.get("market", row.get("market_key", "h2h")),
                 outcome_name=row["outcome_name"],
                 target_odds=float(row["target_odds"]),
+                bet_side=row.get("bet_side", "back"),
             )
             output_row.update(_liquidity_row(match))
             writer.writerow(output_row)
@@ -140,6 +141,7 @@ def match_liquidity(
     market_key: str = "h2h",
     outcome_name: str,
     target_odds: float,
+    bet_side: str = "back",
 ) -> LiquidityMatch:
     best: tuple[float, dict[str, Any], dict[str, Any], dict[str, Any]] | None = None
     for event in events:
@@ -175,11 +177,19 @@ def match_liquidity(
     lay_prices = _prices(runner, side="lay")
     best_back = max(back_prices, key=lambda price: price["decimal-odds"], default=None)
     best_lay = min(lay_prices, key=lambda price: price["decimal-odds"], default=None)
-    available_at_target = sum(
-        price["available-amount"]
-        for price in back_prices
-        if price["decimal-odds"] >= target_odds
-    )
+    bet_side = bet_side.casefold()
+    if bet_side == "lay":
+        available_at_target = sum(
+            price["available-amount"]
+            for price in lay_prices
+            if price["decimal-odds"] <= target_odds
+        )
+    else:
+        available_at_target = sum(
+            price["available-amount"]
+            for price in back_prices
+            if price["decimal-odds"] >= target_odds
+        )
     spread = _spread_pct(
         best_back["decimal-odds"] if best_back else None,
         best_lay["decimal-odds"] if best_lay else None,

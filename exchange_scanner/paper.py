@@ -9,6 +9,7 @@ from exchange_scanner.the_odds_api import (
     MATCHBOOK_COMMISSION_RATE,
     ValueSignal,
     effective_decimal_odds,
+    lay_edge_per_liability,
 )
 
 
@@ -22,6 +23,7 @@ class PaperTrade:
     commence_time: datetime
     market_key: str
     outcome_name: str
+    bet_side: str
     target_bookmaker: str
     target_odds: float
     reference_fair_odds: float
@@ -54,6 +56,8 @@ class PaperTrade:
     def target_clv(self) -> float | None:
         if not self.closing_target_odds:
             return None
+        if self.bet_side == "lay":
+            return (self.closing_target_odds / self.target_odds) - 1
         return (self.target_odds / self.closing_target_odds) - 1
 
 
@@ -70,6 +74,7 @@ def init_paper_db(path: Path) -> None:
                 commence_time TEXT NOT NULL,
                 market_key TEXT NOT NULL,
                 outcome_name TEXT NOT NULL,
+                bet_side TEXT NOT NULL DEFAULT 'back',
                 target_bookmaker TEXT NOT NULL,
                 target_odds REAL NOT NULL,
                 reference_fair_odds REAL NOT NULL,
@@ -97,7 +102,7 @@ def init_paper_db(path: Path) -> None:
                 betfair_fair_odds REAL,
                 betfair_fair_edge REAL,
                 betfair_back_lay_spread_pct REAL,
-                UNIQUE(event_id, market_key, outcome_name)
+                UNIQUE(event_id, market_key, outcome_name, bet_side)
             )
             """
         )
@@ -117,6 +122,7 @@ def init_paper_db(path: Path) -> None:
                 "betfair_fair_odds": "REAL",
                 "betfair_fair_edge": "REAL",
                 "betfair_back_lay_spread_pct": "REAL",
+                "bet_side": "TEXT NOT NULL DEFAULT 'back'",
             },
         )
 
@@ -127,7 +133,7 @@ def log_signals(
     *,
     stake: float,
     logged_at: datetime | None = None,
-    liquidity_by_key: dict[tuple[str, str, str, str], dict[str, str]] | None = None,
+    liquidity_by_key: dict[tuple[str, str, str, str, str], dict[str, str]] | None = None,
 ) -> int:
     init_paper_db(path)
     logged_at = logged_at or datetime.now(timezone.utc)
@@ -145,6 +151,7 @@ def log_signals(
                     commence_time,
                     market_key,
                     outcome_name,
+                    bet_side,
                     target_bookmaker,
                     target_odds,
                     reference_fair_odds,
@@ -165,7 +172,7 @@ def log_signals(
                     best_lay_odds,
                     best_lay_available,
                     back_lay_spread_pct
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     logged_at.isoformat(),
@@ -175,6 +182,7 @@ def log_signals(
                     signal.commence_time.isoformat(),
                     signal.market_key,
                     signal.outcome_name,
+                    signal.bet_side,
                     signal.target_bookmaker,
                     signal.target_odds,
                     signal.reference_fair_odds,
@@ -227,6 +235,7 @@ def update_closing_values(
             signal.market_key.casefold(),
             signal.outcome_name.casefold(),
             signal.target_bookmaker.casefold(),
+            signal.bet_side.casefold(),
         ): signal
         for signal in signals
     }
@@ -243,15 +252,24 @@ def update_closing_values(
                     trade.market_key.casefold(),
                     trade.outcome_name.casefold(),
                     trade.target_bookmaker.casefold(),
+                    trade.bet_side.casefold(),
                 )
             )
             if signal is None:
                 continue
-            closing_effective_odds = effective_decimal_odds(
-                trade.target_odds,
-                _commission_rate_for_bookmaker(trade.target_bookmaker),
-            )
-            closing_edge = (closing_effective_odds / signal.reference_fair_odds) - 1
+            commission_rate = _commission_rate_for_bookmaker(trade.target_bookmaker)
+            if trade.bet_side == "lay":
+                closing_edge = lay_edge_per_liability(
+                    lay_odds=trade.target_odds,
+                    fair_probability=signal.reference_probability,
+                    commission_rate=commission_rate,
+                )
+            else:
+                closing_effective_odds = effective_decimal_odds(
+                    trade.target_odds,
+                    commission_rate,
+                )
+                closing_edge = (closing_effective_odds / signal.reference_fair_odds) - 1
             cursor = db.execute(
                 """
                 UPDATE paper_trades
@@ -287,12 +305,18 @@ def settle_results(
             winner = winners.get(trade.event_id)
             if winner is None:
                 continue
-            won = winner.casefold() == trade.outcome_name.casefold()
-            effective_odds = effective_decimal_odds(
-                trade.target_odds,
-                _commission_rate_for_bookmaker(trade.target_bookmaker),
-            )
-            profit = trade.stake * (effective_odds - 1) if won else -trade.stake
+            commission_rate = _commission_rate_for_bookmaker(trade.target_bookmaker)
+            selection_won = winner.casefold() == trade.outcome_name.casefold()
+            won = not selection_won if trade.bet_side == "lay" else selection_won
+            if trade.bet_side == "lay":
+                profit = (
+                    trade.stake * (1 - commission_rate)
+                    if won
+                    else -(trade.stake * (trade.target_odds - 1))
+                )
+            else:
+                effective_odds = effective_decimal_odds(trade.target_odds, commission_rate)
+                profit = trade.stake * (effective_odds - 1) if won else -trade.stake
             cursor = db.execute(
                 """
                 UPDATE paper_trades
@@ -366,12 +390,13 @@ def _ensure_columns(db: sqlite3.Connection, columns: dict[str, str]) -> None:
             db.execute(f"ALTER TABLE paper_trades ADD COLUMN {name} {column_type}")
 
 
-def _signal_key(signal: ValueSignal) -> tuple[str, str, str, str]:
+def _signal_key(signal: ValueSignal) -> tuple[str, str, str, str, str]:
     return (
         signal.event_id.casefold(),
         signal.market_key.casefold(),
         signal.outcome_name.casefold(),
         signal.target_bookmaker.casefold(),
+        signal.bet_side.casefold(),
     )
 
 
@@ -395,6 +420,7 @@ def _trade_from_row(row: sqlite3.Row) -> PaperTrade:
         commence_time=_parse_time(row["commence_time"]),
         market_key=row["market_key"],
         outcome_name=row["outcome_name"],
+        bet_side=row["bet_side"],
         target_bookmaker=row["target_bookmaker"],
         target_odds=float(row["target_odds"]),
         reference_fair_odds=float(row["reference_fair_odds"]),

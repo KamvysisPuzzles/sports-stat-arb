@@ -69,7 +69,7 @@ def test_matchbook_sharp_h2h_targets_matchbook_against_sharp_refs() -> None:
         "smarkets",
     }
     assert strategy["reference_aggregation"] == "median"
-    assert strategy["allowed_markets"] == {"h2h", "totals", "spreads"}
+    assert strategy["allowed_markets"] == {"h2h", "h2h_lay", "totals", "spreads"}
     assert strategy["poisson_total_conversion"] is True
     assert strategy["default_min_edge"] == 0.015
 
@@ -114,7 +114,7 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
     assert strategy["reference_weights"] is None
     assert strategy["reference_aggregation"] == "median"
     assert strategy["allowed_sport_prefixes"] == ("soccer_",)
-    assert strategy["allowed_markets"] == {"h2h", "totals", "spreads"}
+    assert strategy["allowed_markets"] == {"h2h", "h2h_lay", "totals", "spreads"}
     assert strategy["max_target_odds"] == pytest.approx(6.0)
     assert strategy["max_betfair_spread_pct"] == pytest.approx(0.06)
     assert strategy["matchbook_soccer_only_markets"] == {"totals", "spreads"}

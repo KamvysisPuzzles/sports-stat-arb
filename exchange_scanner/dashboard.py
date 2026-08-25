@@ -249,6 +249,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
             <th>Logged</th>
             <th>Status</th>
             <th>Book</th>
+            <th>Side</th>
             <th>Event</th>
             <th>Selection</th>
             <th>Odds</th>
@@ -321,12 +322,13 @@ def _metric(label: str, value: object, extra: str = "", *, tone: str = "") -> st
 
 def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
     if not rows:
-        return '<tr><td colspan="14">No trades match the current filters.</td></tr>'
+        return '<tr><td colspan="15">No trades match the current filters.</td></tr>'
     return "\n".join(
         "<tr>"
         f"<td>{_short_time(row.get('logged_at'))}</td>"
         f"<td>{_escape(row.get('status', ''))}</td>"
         f"<td>{_escape(row.get('target_bookmaker', ''))}</td>"
+        f"<td>{_escape(row.get('bet_side', 'back'))}</td>"
         f"<td>{_escape(row.get('event_name', ''))}</td>"
         f"<td>{_escape(row.get('outcome_name', ''))}</td>"
         f"<td>{_format_number(row.get('target_odds'))}</td>"

@@ -78,6 +78,7 @@ class ValueSignal:
     reference_probability: float
     edge: float
     reference_bookmakers: tuple[str, ...]
+    bet_side: str = "back"
     target_effective_odds: float | None = None
     betfair_fair_odds: float | None = None
     betfair_fair_edge: float | None = None
@@ -102,6 +103,7 @@ class ValueSignal:
             "reference_probability": self.reference_probability,
             "edge": self.edge,
             "reference_bookmakers": ", ".join(self.reference_bookmakers),
+            "bet_side": self.bet_side,
             "betfair_fair_odds": self.betfair_fair_odds or "",
             "betfair_fair_edge": self.betfair_fair_edge or "",
             "betfair_back_lay_spread_pct": self.betfair_back_lay_spread_pct or "",
@@ -109,7 +111,7 @@ class ValueSignal:
             "event_search_url": bookmaker_event_search_url(self.target_bookmaker, self.event_name),
             "copy_search": f"{self.event_name} {self.outcome_name}",
             "copy_bet_instruction": (
-                f"{self.target_bookmaker}: {self.event_name} - "
+                f"{self.target_bookmaker}: {self.bet_side.title()} {self.event_name} - "
                 f"{self.market_key} - {self.outcome_name} @ {self.target_odds:g}"
             ),
             "min_acceptable_odds": self.target_odds,
@@ -408,6 +410,7 @@ def find_value_opportunities(
     reference_aggregation: str = "mean",
     poisson_total_conversion: bool = False,
     poisson_total_max_line_distance: float = 0.5,
+    target_lay_bookmakers: set[str] | None = None,
     now: datetime | None = None,
 ) -> list[ValueSignal]:
     now = now or datetime.now(timezone.utc)
@@ -502,16 +505,16 @@ def find_value_opportunities(
                 _target_commission_rate(target, target_commission_rates),
             )
             edge = (target_effective_odds * fair_probability) - 1
-            if edge >= min_edge:
-                references = tuple(
-                    sorted(
-                        {
-                            price.bookmaker_title
-                            for price in reference_prices
-                            if price.comparable_outcome_name == target.comparable_outcome_name
-                        }
-                    )
+            references = tuple(
+                sorted(
+                    {
+                        price.bookmaker_title
+                        for price in reference_prices
+                        if price.comparable_outcome_name == target.comparable_outcome_name
+                    }
                 )
+            )
+            if edge >= min_edge:
                 signals.append(
                     ValueSignal(
                         sport_key=target.sport_key,
@@ -535,6 +538,37 @@ def find_value_opportunities(
                         betfair_back_lay_spread_pct=target.exchange_spread_pct,
                     )
                 )
+
+            if target.market_key == "h2h" and target.exchange_lay_odds is not None:
+                lay_bookmakers = target_lay_bookmakers or set()
+                if lay_bookmakers and _bookmaker_matches(target, lay_bookmakers):
+                    lay_edge = lay_edge_per_liability(
+                        lay_odds=target.exchange_lay_odds,
+                        fair_probability=fair_probability,
+                        commission_rate=_target_commission_rate(target, target_commission_rates),
+                    )
+                    if lay_edge >= min_edge:
+                        signals.append(
+                            ValueSignal(
+                                sport_key=target.sport_key,
+                                event_id=target.event_id,
+                                event_name=target.event_name,
+                                commence_time=target.commence_time,
+                                market_key=target.market_key,
+                                outcome_name=target.comparable_outcome_name,
+                                target_bookmaker=target.bookmaker_title,
+                                target_odds=target.exchange_lay_odds,
+                                target_effective_odds=target.exchange_lay_odds,
+                                reference_fair_odds=1 / fair_probability,
+                                reference_probability=fair_probability,
+                                edge=lay_edge,
+                                reference_bookmakers=references,
+                                bet_side="lay",
+                                betfair_fair_odds=target_venue_fair_odds,
+                                betfair_fair_edge=None,
+                                betfair_back_lay_spread_pct=target.exchange_spread_pct,
+                            )
+                        )
 
     return sorted(signals, key=lambda signal: signal.edge, reverse=True)
 
@@ -861,6 +895,22 @@ def effective_decimal_odds(decimal_odds: float, commission_rate: float = 0.0) ->
     if decimal_odds <= 1:
         return decimal_odds
     return 1 + ((decimal_odds - 1) * (1 - commission_rate))
+
+
+def lay_edge_per_liability(
+    *,
+    lay_odds: float,
+    fair_probability: float,
+    commission_rate: float = 0.0,
+) -> float:
+    if lay_odds <= 1:
+        return float("-inf")
+    liability = lay_odds - 1
+    win_probability = 1 - fair_probability
+    expected_profit = (win_probability * (1 - commission_rate)) - (
+        fair_probability * liability
+    )
+    return expected_profit / liability
 
 
 def _target_commission_rate(

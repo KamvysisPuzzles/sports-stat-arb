@@ -13,6 +13,7 @@ from exchange_scanner.the_odds_api import (
     effective_decimal_odds,
     find_value_opportunities,
     h2h_winners_from_scores,
+    lay_edge_per_liability,
     normalise_odds_api_events,
 )
 
@@ -274,6 +275,96 @@ def test_finds_target_value_against_devigged_reference_market() -> None:
     assert signals[0].edge > 0.1
     assert signals[0].as_dict()["copy_search"] == "Arsenal v Chelsea Arsenal"
     assert signals[0].as_dict()["min_acceptable_odds"] == 2.3
+
+
+def test_finds_matchbook_lay_value_against_reference_market() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "soccer_epl",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "matchbook",
+                    "title": "Matchbook",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.0},
+                                {"name": "Chelsea", "price": 2.0},
+                            ],
+                        },
+                        {
+                            "key": "h2h_lay",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 1.8},
+                                {"name": "Chelsea", "price": 2.2},
+                            ],
+                        },
+                    ],
+                },
+                {
+                    "key": "pinnacle",
+                    "title": "Pinnacle",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.0},
+                                {"name": "Chelsea", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "smarkets",
+                    "title": "Smarkets",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 2.0},
+                                {"name": "Chelsea", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+    prices = normalise_odds_api_events(events)
+    signals = find_value_opportunities(
+        prices,
+        target_bookmakers={"matchbook"},
+        target_lay_bookmakers={"matchbook"},
+        reference_bookmakers={"pinnacle", "smarkets"},
+        min_edge=0.02,
+        max_age_seconds=300,
+        min_reference_books=2,
+        target_commission_rates={"matchbook": 0.02},
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )
+
+    assert len(signals) == 1
+    signal = signals[0]
+    assert signal.bet_side == "lay"
+    assert signal.outcome_name == "Arsenal"
+    assert signal.target_odds == pytest.approx(1.8)
+    assert signal.reference_fair_odds == pytest.approx(2.0)
+    assert signal.edge == pytest.approx(
+        lay_edge_per_liability(
+            lay_odds=1.8,
+            fair_probability=0.5,
+            commission_rate=0.02,
+        )
+    )
 
 
 def test_value_mode_can_apply_target_book_commission_to_edge() -> None:

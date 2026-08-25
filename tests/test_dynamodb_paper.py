@@ -58,22 +58,24 @@ class FakeTable:
         return {"ResponseMetadata": {"HTTPStatusCode": 200}}
 
 
-def signal() -> ValueSignal:
-    return ValueSignal(
-        sport_key="soccer_epl",
-        event_id="event-1",
-        event_name="Arsenal v Chelsea",
-        commence_time=datetime(2026, 8, 15, 15, tzinfo=timezone.utc),
-        market_key="h2h",
-        outcome_name="Arsenal",
-        target_bookmaker="Matchbook",
-        target_odds=4.2,
-        target_effective_odds=4.136,
-        reference_fair_odds=4.0,
-        reference_probability=0.25,
-        edge=0.034,
-        reference_bookmakers=("Pinnacle", "Smarkets"),
-    )
+def signal(**overrides) -> ValueSignal:
+    values = {
+        "sport_key": "soccer_epl",
+        "event_id": "event-1",
+        "event_name": "Arsenal v Chelsea",
+        "commence_time": datetime(2026, 8, 15, 15, tzinfo=timezone.utc),
+        "market_key": "h2h",
+        "outcome_name": "Arsenal",
+        "target_bookmaker": "Matchbook",
+        "target_odds": 4.2,
+        "target_effective_odds": 4.136,
+        "reference_fair_odds": 4.0,
+        "reference_probability": 0.25,
+        "edge": 0.034,
+        "reference_bookmakers": ("Pinnacle", "Smarkets"),
+    }
+    values.update(overrides)
+    return ValueSignal(**values)
 
 
 def test_paper_item_uses_deterministic_trade_id_and_decimal_values() -> None:
@@ -139,6 +141,38 @@ def test_update_closing_values_in_dynamodb_updates_matching_open_trade() -> None
     assert item["beat_closing_line"] is True
 
 
+def test_update_closing_values_in_dynamodb_prices_lay_edge_per_liability() -> None:
+    table = FakeTable()
+    logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
+    lay_signal = signal(
+        target_odds=1.8,
+        target_effective_odds=1.8,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.1125,
+        bet_side="lay",
+    )
+    log_signals_to_dynamodb(table, [lay_signal], stake=10, logged_at=logged_at)
+    closing = signal(
+        target_odds=2.0,
+        target_effective_odds=2.0,
+        reference_fair_odds=1 / 0.56,
+        reference_probability=0.56,
+        edge=-0.01,
+        bet_side="lay",
+    )
+
+    result = update_closing_values_in_dynamodb(table, [closing], checked_at=logged_at)
+    item = next(iter(table.items.values()))
+
+    assert result.open_trades == 1
+    assert result.updated == 1
+    assert item["bet_side"] == "lay"
+    assert item["target_clv"] == Decimal("0.11111111111111116")
+    assert item["closing_edge"] == Decimal("-0.021000000000000185")
+    assert item["positive_closing_edge"] is False
+
+
 def test_settle_results_in_dynamodb_sets_profit_for_winner() -> None:
     table = FakeTable()
     logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
@@ -152,3 +186,26 @@ def test_settle_results_in_dynamodb_sets_profit_for_winner() -> None:
     assert item["status"] == "settled"
     assert item["result"] == "Arsenal"
     assert item["profit"] == Decimal("3.136")
+
+
+def test_settle_results_in_dynamodb_sets_lay_profit_from_liability() -> None:
+    table = FakeTable()
+    logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
+    lay_signal = signal(
+        target_odds=1.8,
+        target_effective_odds=1.8,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.1125,
+        bet_side="lay",
+    )
+    log_signals_to_dynamodb(table, [lay_signal], stake=10, logged_at=logged_at)
+
+    result = settle_results_in_dynamodb(table, {"event-1": "Chelsea"})
+    item = next(iter(table.items.values()))
+
+    assert result.open_trades == 1
+    assert result.settled == 1
+    assert item["status"] == "settled"
+    assert item["result"] == "Chelsea"
+    assert item["profit"] == Decimal("9.8")

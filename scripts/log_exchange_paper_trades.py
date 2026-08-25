@@ -70,6 +70,7 @@ def _signal_from_row(row: dict[str, str]) -> ValueSignal:
         outcome_name=row["outcome_name"],
         target_bookmaker=row["target_bookmaker"],
         target_odds=float(row["target_odds"]),
+        bet_side=row.get("bet_side") or "back",
         target_effective_odds=_optional_float(row.get("target_effective_odds")),
         reference_fair_odds=reference_fair_odds,
         reference_probability=float(row.get("reference_probability") or 1 / reference_fair_odds),
@@ -80,12 +81,13 @@ def _signal_from_row(row: dict[str, str]) -> ValueSignal:
     )
 
 
-def _row_key(row: dict[str, str]) -> tuple[str, str, str, str]:
+def _row_key(row: dict[str, str]) -> tuple[str, str, str, str, str]:
     return (
         row["event_id"].casefold(),
         (row.get("market") or row.get("market_key", "h2h")).casefold(),
         row["outcome_name"].casefold(),
         row["target_bookmaker"].casefold(),
+        (row.get("bet_side") or "back").casefold(),
     )
 
 

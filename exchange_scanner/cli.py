@@ -150,6 +150,7 @@ STRATEGIES = {
     },
     "exchange-clv": {
         "target_bookmakers": EXCHANGE_CLV_TARGET_BOOKMAKERS,
+        "target_lay_bookmakers": {"matchbook"},
         "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS | BETFAIR_TARGET_BOOKMAKERS,
         "target_reference_bookmakers": EXCHANGE_CLV_TARGET_REFERENCE_BOOKMAKERS,
         "allow_target_bookmakers_as_references": False,
@@ -157,7 +158,7 @@ STRATEGIES = {
         "reference_aggregation": "median",
         "target_commission_rates": EXCHANGE_CLV_COMMISSION_RATES,
         "allowed_sport_prefixes": ("soccer_",),
-        "allowed_markets": {"h2h", "totals", "spreads"},
+        "allowed_markets": {"h2h", "h2h_lay", "totals", "spreads"},
         "max_target_odds": 6.0,
         "max_betfair_spread_pct": 0.06,
         "matchbook_soccer_only_markets": {"totals", "spreads"},
@@ -179,7 +180,7 @@ STRATEGIES = {
         "reference_weights": None,
         "reference_aggregation": "median",
         "target_commission_rates": MATCHBOOK_COMMISSION_RATES,
-        "allowed_markets": {"h2h", "totals", "spreads"},
+        "allowed_markets": {"h2h", "h2h_lay", "totals", "spreads"},
         "max_target_odds": 6.0,
         "default_min_edge": 0.015,
         "line_market_min_reference_books": 1,
@@ -892,6 +893,7 @@ def find_strategy_value_opportunities(
             reference_aggregation=strategy.get("reference_aggregation", "mean"),
             poisson_total_conversion=strategy.get("poisson_total_conversion", False),
             poisson_total_max_line_distance=strategy.get("poisson_total_max_line_distance", 0.5),
+            target_lay_bookmakers=strategy.get("target_lay_bookmakers"),
             now=now,
         )
 
@@ -912,6 +914,7 @@ def find_strategy_value_opportunities(
                 reference_aggregation=strategy.get("reference_aggregation", "mean"),
                 poisson_total_conversion=strategy.get("poisson_total_conversion", False),
                 poisson_total_max_line_distance=strategy.get("poisson_total_max_line_distance", 0.5),
+                target_lay_bookmakers=strategy.get("target_lay_bookmakers"),
                 now=now,
             )
         )
@@ -1050,6 +1053,7 @@ def write_value_csv(signals, args) -> None:
         "commence_time",
         "market",
         "outcome_name",
+        "bet_side",
         "bet_to_place",
         "target_bookmaker",
         "target_odds",
@@ -1106,6 +1110,7 @@ def write_backtest_csv(bets: list[BacktestBet]) -> None:
         "commence_time",
         "market",
         "outcome_name",
+        "bet_side",
         "bet_to_place",
         "target_bookmaker",
         "target_odds",
@@ -1191,6 +1196,7 @@ def write_paper_csv(trades: list[PaperTrade]) -> None:
         "commence_time",
         "market",
         "outcome_name",
+        "bet_side",
         "bet_to_place",
         "target_bookmaker",
         "target_odds",
@@ -1323,7 +1329,7 @@ def _recommended_value_stake(signal, args) -> float | None:
 
 def _bet_to_place(signal) -> str:
     return (
-        f"Back {signal.outcome_name} with {signal.target_bookmaker} "
+        f"{signal.bet_side.title()} {signal.outcome_name} with {signal.target_bookmaker} "
         f"at {signal.target_odds:g} ({_fractional_odds(signal.target_odds)})+"
     )
 
