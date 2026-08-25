@@ -79,6 +79,8 @@ def run_backtest(
     min_betfair_fair_edge: float | None = None,
     matchbook_soccer_only_markets: set[str] | None = None,
     line_market_min_reference_books: int = 0,
+    poisson_total_conversion: bool = False,
+    poisson_total_max_line_distance: float = 0.5,
 ) -> list[BacktestBet]:
     results = load_results(results_path)
     snapshots = load_historical_snapshots(historical_odds_path)
@@ -112,6 +114,8 @@ def run_backtest(
             reference_weights=reference_weights,
             target_commission_rates=target_commission_rates,
             reference_aggregation=reference_aggregation,
+            poisson_total_conversion=poisson_total_conversion,
+            poisson_total_max_line_distance=poisson_total_max_line_distance,
             now=snapshot.fetched_at,
         )
         signals = _filter_betfair_dislocation_signals(
@@ -155,6 +159,8 @@ def run_backtest(
                 reference_weights=reference_weights,
                 target_commission_rates=target_commission_rates,
                 reference_aggregation=reference_aggregation,
+                poisson_total_conversion=poisson_total_conversion,
+                poisson_total_max_line_distance=poisson_total_max_line_distance,
             )
             bets.append(
                 BacktestBet(
@@ -341,6 +347,8 @@ def _closing_line_for_signal(
     reference_weights: dict[str, float] | None = None,
     target_commission_rates: dict[str, float] | None = None,
     reference_aggregation: str = "mean",
+    poisson_total_conversion: bool = False,
+    poisson_total_max_line_distance: float = 0.5,
 ) -> _ClosingLine:
     candidate_snapshots = [
         snapshot
@@ -364,6 +372,8 @@ def _closing_line_for_signal(
             reference_weights=reference_weights,
             target_commission_rates=target_commission_rates,
             reference_aggregation=reference_aggregation,
+            poisson_total_conversion=poisson_total_conversion,
+            poisson_total_max_line_distance=poisson_total_max_line_distance,
             now=snapshot.fetched_at,
         )
         for closing_signal in closing_signals:

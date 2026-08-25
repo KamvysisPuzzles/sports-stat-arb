@@ -37,6 +37,7 @@ from exchange_scanner.the_odds_api import (
 
 ACTIVE_H2H_PROFILE = "active-h2h"
 SOCCER_H2H_PROFILE = "soccer-h2h"
+MATCHBOOK_DISCOVERY_H2H_PROFILE = "matchbook-discovery-h2h"
 
 SHARP_REFERENCE_BOOKMAKERS = {
     "pinnacle",
@@ -87,6 +88,22 @@ EXCHANGE_CLV_TARGET_REFERENCE_BOOKMAKERS = {
         "smarkets",
     },
 }
+
+MATCHBOOK_DISCOVERY_SPORT_KEYS = {
+    "americanfootball_cfl",
+    "americanfootball_ncaaf",
+    "americanfootball_nfl",
+    "aussierules_afl",
+    "baseball_mlb",
+    "basketball_euroleague",
+    "basketball_nba",
+    "basketball_nbl",
+    "basketball_ncaab",
+    "icehockey_nhl",
+    "rugbyleague_nrl",
+}
+
+MATCHBOOK_DISCOVERY_SPORT_PREFIXES = ("tennis_",)
 
 SHARPNESS_WEIGHTS = {
     "*": 0.20,
@@ -140,14 +157,40 @@ STRATEGIES = {
         "reference_aggregation": "median",
         "target_commission_rates": EXCHANGE_CLV_COMMISSION_RATES,
         "allowed_sport_prefixes": ("soccer_",),
-        "allowed_markets": {"h2h"},
+        "allowed_markets": {"h2h", "totals"},
         "max_target_odds": 6.0,
         "max_betfair_spread_pct": 0.06,
+        "matchbook_soccer_only_markets": {"totals"},
+        "line_market_min_reference_books": 1,
+        "market_min_edges": {"totals": 0.02},
+        "poisson_total_conversion": True,
+        "poisson_total_max_line_distance": 0.5,
+    },
+    "matchbook-sharp-h2h": {
+        "target_bookmakers": MATCHBOOK_TARGET_BOOKMAKERS,
+        "reference_bookmakers": {
+            "pinnacle",
+            "betfair",
+            "betfair_ex_uk",
+            "betfair_ex_eu",
+            "smarkets",
+        },
+        "allow_target_bookmakers_as_references": False,
+        "reference_weights": None,
+        "reference_aggregation": "median",
+        "target_commission_rates": MATCHBOOK_COMMISSION_RATES,
+        "allowed_markets": {"h2h", "totals"},
+        "max_target_odds": 6.0,
+        "default_min_edge": 0.015,
+        "line_market_min_reference_books": 1,
+        "poisson_total_conversion": True,
+        "poisson_total_max_line_distance": 0.5,
     },
 }
 
 SPORT_PROFILES = {
     ACTIVE_H2H_PROFILE: [],
+    MATCHBOOK_DISCOVERY_H2H_PROFILE: [],
     SOCCER_H2H_PROFILE: [
         "soccer_argentina_primera_division",
         "soccer_austria_bundesliga",
@@ -606,6 +649,8 @@ def backtest(args: argparse.Namespace) -> list[BacktestBet]:
         min_betfair_fair_edge=strategy.get("min_betfair_fair_edge"),
         matchbook_soccer_only_markets=strategy.get("matchbook_soccer_only_markets"),
         line_market_min_reference_books=strategy.get("line_market_min_reference_books", 0),
+        poisson_total_conversion=strategy.get("poisson_total_conversion", False),
+        poisson_total_max_line_distance=strategy.get("poisson_total_max_line_distance", 0.5),
     )
 
 
@@ -632,7 +677,10 @@ def scan_the_odds_api(args: argparse.Namespace):
         events = json.loads(args.fixtures.read_text())
     else:
         client = None
-        if getattr(args, "sports_profile", "") == ACTIVE_H2H_PROFILE:
+        if getattr(args, "sports_profile", "") in {
+            ACTIVE_H2H_PROFILE,
+            MATCHBOOK_DISCOVERY_H2H_PROFILE,
+        }:
             api_key = os.getenv("THE_ODDS_API_KEY")
             if not api_key:
                 raise SystemExit("Missing required environment variable: THE_ODDS_API_KEY")
@@ -772,6 +820,7 @@ def _filter_signals_by_strategy_rules(signals, strategy):
     min_betfair_fair_edge = strategy.get("min_betfair_fair_edge")
     matchbook_soccer_only_markets = strategy.get("matchbook_soccer_only_markets") or set()
     line_market_min_reference_books = strategy.get("line_market_min_reference_books", 0)
+    market_min_edges = strategy.get("market_min_edges") or {}
     if (
         max_betfair_spread_pct is None
         and min_sharp_reference_books <= 0
@@ -779,10 +828,13 @@ def _filter_signals_by_strategy_rules(signals, strategy):
         and not matchbook_soccer_only_markets
         and line_market_min_reference_books <= 0
         and max_target_odds is None
+        and not market_min_edges
     ):
         return signals
     output = []
     for signal in signals:
+        if signal.edge < market_min_edges.get(signal.market_key, float("-inf")):
+            continue
         if max_target_odds is not None and signal.target_odds > max_target_odds:
             continue
         if not _allowed_by_matchbook_soccer_market_rule(signal, matchbook_soccer_only_markets):
@@ -838,6 +890,8 @@ def find_strategy_value_opportunities(
             reference_weights=reference_weights,
             target_commission_rates=strategy["target_commission_rates"],
             reference_aggregation=strategy.get("reference_aggregation", "mean"),
+            poisson_total_conversion=strategy.get("poisson_total_conversion", False),
+            poisson_total_max_line_distance=strategy.get("poisson_total_max_line_distance", 0.5),
             now=now,
         )
 
@@ -856,6 +910,8 @@ def find_strategy_value_opportunities(
                 reference_weights=reference_weights,
                 target_commission_rates=strategy["target_commission_rates"],
                 reference_aggregation=strategy.get("reference_aggregation", "mean"),
+                poisson_total_conversion=strategy.get("poisson_total_conversion", False),
+                poisson_total_max_line_distance=strategy.get("poisson_total_max_line_distance", 0.5),
                 now=now,
             )
         )
@@ -963,6 +1019,10 @@ def _sport_keys(args: argparse.Namespace, *, odds_client=None) -> list[str]:
         if odds_client is None:
             raise ValueError("active-h2h sports profile requires an odds client")
         sports.extend(active_h2h_sports(odds_client.fetch_sports()))
+    elif sports_profile == MATCHBOOK_DISCOVERY_H2H_PROFILE:
+        if odds_client is None:
+            raise ValueError("matchbook-discovery-h2h sports profile requires an odds client")
+        sports.extend(matchbook_discovery_h2h_sports(odds_client.fetch_sports()))
     elif sports_profile:
         sports.extend(SPORT_PROFILES[sports_profile])
     if args.sports:
@@ -970,6 +1030,16 @@ def _sport_keys(args: argparse.Namespace, *, odds_client=None) -> list[str]:
     if not sports:
         sports.append(args.sport)
     return list(dict.fromkeys(sports))
+
+
+def matchbook_discovery_h2h_sports(sports_payload: list[dict[str, object]]) -> list[str]:
+    sports = []
+    for sport in active_h2h_sports(sports_payload):
+        if sport in MATCHBOOK_DISCOVERY_SPORT_KEYS or sport.startswith(
+            MATCHBOOK_DISCOVERY_SPORT_PREFIXES
+        ):
+            sports.append(sport)
+    return sports
 
 
 def write_value_csv(signals, args) -> None:

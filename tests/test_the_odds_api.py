@@ -574,6 +574,178 @@ def test_spreads_devig_each_point_line_separately() -> None:
     ]
 
 
+def test_totals_can_use_poisson_conversion_from_nearby_reference_line() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "soccer_epl",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "matchbook",
+                    "title": "Matchbook",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "totals",
+                            "outcomes": [
+                                {"name": "Over", "price": 2.4, "point": 2.5},
+                                {"name": "Under", "price": 1.7, "point": 2.5},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "pinnacle",
+                    "title": "Pinnacle",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "totals",
+                            "outcomes": [
+                                {"name": "Over", "price": 1.91, "point": 2.25},
+                                {"name": "Under", "price": 1.91, "point": 2.25},
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+    signals = find_value_opportunities(
+        normalise_odds_api_events(events),
+        target_bookmakers={"matchbook"},
+        reference_bookmakers={"pinnacle"},
+        min_edge=0.02,
+        max_age_seconds=300,
+        min_reference_books=1,
+        target_commission_rates={"matchbook": 0.02},
+        poisson_total_conversion=True,
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )
+
+    assert [(signal.outcome_name, round(signal.edge, 3)) for signal in signals] == [
+        ("Over 2.5", 0.032)
+    ]
+    assert signals[0].reference_bookmakers == ("Pinnacle",)
+
+
+def test_totals_poisson_conversion_counts_multiple_lines_as_one_reference_book() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "soccer_epl",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "matchbook",
+                    "title": "Matchbook",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "totals",
+                            "outcomes": [
+                                {"name": "Over", "price": 2.4, "point": 2.5},
+                                {"name": "Under", "price": 1.7, "point": 2.5},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "pinnacle",
+                    "title": "Pinnacle",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "totals",
+                            "outcomes": [
+                                {"name": "Over", "price": 1.91, "point": 2.25},
+                                {"name": "Under", "price": 1.91, "point": 2.25},
+                                {"name": "Over", "price": 2.05, "point": 2.75},
+                                {"name": "Under", "price": 1.78, "point": 2.75},
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+    signals = find_value_opportunities(
+        normalise_odds_api_events(events),
+        target_bookmakers={"matchbook"},
+        reference_bookmakers={"pinnacle"},
+        min_edge=0,
+        max_age_seconds=300,
+        min_reference_books=2,
+        poisson_total_conversion=True,
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )
+
+    assert signals == []
+
+
+def test_totals_poisson_conversion_ignores_distant_reference_lines() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "soccer_epl",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "matchbook",
+                    "title": "Matchbook",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "totals",
+                            "outcomes": [
+                                {"name": "Over", "price": 3.0, "point": 2.5},
+                                {"name": "Under", "price": 1.4, "point": 2.5},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "pinnacle",
+                    "title": "Pinnacle",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "totals",
+                            "outcomes": [
+                                {"name": "Over", "price": 1.91, "point": 3.5},
+                                {"name": "Under", "price": 1.91, "point": 3.5},
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+    ]
+
+    signals = find_value_opportunities(
+        normalise_odds_api_events(events),
+        target_bookmakers={"matchbook"},
+        reference_bookmakers={"pinnacle"},
+        min_edge=0,
+        max_age_seconds=300,
+        min_reference_books=1,
+        poisson_total_conversion=True,
+        poisson_total_max_line_distance=0.5,
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )
+
+    assert signals == []
+
+
 def test_value_mode_ignores_incomplete_reference_markets() -> None:
     events = [
         {

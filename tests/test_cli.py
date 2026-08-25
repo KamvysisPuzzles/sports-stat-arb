@@ -10,6 +10,7 @@ from exchange_scanner.bookmaker_links import EventPageResolution
 from exchange_scanner.cli import (
     ACTIVE_H2H_PROFILE,
     EXCHANGE_CLV_TARGET_BOOKMAKERS,
+    MATCHBOOK_DISCOVERY_H2H_PROFILE,
     MATCHBOOK_TARGET_BOOKMAKERS,
     SHARP_REFERENCE_BOOKMAKERS,
     SHARPNESS_WEIGHTS,
@@ -26,6 +27,7 @@ from exchange_scanner.cli import (
     _unique_bet_signals,
     _unique_event_signals,
     active_h2h_sports,
+    matchbook_discovery_h2h_sports,
     scan_the_odds_api,
     write_value_csv,
 )
@@ -48,7 +50,28 @@ def test_sharp_weighted_clv_targets_sharp_books_against_weighted_all_book_consen
     assert strategy["reference_bookmakers"] is None
     assert strategy["allow_target_bookmakers_as_references"] is True
     assert strategy["reference_weights"] == SHARPNESS_WEIGHTS
-    assert set(STRATEGIES) == {"exchange-clv", "sharp-weighted-clv"}
+    assert set(STRATEGIES) == {
+        "exchange-clv",
+        "matchbook-sharp-h2h",
+        "sharp-weighted-clv",
+    }
+
+
+def test_matchbook_sharp_h2h_targets_matchbook_against_sharp_refs() -> None:
+    strategy = STRATEGIES["matchbook-sharp-h2h"]
+
+    assert strategy["target_bookmakers"] == MATCHBOOK_TARGET_BOOKMAKERS
+    assert strategy["reference_bookmakers"] == {
+        "pinnacle",
+        "betfair",
+        "betfair_ex_uk",
+        "betfair_ex_eu",
+        "smarkets",
+    }
+    assert strategy["reference_aggregation"] == "median"
+    assert strategy["allowed_markets"] == {"h2h", "totals"}
+    assert strategy["poisson_total_conversion"] is True
+    assert strategy["default_min_edge"] == 0.015
 
 
 def test_exchange_clv_targets_available_exchange_books() -> None:
@@ -91,9 +114,12 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
     assert strategy["reference_weights"] is None
     assert strategy["reference_aggregation"] == "median"
     assert strategy["allowed_sport_prefixes"] == ("soccer_",)
-    assert strategy["allowed_markets"] == {"h2h"}
+    assert strategy["allowed_markets"] == {"h2h", "totals"}
     assert strategy["max_target_odds"] == pytest.approx(6.0)
     assert strategy["max_betfair_spread_pct"] == pytest.approx(0.06)
+    assert strategy["matchbook_soccer_only_markets"] == {"totals"}
+    assert strategy["market_min_edges"] == {"totals": 0.02}
+    assert strategy["poisson_total_conversion"] is True
 
 
 def test_matchbook_h2h_expanded_profile_excludes_futures_and_outrights() -> None:
@@ -152,6 +178,46 @@ def test_active_h2h_profile_uses_live_sports_client() -> None:
     sports = _sport_keys(args, odds_client=FakeOddsClient())
 
     assert sports == ["basketball_nba", "soccer_epl"]
+
+
+def test_matchbook_discovery_profile_keeps_selected_active_h2h_sports() -> None:
+    sports = matchbook_discovery_h2h_sports(
+        [
+            {"key": "basketball_nba", "active": True},
+            {"key": "basketball_wnba", "active": True},
+            {"key": "americanfootball_nfl", "active": True},
+            {"key": "americanfootball_nfl_preseason", "active": True},
+            {"key": "tennis_wta_monterrey_open", "active": True},
+            {"key": "soccer_epl", "active": True},
+            {"key": "basketball_nba_championship_winner", "active": True},
+            {"key": "baseball_mlb", "active": False},
+        ]
+    )
+
+    assert sports == [
+        "basketball_nba",
+        "americanfootball_nfl",
+        "tennis_wta_monterrey_open",
+    ]
+
+
+def test_matchbook_discovery_profile_uses_live_sports_client() -> None:
+    class FakeOddsClient:
+        def fetch_sports(self):
+            return [
+                {"key": "basketball_nba", "active": True},
+                {"key": "soccer_epl", "active": True},
+            ]
+
+    args = Namespace(
+        sports_profile=MATCHBOOK_DISCOVERY_H2H_PROFILE,
+        sports="",
+        sport="football",
+    )
+
+    sports = _sport_keys(args, odds_client=FakeOddsClient())
+
+    assert sports == ["basketball_nba"]
 
 
 def test_markets_for_sport_limits_matchbook_soccer_only_markets() -> None:
@@ -592,6 +658,42 @@ def test_filter_strategy_rules_requires_reference_depth_for_line_markets() -> No
             "min_sharp_reference_books": 1,
         },
     ) == [enough_refs, h2h_with_sharp_ref]
+
+
+def test_filter_strategy_rules_applies_market_specific_min_edge() -> None:
+    low_edge_total = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="totals",
+        outcome_name="Over 2.5",
+        target_bookmaker="Matchbook",
+        target_odds=2.1,
+        reference_fair_odds=2.05,
+        reference_probability=0.4878,
+        edge=0.015,
+        reference_bookmakers=("Pinnacle",),
+    )
+    high_edge_total = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-2",
+        event_name="Liverpool v Everton",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="totals",
+        outcome_name="Under 2.5",
+        target_bookmaker="Matchbook",
+        target_odds=2.1,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.025,
+        reference_bookmakers=("Pinnacle",),
+    )
+
+    assert _filter_signals_by_strategy_rules(
+        [low_edge_total, high_edge_total],
+        STRATEGIES["exchange-clv"],
+    ) == [high_edge_total]
 
 
 def test_filter_prices_by_event_horizon_excludes_events_more_than_two_days_out() -> None:

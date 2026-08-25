@@ -4,6 +4,8 @@ import json
 from datetime import datetime, timezone
 from decimal import Decimal
 
+import pytest
+
 from exchange_scanner.dashboard import dashboard_payload, render_dashboard_html
 from lambda_functions.dashboard import lambda_function
 
@@ -47,6 +49,7 @@ def trades():
             "available_at_or_above_target": Decimal("25.5"),
             "edge": Decimal("0.034"),
             "target_clv": Decimal("0.02"),
+            "closing_edge": Decimal("0.03"),
             "stake": Decimal(1),
             "status": "settled",
             "profit": Decimal("3.136"),
@@ -79,6 +82,7 @@ def trades():
             "available_at_or_above_target": Decimal(1000),
             "edge": Decimal("0.025"),
             "target_clv": Decimal("-0.01"),
+            "closing_edge": Decimal("-0.02"),
             "stake": Decimal(1),
             "status": "settled",
             "profit": Decimal(-1),
@@ -150,6 +154,9 @@ def test_dashboard_payload_splits_closed_clv_from_mark_to_market() -> None:
     assert payload["summary"]["average_mark_to_market_clv"] == 0.03
     assert payload["summary"]["mark_to_market_clv_beats"] == 1
     assert payload["summary"]["average_clv"] == payload["summary"]["average_closed_clv"]
+    assert payload["summary"]["closed_fair_edge_trades"] == 2
+    assert payload["summary"]["average_closed_fair_edge"] == pytest.approx(0.005)
+    assert payload["summary"]["positive_closed_fair_edge"] == 1
 
 
 def test_dashboard_payload_filters_by_clv_scope() -> None:
@@ -249,7 +256,9 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "Results by Sport" in html
     assert "Results by League" in html
     assert "Closed CLV" in html
+    assert "Closed Fair Edge" in html
     assert "MTM CLV" in html
+    assert "MTM Fair Edge" in html
     assert '<details class="advanced-filters">' in html
     assert "<summary>Advanced Filters</summary>" in html
     assert '<details class="advanced-filters" open>' not in html

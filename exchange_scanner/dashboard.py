@@ -255,6 +255,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
             <th>Liquidity</th>
             <th>Edge</th>
             <th>CLV</th>
+            <th>Closing Fair Edge</th>
             <th>Venue Fair Edge</th>
             <th>Venue Spread</th>
             <th>Profit</th>
@@ -299,8 +300,11 @@ def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:
       {_metric("Median Liquidity", f"{summary['median_confirmed_liquidity_at_target']:.2f}")}
       {_metric("Closed CLV", f"{summary['average_closed_clv']:.2%}", f"n={summary['closed_clv_trades']}", tone=_class_for_number(summary["average_closed_clv"]))}
       {_metric("Closed B/M/T", f"{summary['closed_clv_beats']}/{summary['closed_clv_misses']}/{summary['closed_clv_ties']}")}
+      {_metric("Closed Fair Edge", f"{summary['average_closed_fair_edge']:.2%}", f"n={summary['closed_fair_edge_trades']}", tone=_class_for_number(summary["average_closed_fair_edge"]))}
+      {_metric("Closed Fair +", f"{summary['positive_closed_fair_edge_rate']:.2%}", f"{summary['positive_closed_fair_edge']}/{summary['closed_fair_edge_trades']}", tone=_class_for_number(summary["average_closed_fair_edge"]))}
       {_metric("MTM CLV", f"{summary['average_mark_to_market_clv']:.2%}", f"n={summary['mark_to_market_clv_trades']}", tone=_class_for_number(summary["average_mark_to_market_clv"]))}
       {_metric("MTM B/M/T", f"{summary['mark_to_market_clv_beats']}/{summary['mark_to_market_clv_misses']}/{summary['mark_to_market_clv_ties']}")}
+      {_metric("MTM Fair Edge", f"{summary['average_mark_to_market_fair_edge']:.2%}", f"n={summary['mark_to_market_fair_edge_trades']}", tone=_class_for_number(summary["average_mark_to_market_fair_edge"]))}
     </section>"""
 
 
@@ -317,7 +321,7 @@ def _metric(label: str, value: object, extra: str = "", *, tone: str = "") -> st
 
 def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
     if not rows:
-        return '<tr><td colspan="13">No trades match the current filters.</td></tr>'
+        return '<tr><td colspan="14">No trades match the current filters.</td></tr>'
     return "\n".join(
         "<tr>"
         f"<td>{_short_time(row.get('logged_at'))}</td>"
@@ -329,6 +333,7 @@ def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
         f"<td>{_format_number(row.get('available_at_or_above_target'))}</td>"
         f"<td>{_format_pct(row.get('edge'))}</td>"
         f"<td>{_format_pct(row.get('target_clv'))}</td>"
+        f"<td>{_format_pct(row.get('closing_edge'))}</td>"
         f"<td>{_format_pct(row.get('betfair_fair_edge'))}</td>"
         f"<td>{_format_pct(row.get('betfair_back_lay_spread_pct'))}</td>"
         f"<td>{_format_number(row.get('profit'))}</td>"
@@ -355,6 +360,7 @@ def _venue_results_html(venues: list[dict[str, Any]]) -> str:
               <th>ROI</th>
               <th>Median Liquidity</th>
               <th>Closed CLV</th>
+              <th>Closed Fair Edge</th>
             </tr>
           </thead>
           <tbody>
@@ -381,6 +387,7 @@ def _group_results_html(title: str, rows: list[dict[str, Any]], label: str) -> s
               <th>ROI</th>
               <th>Median Liquidity</th>
               <th>Closed CLV</th>
+              <th>Closed Fair Edge</th>
             </tr>
           </thead>
           <tbody>
@@ -393,7 +400,7 @@ def _group_results_html(title: str, rows: list[dict[str, Any]], label: str) -> s
 
 def _group_rows_html(rows: list[dict[str, Any]], *, label_key: str) -> str:
     if not rows:
-        return '<tr><td colspan="9">No results for the current filters.</td></tr>'
+        return '<tr><td colspan="10">No results for the current filters.</td></tr>'
     return "\n".join(
         "<tr>"
         f"<td>{_escape(row[label_key])}</td>"
@@ -405,6 +412,7 @@ def _group_rows_html(rows: list[dict[str, Any]], *, label_key: str) -> str:
         f"<td class='{_class_for_number(row['settled_roi'])}'>{row['settled_roi']:.2%}</td>"
         f"<td>{row['median_confirmed_liquidity_at_target']:.2f}</td>"
         f"<td class='{_class_for_number(row['average_clv'])}'>{row['average_clv']:.2%}</td>"
+        f"<td class='{_class_for_number(row['average_closed_fair_edge'])}'>{row['average_closed_fair_edge']:.2%}</td>"
         "</tr>"
         for row in rows
     )
@@ -505,6 +513,13 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
     clv_rows = [item for item in trades if _has_clv(item)]
     closed_clv_rows = [item for item in clv_rows if _market_has_closed(item, now=now)]
     mark_to_market_clv_rows = [item for item in clv_rows if not _market_has_closed(item, now=now)]
+    fair_edge_rows = [item for item in trades if _has_closing_edge(item)]
+    closed_fair_edge_rows = [
+        item for item in fair_edge_rows if _market_has_closed(item, now=now)
+    ]
+    mark_to_market_fair_edge_rows = [
+        item for item in fair_edge_rows if not _market_has_closed(item, now=now)
+    ]
     staked = sum(_float(item.get("stake")) for item in settled)
     profit = sum(_float(item.get("profit")) for item in settled)
     wins = sum(1 for item in settled if _float(item.get("profit")) > 0)
@@ -515,6 +530,18 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
     average_closed_clv = _average(_float(item.get("target_clv")) for item in closed_clv_rows)
     average_mark_to_market_clv = _average(
         _float(item.get("target_clv")) for item in mark_to_market_clv_rows
+    )
+    average_closed_fair_edge = _average(
+        _float(item.get("closing_edge")) for item in closed_fair_edge_rows
+    )
+    average_mark_to_market_fair_edge = _average(
+        _float(item.get("closing_edge")) for item in mark_to_market_fair_edge_rows
+    )
+    positive_closed_fair_edge = sum(
+        1 for item in closed_fair_edge_rows if _float(item.get("closing_edge")) > 0
+    )
+    positive_mark_to_market_fair_edge = sum(
+        1 for item in mark_to_market_fair_edge_rows if _float(item.get("closing_edge")) > 0
     )
     return {
         "total_trades": len(trades),
@@ -546,11 +573,31 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         "mark_to_market_clv_beats": mark_to_market_counts["beats"],
         "mark_to_market_clv_misses": mark_to_market_counts["misses"],
         "mark_to_market_clv_ties": mark_to_market_counts["ties"],
+        "average_closed_fair_edge": average_closed_fair_edge,
+        "closed_fair_edge_trades": len(closed_fair_edge_rows),
+        "positive_closed_fair_edge": positive_closed_fair_edge,
+        "positive_closed_fair_edge_rate": (
+            positive_closed_fair_edge / len(closed_fair_edge_rows)
+            if closed_fair_edge_rows
+            else 0.0
+        ),
+        "average_mark_to_market_fair_edge": average_mark_to_market_fair_edge,
+        "mark_to_market_fair_edge_trades": len(mark_to_market_fair_edge_rows),
+        "positive_mark_to_market_fair_edge": positive_mark_to_market_fair_edge,
+        "positive_mark_to_market_fair_edge_rate": (
+            positive_mark_to_market_fair_edge / len(mark_to_market_fair_edge_rows)
+            if mark_to_market_fair_edge_rows
+            else 0.0
+        ),
     }
 
 
 def _has_clv(item: dict[str, Any]) -> bool:
     return item.get("target_clv") not in {None, ""}
+
+
+def _has_closing_edge(item: dict[str, Any]) -> bool:
+    return item.get("closing_edge") not in {None, ""}
 
 
 def _market_has_closed(item: dict[str, Any], *, now: datetime) -> bool:

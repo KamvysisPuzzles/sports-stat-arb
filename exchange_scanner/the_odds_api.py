@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -195,20 +196,25 @@ class TheOddsApiClient:
         self,
         *,
         sport: str,
-        regions: str,
+        regions: str = "",
         markets: str,
         date: datetime,
+        bookmakers: str = "",
         odds_format: str = "decimal",
     ) -> dict[str, Any]:
+        params = {
+            "apiKey": self.api_key,
+            "markets": markets,
+            "oddsFormat": odds_format,
+            "date": date.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        if bookmakers:
+            params["bookmakers"] = bookmakers
+        else:
+            params["regions"] = regions
         response = self.http.get(
             f"/historical/sports/{sport}/odds",
-            params={
-                "apiKey": self.api_key,
-                "regions": regions,
-                "markets": markets,
-                "oddsFormat": odds_format,
-                "date": date.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-            },
+            params=params,
         )
         try:
             response.raise_for_status()
@@ -400,6 +406,8 @@ def find_value_opportunities(
     reference_weights: dict[str, float] | None = None,
     target_commission_rates: dict[str, float] | None = None,
     reference_aggregation: str = "mean",
+    poisson_total_conversion: bool = False,
+    poisson_total_max_line_distance: float = 0.5,
     now: datetime | None = None,
 ) -> list[ValueSignal]:
     now = now or datetime.now(timezone.utc)
@@ -410,14 +418,34 @@ def find_value_opportunities(
         if price.last_update >= cutoff and (include_started or price.commence_time > now)
     ]
 
+    signals: list[ValueSignal] = []
+    if poisson_total_conversion:
+        signals.extend(
+            _poisson_total_value_opportunities(
+                fresh_prices,
+                target_bookmakers=target_bookmakers,
+                reference_bookmakers=reference_bookmakers,
+                min_edge=min_edge,
+                min_reference_books=min_reference_books,
+                allow_target_bookmakers_as_references=allow_target_bookmakers_as_references,
+                target_commission_rates=target_commission_rates,
+                reference_aggregation=reference_aggregation,
+                max_line_distance=poisson_total_max_line_distance,
+            )
+        )
+
+    exact_prices = [
+        price
+        for price in fresh_prices
+        if not (poisson_total_conversion and price.market_key == "totals")
+    ]
     grouped: dict[tuple[str, str, float | None], list[OutcomePrice]] = {}
-    for price in fresh_prices:
+    for price in exact_prices:
         grouped.setdefault(
             (price.event_id, price.market_key, _market_line_key(price)),
             [],
         ).append(price)
 
-    signals: list[ValueSignal] = []
     for market_prices in grouped.values():
         target_prices = _best_target_prices(
             price for price in market_prices if _bookmaker_matches(price, target_bookmakers)
@@ -509,6 +537,265 @@ def find_value_opportunities(
                 )
 
     return sorted(signals, key=lambda signal: signal.edge, reverse=True)
+
+
+def _poisson_total_value_opportunities(
+    prices: list[OutcomePrice],
+    *,
+    target_bookmakers: set[str],
+    reference_bookmakers: set[str] | None,
+    min_edge: float,
+    min_reference_books: int,
+    allow_target_bookmakers_as_references: bool,
+    target_commission_rates: dict[str, float] | None,
+    reference_aggregation: str,
+    max_line_distance: float,
+) -> list[ValueSignal]:
+    by_event: dict[str, list[OutcomePrice]] = {}
+    for price in prices:
+        if price.market_key == "totals" and price.point is not None:
+            by_event.setdefault(price.event_id, []).append(price)
+
+    signals: list[ValueSignal] = []
+    for event_prices in by_event.values():
+        target_prices = _best_target_prices(
+            price for price in event_prices if _bookmaker_matches(price, target_bookmakers)
+        )
+        if not target_prices:
+            continue
+        base_reference_prices = [
+            price
+            for price in event_prices
+            if (
+                allow_target_bookmakers_as_references
+                or not _bookmaker_matches(price, target_bookmakers)
+            )
+            and (reference_bookmakers is None or _bookmaker_matches(price, reference_bookmakers))
+        ]
+        if not base_reference_prices:
+            continue
+
+        for target in target_prices:
+            reference_fits = _poisson_total_reference_fits(
+                [
+                    price
+                    for price in base_reference_prices
+                    if _bookmaker_identity(price) != _bookmaker_identity(target)
+                    and abs(float(price.point) - float(target.point)) <= max_line_distance
+                ],
+                aggregation=reference_aggregation,
+            )
+            if len(reference_fits) < min_reference_books:
+                continue
+            lambda_total = _aggregate_poisson_lambdas(
+                [fit.lambda_total for fit in reference_fits],
+                aggregation=reference_aggregation,
+            )
+            fair_probability = _poisson_total_probability(
+                lambda_total,
+                side=target.outcome_name,
+                line=float(target.point),
+            )
+            if fair_probability <= 0:
+                continue
+            target_effective_odds = effective_decimal_odds(
+                target.odds,
+                _target_commission_rate(target, target_commission_rates),
+            )
+            edge = (target_effective_odds * fair_probability) - 1
+            if edge < min_edge:
+                continue
+            references = tuple(sorted({fit.bookmaker_title for fit in reference_fits}))
+            signals.append(
+                ValueSignal(
+                    sport_key=target.sport_key,
+                    event_id=target.event_id,
+                    event_name=target.event_name,
+                    commence_time=target.commence_time,
+                    market_key=target.market_key,
+                    outcome_name=target.comparable_outcome_name,
+                    target_bookmaker=target.bookmaker_title,
+                    target_odds=target.odds,
+                    target_effective_odds=target_effective_odds,
+                    reference_fair_odds=1 / fair_probability,
+                    reference_probability=fair_probability,
+                    edge=edge,
+                    reference_bookmakers=references,
+                    betfair_fair_odds=_target_venue_fair_odds(target),
+                    betfair_fair_edge=_betfair_fair_edge(
+                        target_effective_odds,
+                        _target_venue_fair_odds(target),
+                    ),
+                    betfair_back_lay_spread_pct=target.exchange_spread_pct,
+                )
+            )
+    return signals
+
+
+@dataclass(frozen=True)
+class _PoissonTotalFit:
+    bookmaker_key: str
+    bookmaker_title: str
+    line: float
+    lambda_total: float
+
+
+def _poisson_total_reference_fits(
+    prices: list[OutcomePrice],
+    *,
+    aggregation: str,
+) -> list[_PoissonTotalFit]:
+    by_book_line: dict[tuple[str, float], dict[str, OutcomePrice]] = {}
+    for price in prices:
+        by_book_line.setdefault((_bookmaker_identity(price), float(price.point)), {})[
+            price.outcome_name.casefold()
+        ] = price
+
+    line_fits: list[_PoissonTotalFit] = []
+    for (bookmaker_key, line), outcomes in by_book_line.items():
+        over = outcomes.get("over")
+        under = outcomes.get("under")
+        if over is None or under is None:
+            continue
+        overround = (1 / over.odds) + (1 / under.odds)
+        if overround <= 0:
+            continue
+        fair_over_probability = (1 / over.odds) / overround
+        lambda_total = _solve_poisson_total_lambda(
+            line=line,
+            fair_over_probability=fair_over_probability,
+        )
+        if lambda_total is None:
+            continue
+        line_fits.append(
+            _PoissonTotalFit(
+                bookmaker_key=bookmaker_key,
+                bookmaker_title=over.bookmaker_title,
+                line=line,
+                lambda_total=lambda_total,
+            )
+        )
+
+    by_bookmaker: dict[str, list[_PoissonTotalFit]] = {}
+    for fit in line_fits:
+        by_bookmaker.setdefault(fit.bookmaker_key, []).append(fit)
+
+    fits = []
+    for bookmaker_fits in by_bookmaker.values():
+        fits.append(
+            _PoissonTotalFit(
+                bookmaker_key=bookmaker_fits[0].bookmaker_key,
+                bookmaker_title=bookmaker_fits[0].bookmaker_title,
+                line=_aggregate_poisson_lambdas(
+                    [fit.line for fit in bookmaker_fits],
+                    aggregation=aggregation,
+                ),
+                lambda_total=_aggregate_poisson_lambdas(
+                    [fit.lambda_total for fit in bookmaker_fits],
+                    aggregation=aggregation,
+                ),
+            )
+        )
+    return fits
+
+
+def _aggregate_poisson_lambdas(values: list[float], *, aggregation: str) -> float:
+    if aggregation == "median":
+        return median(values)
+    if aggregation == "mean":
+        return sum(values) / len(values)
+    raise ValueError(f"Unsupported reference aggregation: {aggregation}")
+
+
+def _solve_poisson_total_lambda(
+    *,
+    line: float,
+    fair_over_probability: float,
+) -> float | None:
+    if not 0 < fair_over_probability < 1:
+        return None
+    low = 0.01
+    high = 20.0
+    for _ in range(80):
+        mid = (low + high) / 2
+        probability = _poisson_total_probability(mid, side="Over", line=line)
+        if probability < fair_over_probability:
+            low = mid
+        else:
+            high = mid
+    return (low + high) / 2
+
+
+def _poisson_total_probability(lambda_total: float, *, side: str, line: float) -> float:
+    win_units, push_units = _poisson_total_win_push_units(lambda_total, side=side, line=line)
+    if win_units <= 0:
+        return 0.0
+    fair_odds = (1 - push_units) / win_units
+    if fair_odds <= 0:
+        return 0.0
+    return 1 / fair_odds
+
+
+def _poisson_total_win_push_units(
+    lambda_total: float,
+    *,
+    side: str,
+    line: float,
+) -> tuple[float, float]:
+    components = _asian_total_components(line)
+    win_units = 0.0
+    push_units = 0.0
+    for component in components:
+        win, push = _poisson_total_single_line_win_push(lambda_total, side=side, line=component)
+        win_units += win / len(components)
+        push_units += push / len(components)
+    return win_units, push_units
+
+
+def _asian_total_components(line: float) -> tuple[float, ...]:
+    doubled = round(line * 2)
+    if abs(line * 2 - doubled) < 1e-9:
+        return (line,)
+    return (line - 0.25, line + 0.25)
+
+
+def _poisson_total_single_line_win_push(
+    lambda_total: float,
+    *,
+    side: str,
+    line: float,
+) -> tuple[float, float]:
+    integer_line = round(line)
+    has_push = abs(line - integer_line) < 1e-9
+    threshold = int(math.floor(line))
+    if side.casefold() == "over":
+        win = 1 - _poisson_cdf(threshold, lambda_total)
+    elif side.casefold() == "under":
+        if has_push:
+            win = _poisson_cdf(integer_line - 1, lambda_total)
+        else:
+            win = _poisson_cdf(threshold, lambda_total)
+    else:
+        return 0.0, 0.0
+    push = _poisson_pmf(integer_line, lambda_total) if has_push else 0.0
+    return win, push
+
+
+def _poisson_cdf(k: int, lambda_total: float) -> float:
+    if k < 0:
+        return 0.0
+    probability = math.exp(-lambda_total)
+    total = probability
+    for value in range(1, k + 1):
+        probability *= lambda_total / value
+        total += probability
+    return total
+
+
+def _poisson_pmf(k: int, lambda_total: float) -> float:
+    if k < 0:
+        return 0.0
+    return math.exp(-lambda_total) * (lambda_total**k) / math.factorial(k)
 
 
 def betfair_top_of_book_fair_odds(back_odds: float, lay_odds: float) -> float | None:

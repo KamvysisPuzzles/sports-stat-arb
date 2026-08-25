@@ -5,7 +5,7 @@ import io
 import json
 import os
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -14,6 +14,9 @@ from typing import Any
 from exchange_scanner.cli import (
     ACTIVE_H2H_PROFILE,
     BETFAIR_TARGET_BOOKMAKERS,
+    MATCHBOOK_DISCOVERY_H2H_PROFILE,
+    MATCHBOOK_DISCOVERY_SPORT_KEYS,
+    MATCHBOOK_DISCOVERY_SPORT_PREFIXES,
     SHARP_REFERENCE_BOOKMAKER_TITLES,
     SOCCER_H2H_PROFILE,
     SPORT_PROFILES,
@@ -64,10 +67,11 @@ class StrategyRunnerConfig:
     aws_region: str = "eu-west-2"
     odds_s3_prefix: str = "odds_snapshots"
     sports_profile: str = SOCCER_H2H_PROFILE
-    markets: str = "h2h"
+    markets: str = "h2h,totals"
     regions: str = "uk,eu"
     strategy: str = "exchange-clv"
     max_api_requests: int = 100
+    filter_inactive_sports: bool = True
     min_edge: float = 0.005
     max_edge: float = 0.10
     min_reference_books: int = 2
@@ -79,6 +83,8 @@ class StrategyRunnerConfig:
     paper_stake: float = 1.0
     matchbook_currency: str = "GBP"
     matchbook_minimum_liquidity: float = 2.0
+    settle_finished_trades: bool = True
+    enable_matchbook_discovery: bool = False
     betfair_lambda_function_name: str = ""
     use_betfair_lambda: bool = True
     max_betfair_spread_pct: float | None = None
@@ -87,6 +93,7 @@ class StrategyRunnerConfig:
 def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
     event = event or {}
     env = os.environ
+    strategy_name = str(event.get("strategy") or env.get("STRATEGY") or "exchange-clv")
     return StrategyRunnerConfig(
         mode=str(event.get("mode") or env.get("STRATEGY_RUNNER_MODE") or "paper-log"),
         odds_api_key=str(event.get("odds_api_key") or env.get("THE_ODDS_API_KEY") or ""),
@@ -103,11 +110,19 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
         sports_profile=str(
             event.get("sports_profile") or env.get("SPORTS_PROFILE") or SOCCER_H2H_PROFILE
         ),
-        markets=str(event.get("markets") or env.get("MARKETS") or "h2h"),
+        markets=str(event.get("markets") or env.get("MARKETS") or "h2h,totals"),
         regions=str(event.get("regions") or env.get("REGIONS") or "uk,eu"),
-        strategy=str(event.get("strategy") or env.get("STRATEGY") or "exchange-clv"),
+        strategy=strategy_name,
         max_api_requests=int(event.get("max_api_requests") or env.get("MAX_API_REQUESTS") or 100),
-        min_edge=float(event.get("min_edge") or env.get("MIN_EDGE") or 0.005),
+        filter_inactive_sports=_bool(
+            event.get("filter_inactive_sports", env.get("FILTER_INACTIVE_SPORTS", "true"))
+        ),
+        min_edge=float(
+            event.get("min_edge")
+            or env.get("MIN_EDGE")
+            or STRATEGIES.get(strategy_name, {}).get("default_min_edge")
+            or 0.005
+        ),
         max_edge=float(event.get("max_edge") or env.get("MAX_EDGE") or 0.10),
         min_reference_books=int(
             event.get("min_reference_books") or env.get("MIN_REFERENCE_BOOKS") or 2
@@ -129,6 +144,15 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
             event.get("matchbook_minimum_liquidity")
             or env.get("MATCHBOOK_MINIMUM_LIQUIDITY")
             or 2.0
+        ),
+        settle_finished_trades=_bool(
+            event.get("settle_finished_trades", env.get("SETTLE_FINISHED_TRADES", "true"))
+        ),
+        enable_matchbook_discovery=_bool(
+            event.get(
+                "enable_matchbook_discovery",
+                env.get("ENABLE_MATCHBOOK_DISCOVERY", "false"),
+            )
         ),
         betfair_lambda_function_name=str(
             event.get("betfair_lambda_function_name")
@@ -162,6 +186,16 @@ def run_strategy_mode(
             "table": config.dynamodb_table_name,
             "deleted": delete_all_trades(table),
         }
+    if config.mode == "paper-log-combined":
+        return run_combined_paper_log(
+            config,
+            odds_client=odds_client,
+            matchbook_client=matchbook_client,
+            dynamodb_table=dynamodb_table,
+            s3_client=s3_client,
+            lambda_client=lambda_client,
+            now=now,
+        )
     if config.mode != "paper-log":
         raise ValueError(f"Unsupported strategy runner mode: {config.mode}")
     return run_paper_log(
@@ -188,7 +222,11 @@ def run_paper_log(
     _validate_config(config)
     now = now or datetime.now(timezone.utc)
     odds_client = odds_client or TheOddsApiClient(api_key=config.odds_api_key)
-    sports = _sports_for_profile(config.sports_profile, odds_client)
+    sports = _sports_for_profile(
+        config.sports_profile,
+        odds_client,
+        filter_inactive_sports=config.filter_inactive_sports,
+    )
     strategy = STRATEGIES[config.strategy]
     sports = _filter_sports_by_strategy_scope(sports, strategy)
     if len(sports) > config.max_api_requests:
@@ -218,10 +256,14 @@ def run_paper_log(
         closing_signals,
         checked_at=now,
     )
-    settlement = _settle_finished_trades(
-        config,
-        odds_client=odds_client,
-        table=table,
+    settlement = (
+        _settle_finished_trades(
+            config,
+            odds_client=odds_client,
+            table=table,
+        )
+        if config.settle_finished_trades
+        else DynamoSettlementResult(open_trades=0, matched_results=0, settled=0)
     )
     trading_control = trading_control_state(table)
     if trading_control["paused"]:
@@ -289,6 +331,162 @@ def run_paper_log(
         generated_at=now,
     )
     return result
+
+
+def run_combined_paper_log(
+    config: StrategyRunnerConfig,
+    *,
+    odds_client: Any | None = None,
+    matchbook_client: Any | None = None,
+    dynamodb_table: Any | None = None,
+    s3_client: Any | None = None,
+    lambda_client: Any | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    now = now or datetime.now(timezone.utc)
+    _validate_config(config)
+    table = dynamodb_table or _dynamodb_table(config)
+    odds_client = odds_client or TheOddsApiClient(api_key=config.odds_api_key)
+    soccer_config = _combined_branch_config(
+        config,
+        label="soccer",
+        sports_profile=ACTIVE_H2H_PROFILE,
+        strategy="exchange-clv",
+        min_edge=0.005,
+    )
+    soccer_result = run_paper_log(
+        soccer_config,
+        odds_client=odds_client,
+        matchbook_client=matchbook_client,
+        dynamodb_table=table,
+        s3_client=s3_client,
+        lambda_client=lambda_client,
+        now=now,
+    )
+    discovery_result = (
+        run_paper_log(
+            _combined_branch_config(
+                config,
+                label="matchbook-discovery",
+                sports_profile=MATCHBOOK_DISCOVERY_H2H_PROFILE,
+                strategy="matchbook-sharp-h2h",
+                min_edge=0.015,
+            ),
+            odds_client=odds_client,
+            matchbook_client=matchbook_client,
+            dynamodb_table=table,
+            s3_client=s3_client,
+            lambda_client=lambda_client,
+            now=now,
+        )
+        if config.enable_matchbook_discovery
+        else _empty_branch_result()
+    )
+    settlement = _settle_finished_trades(config, odds_client=odds_client, table=table)
+    portfolio_summary = build_portfolio_summary(table, generated_at=now)
+    result = {
+        "mode": config.mode,
+        "branches": {
+            "soccer": soccer_result,
+            "matchbook_discovery": discovery_result,
+        },
+        "sports": soccer_result["sports"] + discovery_result["sports"],
+        "odds_rows": soccer_result["odds_rows"] + discovery_result["odds_rows"],
+        "candidate_signals": (
+            soccer_result["candidate_signals"] + discovery_result["candidate_signals"]
+        ),
+        "liquidity_confirmed_signals": (
+            soccer_result["liquidity_confirmed_signals"]
+            + discovery_result["liquidity_confirmed_signals"]
+        ),
+        "paper_log": {
+            "attempted": (
+                soccer_result["paper_log"]["attempted"]
+                + discovery_result["paper_log"]["attempted"]
+            ),
+            "inserted": (
+                soccer_result["paper_log"]["inserted"] + discovery_result["paper_log"]["inserted"]
+            ),
+            "duplicates": (
+                soccer_result["paper_log"]["duplicates"]
+                + discovery_result["paper_log"]["duplicates"]
+            ),
+        },
+        "settlement": _settlement_result_dict(settlement),
+        "portfolio_summary": portfolio_summary,
+    }
+    result["summary"] = _write_latest_combined_summary(
+        config,
+        s3_client=s3_client,
+        run_result=result,
+        generated_at=now,
+    )
+    return result
+
+
+def _empty_branch_result() -> dict[str, Any]:
+    return {
+        "sports": 0,
+        "odds_rows": 0,
+        "candidate_signals": 0,
+        "liquidity_confirmed_signals": 0,
+        "paper_log": {"attempted": 0, "inserted": 0, "duplicates": 0},
+    }
+
+
+def _combined_branch_config(
+    config: StrategyRunnerConfig,
+    *,
+    label: str,
+    sports_profile: str,
+    strategy: str,
+    min_edge: float,
+) -> StrategyRunnerConfig:
+    return replace(
+        config,
+        mode="paper-log",
+        sports_profile=sports_profile,
+        strategy=strategy,
+        markets=config.markets,
+        min_edge=min_edge,
+        settle_finished_trades=False,
+        odds_s3_prefix=f"{config.odds_s3_prefix.strip('/')}/{label}",
+        summary_s3_prefix=f"{config.summary_s3_prefix.strip('/')}/{label}",
+    )
+
+
+def _write_latest_combined_summary(
+    config: StrategyRunnerConfig,
+    *,
+    s3_client: Any | None,
+    run_result: dict[str, Any],
+    generated_at: datetime,
+) -> dict[str, str | bool]:
+    if not config.odds_s3_bucket:
+        return {"uploaded": False, "reason": "missing_odds_s3_bucket"}
+    s3_client = s3_client or _boto3_client("s3", config.aws_region)
+    prefix = config.summary_s3_prefix.strip("/")
+    text_key = f"{prefix}/latest_combined_strategy_runner_summary.txt"
+    json_key = f"{prefix}/latest_combined_strategy_runner_summary.json"
+    s3_client.put_object(
+        Bucket=config.odds_s3_bucket,
+        Key=text_key,
+        Body=_combined_summary_text(run_result).encode("utf-8"),
+        ContentType="text/plain; charset=utf-8",
+    )
+    s3_client.put_object(
+        Bucket=config.odds_s3_bucket,
+        Key=json_key,
+        Body=json.dumps(_jsonable(run_result), indent=2).encode("utf-8"),
+        ContentType="application/json",
+    )
+    return {
+        "uploaded": True,
+        "bucket": config.odds_s3_bucket,
+        "text_key": text_key,
+        "json_key": json_key,
+        "generated_at": generated_at.isoformat(),
+    }
 
 
 def build_portfolio_summary(table: Any, *, generated_at: datetime) -> dict[str, Any]:
@@ -403,6 +601,49 @@ def _summary_text(result: dict[str, Any]) -> str:
     ) + "\n"
 
 
+def _combined_summary_text(result: dict[str, Any]) -> str:
+    portfolio = result["portfolio_summary"]
+    paper_log = result["paper_log"]
+    branches = result["branches"]
+    lines = [
+        "Combined Strategy Runner Summary",
+        f"Generated at: {portfolio['generated_at']}",
+        "",
+        "Latest run",
+        f"- Sports scanned: {result['sports']}",
+        f"- Odds rows stored: {result['odds_rows']}",
+        f"- Candidate signals: {result['candidate_signals']}",
+        f"- Liquidity-confirmed signals: {result['liquidity_confirmed_signals']}",
+        f"- New paper trades: {paper_log['inserted']}",
+        f"- Duplicate paper trades: {paper_log['duplicates']}",
+        f"- Settled this run: {result['settlement']['settled']}",
+        "",
+        "Branches",
+    ]
+    for label, branch in branches.items():
+        branch_log = branch["paper_log"]
+        lines.extend(
+            [
+                f"- {label}:",
+                f"  sports={branch['sports']}, odds_rows={branch['odds_rows']}, "
+                f"candidates={branch['candidate_signals']}, "
+                f"liquidity_confirmed={branch['liquidity_confirmed_signals']}, "
+                f"inserted={branch_log['inserted']}, duplicates={branch_log['duplicates']}",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "Portfolio",
+            f"- Total trades: {portfolio['total_trades']}",
+            f"- Open trades: {portfolio['open_trades']}",
+            f"- Settled trades: {portfolio['settled_trades']}",
+            f"- Average CLV: {portfolio['average_clv']:.2%}",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
 def _find_signals(
     config: StrategyRunnerConfig,
     prices,
@@ -426,6 +667,7 @@ def _find_signals(
     min_betfair_fair_edge = strategy.get("min_betfair_fair_edge")
     matchbook_soccer_only_markets = strategy.get("matchbook_soccer_only_markets") or set()
     line_market_min_reference_books = strategy.get("line_market_min_reference_books", 0)
+    market_min_edges = strategy.get("market_min_edges") or {}
     max_target_odds = strategy.get("max_target_odds")
     signals = find_strategy_value_opportunities(
         prices,
@@ -443,6 +685,7 @@ def _find_signals(
         min_betfair_fair_edge=min_betfair_fair_edge,
         matchbook_soccer_only_markets=matchbook_soccer_only_markets,
         line_market_min_reference_books=line_market_min_reference_books,
+        market_min_edges=market_min_edges,
         max_target_odds=max_target_odds,
     )
     signals = _filter_signals_by_max_edge(signals, max_edge=config.max_edge)
@@ -493,20 +736,25 @@ def _filter_betfair_dislocation_signals(
     min_betfair_fair_edge: float | None = None,
     matchbook_soccer_only_markets: set[str] | None = None,
     line_market_min_reference_books: int = 0,
+    market_min_edges: dict[str, float] | None = None,
     max_target_odds: float | None = None,
 ) -> list[ValueSignal]:
     matchbook_soccer_only_markets = matchbook_soccer_only_markets or set()
+    market_min_edges = market_min_edges or {}
     if (
         max_betfair_spread_pct is None
         and min_sharp_reference_books <= 0
         and min_betfair_fair_edge is None
         and not matchbook_soccer_only_markets
         and line_market_min_reference_books <= 0
+        and not market_min_edges
         and max_target_odds is None
     ):
         return signals
     filtered = []
     for signal in signals:
+        if signal.edge < market_min_edges.get(signal.market_key, float("-inf")):
+            continue
         if max_target_odds is not None and signal.target_odds > max_target_odds:
             continue
         if not _allowed_by_matchbook_soccer_market_rule(signal, matchbook_soccer_only_markets):
@@ -766,10 +1014,34 @@ def _validate_config(config: StrategyRunnerConfig) -> None:
         raise ValueError(f"Unknown strategy: {config.strategy}")
 
 
-def _sports_for_profile(sports_profile: str, odds_client: Any) -> list[str]:
+def _sports_for_profile(
+    sports_profile: str,
+    odds_client: Any,
+    *,
+    filter_inactive_sports: bool = True,
+) -> list[str]:
     if sports_profile == ACTIVE_H2H_PROFILE:
         return active_h2h_sports(odds_client.fetch_sports())
-    return SPORT_PROFILES[sports_profile]
+    if sports_profile == MATCHBOOK_DISCOVERY_H2H_PROFILE:
+        return _matchbook_discovery_sports(odds_client.fetch_sports())
+    sports = list(SPORT_PROFILES[sports_profile])
+    if not filter_inactive_sports:
+        return sports
+    try:
+        active_sports = set(active_h2h_sports(odds_client.fetch_sports()))
+    except Exception:
+        return sports
+    return [sport for sport in sports if sport in active_sports]
+
+
+def _matchbook_discovery_sports(sports_payload: list[dict[str, object]]) -> list[str]:
+    sports = []
+    for sport in active_h2h_sports(sports_payload):
+        if sport in MATCHBOOK_DISCOVERY_SPORT_KEYS or sport.startswith(
+            MATCHBOOK_DISCOVERY_SPORT_PREFIXES
+        ):
+            sports.append(sport)
+    return sports
 
 
 def _log_result_dict(result: DynamoPaperLogResult) -> dict[str, int]:
