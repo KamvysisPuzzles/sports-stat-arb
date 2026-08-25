@@ -974,17 +974,48 @@ def _unique_event_signals(signals):
 def _unique_bet_signals(signals):
     best_by_bet = {}
     for signal in signals:
-        key = (signal.event_id, signal.market_key, signal.outcome_name.casefold())
+        key = (
+            signal.event_id,
+            signal.market_key,
+            signal.outcome_name.casefold(),
+            signal.bet_side.casefold(),
+        )
         existing = best_by_bet.get(key)
         if existing is None or _better_signal_price(signal, existing):
             best_by_bet[key] = signal
-    return sorted(best_by_bet.values(), key=lambda signal: signal.edge, reverse=True)
+    unique = sorted(best_by_bet.values(), key=lambda signal: signal.edge, reverse=True)
+    return _filter_conflicting_h2h_back_lay_signals(unique)
 
 
 def _better_signal_price(candidate, existing) -> bool:
+    if candidate.bet_side.casefold() == "lay":
+        if candidate.effective_odds != existing.effective_odds:
+            return candidate.effective_odds < existing.effective_odds
+        return candidate.edge > existing.edge
     if candidate.effective_odds != existing.effective_odds:
         return candidate.effective_odds > existing.effective_odds
     return candidate.edge > existing.edge
+
+
+def _filter_conflicting_h2h_back_lay_signals(signals):
+    kept = []
+    for signal in signals:
+        if any(_is_conflicting_h2h_back_lay_signal(signal, existing) for existing in kept):
+            continue
+        kept.append(signal)
+    return kept
+
+
+def _is_conflicting_h2h_back_lay_signal(candidate, existing) -> bool:
+    candidate_side = candidate.bet_side.casefold()
+    existing_side = existing.bet_side.casefold()
+    if {candidate_side, existing_side} != {"back", "lay"}:
+        return False
+    if candidate.market_key != "h2h" or existing.market_key != "h2h":
+        return False
+    if candidate.event_id != existing.event_id:
+        return False
+    return candidate.outcome_name.casefold() != existing.outcome_name.casefold()
 
 
 def _filter_prices_by_event_horizon(prices, *, max_event_days: float, now: datetime | None = None):
@@ -1258,8 +1289,9 @@ def _paper_row(trade: PaperTrade) -> dict[str, str | float | int | bool]:
         "commence_time": trade.commence_time.isoformat(),
         "market": trade.market_key,
         "outcome_name": trade.outcome_name,
+        "bet_side": trade.bet_side,
         "bet_to_place": (
-            f"Back {trade.outcome_name} with {trade.target_bookmaker} "
+            f"{trade.bet_side.title()} {trade.outcome_name} with {trade.target_bookmaker} "
             f"at {trade.target_odds:g} ({_fractional_odds(trade.target_odds)})+"
         ),
         "target_bookmaker": trade.target_bookmaker,

@@ -333,6 +333,111 @@ def test_unique_bet_signals_keeps_best_price_for_same_bet() -> None:
     assert unique == [best_price, different_outcome]
 
 
+def test_unique_bet_signals_allows_offsetting_back_and_lay_same_selection() -> None:
+    back = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Matchbook",
+        target_odds=2.2,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.10,
+        reference_bookmakers=("Pinnacle", "Betfair"),
+        bet_side="back",
+    )
+    lay = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Matchbook",
+        target_odds=1.8,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.09,
+        reference_bookmakers=("Pinnacle", "Betfair"),
+        bet_side="lay",
+    )
+
+    assert _unique_bet_signals([back, lay]) == [back, lay]
+
+
+def test_unique_bet_signals_blocks_stacked_back_and_lay_other_selection() -> None:
+    back = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Matchbook",
+        target_odds=2.2,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.10,
+        reference_bookmakers=("Pinnacle", "Betfair"),
+        bet_side="back",
+    )
+    lay_other = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Chelsea",
+        target_bookmaker="Matchbook",
+        target_odds=1.8,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.09,
+        reference_bookmakers=("Pinnacle", "Betfair"),
+        bet_side="lay",
+    )
+
+    assert _unique_bet_signals([back, lay_other]) == [back]
+
+
+def test_unique_bet_signals_prefers_lower_lay_odds_for_same_lay_bet() -> None:
+    worse_lay = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Matchbook",
+        target_odds=1.9,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.05,
+        reference_bookmakers=("Pinnacle", "Betfair"),
+        bet_side="lay",
+    )
+    better_lay = ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time="2026-08-12T15:00:00Z",
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Matchbook",
+        target_odds=1.8,
+        reference_fair_odds=2.0,
+        reference_probability=0.5,
+        edge=0.09,
+        reference_bookmakers=("Pinnacle", "Betfair"),
+        bet_side="lay",
+    )
+
+    assert _unique_bet_signals([worse_lay, better_lay]) == [better_lay]
+
+
 def test_filter_signals_by_max_edge_excludes_suspicious_high_edges() -> None:
     clean = ValueSignal(
         sport_key="soccer_epl",
