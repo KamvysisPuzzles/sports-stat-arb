@@ -272,14 +272,15 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "return confirm" not in html
     assert "Arsenal v Chelsea" in html
     assert "Liverpool v Everton" in html
-    assert "<th>Side</th>" in html
+    assert "<th>Side</th>" not in html
     assert "<th>Risk Odds</th>" in html
     assert "<th>Risk</th>" in html
     assert "<th>Liquidity</th>" in html
     assert "<th>Edge Basis</th>" not in html
     assert "<th>Entry EV</th>" in html
-    assert '<span class="side-badge side-back">BACK</span>Arsenal' in html
-    assert '<span class="side-badge side-lay">LAY</span>Not Everton' in html
+    assert "Arsenal" in html
+    assert "Not Everton" in html
+    assert "side-badge" not in html
     assert "Risk ROI" in html
     assert "Open Liability" in html
     assert "Entry EV" in html
