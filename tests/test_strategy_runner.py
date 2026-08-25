@@ -149,6 +149,18 @@ class FakeMatchbookClient:
         ]
 
 
+class FakeSmarketsKeepAliveClient:
+    def __init__(self) -> None:
+        self.keep_alive_calls = 0
+
+    def keep_alive(self):
+        self.keep_alive_calls += 1
+        return {"account": {"account_id": "test-account"}}
+
+    def fetch_football_events(self, **kwargs):
+        raise AssertionError("Smarkets events should not be fetched without candidates")
+
+
 class FakeS3Client:
     def __init__(self) -> None:
         self.uploads = []
@@ -538,6 +550,36 @@ def test_run_paper_log_does_not_log_exchange_clv_longshots(monkeypatch) -> None:
     assert result["candidate_signals"] == 0
     assert result["paper_log"]["inserted"] == 0
     assert table.items == {}
+
+
+def test_run_paper_log_keeps_smarkets_token_alive_without_candidates(monkeypatch) -> None:
+    monkeypatch.setitem(strategy_runner.SPORT_PROFILES, "test-profile", ["soccer_epl"])
+    smarkets_client = FakeSmarketsKeepAliveClient()
+    config = StrategyRunnerConfig(
+        mode="paper-log",
+        odds_api_key="test-key",
+        dynamodb_table_name="paper-trades",
+        odds_s3_bucket="odds-bucket",
+        sports_profile="test-profile",
+        max_api_requests=1,
+        min_reference_books=2,
+        smarkets_session_token="session-token",
+        use_betfair_lambda=False,
+    )
+
+    result = run_paper_log(
+        config,
+        odds_client=FakeLongshotOddsClient(),
+        matchbook_client=FakeMatchbookClient(),
+        smarkets_client=smarkets_client,
+        dynamodb_table=FakeTable(),
+        s3_client=FakeS3Client(),
+        now=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+    )
+
+    assert smarkets_client.keep_alive_calls == 1
+    assert result["smarkets_keepalive"] == {"attempted": True, "status": "ok"}
+    assert result["candidate_signals"] == 0
 
 
 def test_run_paper_log_skips_new_trades_when_trading_is_paused(monkeypatch) -> None:

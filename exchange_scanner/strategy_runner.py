@@ -238,6 +238,8 @@ def run_paper_log(
 ) -> dict[str, Any]:
     _validate_config(config)
     now = now or datetime.now(timezone.utc)
+    smarkets_client = _ensure_smarkets_client(config, smarkets_client)
+    smarkets_keepalive = _keep_smarkets_session_alive(smarkets_client)
     odds_client = odds_client or TheOddsApiClient(api_key=config.odds_api_key)
     sports = _sports_for_profile(
         config.sports_profile,
@@ -291,6 +293,7 @@ def run_paper_log(
             "snapshot": snapshot,
             "closing_update": _closing_result_dict(closing_update),
             "settlement": _settlement_result_dict(settlement),
+            "smarkets_keepalive": smarkets_keepalive,
             "trading_control": trading_control,
             "candidate_signals": 0,
             "paper_eligible_signals": 0,
@@ -339,6 +342,7 @@ def run_paper_log(
         "snapshot": snapshot,
         "closing_update": _closing_result_dict(closing_update),
         "settlement": _settlement_result_dict(settlement),
+        "smarkets_keepalive": smarkets_keepalive,
         "trading_control": trading_control,
         "candidate_signals": len(signals),
         "paper_eligible_signals": len(executable_signals),
@@ -844,6 +848,31 @@ def _parse_row_time(value: object) -> datetime | None:
         return None
 
 
+def _ensure_smarkets_client(
+    config: StrategyRunnerConfig,
+    smarkets_client: Any | None,
+) -> Any | None:
+    if smarkets_client is not None:
+        return smarkets_client
+    if not config.smarkets_session_token:
+        return None
+    return SmarketsLiquidityClient(session_token=config.smarkets_session_token)
+
+
+def _keep_smarkets_session_alive(smarkets_client: Any | None) -> dict[str, Any]:
+    if smarkets_client is None:
+        return {"attempted": False, "status": "not_configured"}
+    try:
+        smarkets_client.keep_alive()
+    except Exception as exc:  # noqa: BLE001 - keep the strategy run alive if auth lapses.
+        return {
+            "attempted": True,
+            "status": "failed",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    return {"attempted": True, "status": "ok"}
+
+
 def _settle_finished_trades(
     config: StrategyRunnerConfig,
     *,
@@ -953,25 +982,36 @@ def _enrich_smarkets_rows(
     smarkets_client = smarkets_client or SmarketsLiquidityClient(
         session_token=config.smarkets_session_token
     )
-    events = smarkets_client.fetch_football_events(
-        start=now,
-        end=now + timedelta(days=config.max_event_days),
-    )
+    try:
+        events = smarkets_client.fetch_football_events(
+            start=now,
+            end=now + timedelta(days=config.max_event_days),
+        )
+    except Exception:  # noqa: BLE001 - a venue API error should skip Smarkets, not the run.
+        return [
+            _with_smarkets_liquidity(row, unavailable_smarkets_liquidity("api_error"))
+            if row.get("target_bookmaker", "").casefold() == "smarkets"
+            else row
+            for row in rows
+        ]
     enriched = []
     for row in rows:
         if row.get("target_bookmaker", "").casefold() != "smarkets":
             enriched.append(row)
             continue
-        match = match_smarkets_liquidity(
-            smarkets_client,
-            events,
-            event_name=row["event_name"],
-            commence_time=_parse_row_time(row.get("commence_time")),
-            market_key=row.get("market", "h2h"),
-            outcome_name=row["outcome_name"],
-            target_odds=float(row["target_odds"]),
-            bet_side=row.get("bet_side", "back"),
-        )
+        try:
+            match = match_smarkets_liquidity(
+                smarkets_client,
+                events,
+                event_name=row["event_name"],
+                commence_time=_parse_row_time(row.get("commence_time")),
+                market_key=row.get("market", "h2h"),
+                outcome_name=row["outcome_name"],
+                target_odds=float(row["target_odds"]),
+                bet_side=row.get("bet_side", "back"),
+            )
+        except Exception:  # noqa: BLE001 - do not paper-log unverified Smarkets liquidity.
+            match = unavailable_smarkets_liquidity("api_error")
         enriched.append(_with_smarkets_liquidity(row, match))
     return enriched
 

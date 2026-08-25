@@ -44,6 +44,11 @@ class SmarketsLiquidityClient:
         self._contracts_by_market: dict[str, list[dict[str, Any]]] = {}
         self._quotes_by_market: dict[str, dict[str, Any]] = {}
 
+    def keep_alive(self) -> dict[str, Any]:
+        response = self.http.get("/accounts/")
+        response.raise_for_status()
+        return response.json()
+
     def fetch_football_events(
         self,
         *,
