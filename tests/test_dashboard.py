@@ -81,6 +81,7 @@ def trades():
             "target_bookmaker": "Smarkets",
             "target_odds": Decimal("3.5"),
             "available_at_or_above_target": Decimal(1000),
+            "liquidity_status": "not_applicable",
             "edge": Decimal("0.025"),
             "target_clv": Decimal("-0.01"),
             "closing_edge": Decimal("-0.02"),
@@ -137,8 +138,20 @@ def test_dashboard_payload_summarises_and_filters_trades() -> None:
     assert payload["summary"]["total_trades"] == 1
     assert payload["summary"]["settled_profit"] == 3.136
     assert payload["all_summary"]["total_trades"] == 3
-    assert payload["all_summary"]["median_confirmed_liquidity_at_target"] == 25.5
+    assert payload["all_summary"]["median_confirmed_liquidity_at_target"] == 17.75
     assert payload["trades"][0]["target_bookmaker"] == "Matchbook"
+
+
+def test_dashboard_payload_ignores_not_applicable_liquidity_in_medians() -> None:
+    payload = dashboard_payload(
+        FakeTable(trades()),
+        filters={"bookmaker": "Smarkets"},
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+
+    assert payload["summary"]["total_trades"] == 1
+    assert payload["summary"]["median_confirmed_liquidity_at_target"] == 0.0
+    assert payload["summary"]["median_available_risk_at_target"] == 0.0
 
 
 def test_dashboard_payload_splits_closed_clv_from_mark_to_market() -> None:
@@ -252,7 +265,7 @@ def test_dashboard_payload_calculates_lay_liability_and_internal_entry_ev() -> N
     assert lay["entry_expected_value"] == 0.2
     assert payload["summary"]["open_liability"] == 4.0
     assert payload["summary"]["total_liability"] == 6.0
-    assert payload["summary"]["median_available_risk_at_target"] == 40.0
+    assert payload["summary"]["median_available_risk_at_target"] == 32.75
     assert payload["summary"]["entry_expected_value"] == pytest.approx(0.259)
 
 
@@ -297,6 +310,7 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert '<details class="advanced-filters" open>' not in html
     assert "Median Liquidity" in html
     assert "Smarkets" in html
+    assert "token=secret&amp;bookmaker=Smarkets" in html
     assert 'name="sport" value="soccer"' in html
     assert 'name="league" value="soccer_epl"' in html
     assert 'name="clv" value="closed"' in html

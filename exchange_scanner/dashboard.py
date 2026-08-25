@@ -235,6 +235,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       <a href="{_href_attr(_filter_href(token, clv='closed'))}">Closed CLV</a>
       <a href="{_href_attr(_filter_href(token, clv='mtm'))}">MTM CLV</a>
       <a href="{_href_attr(_filter_href(token, bookmaker='Matchbook'))}">Matchbook</a>
+      <a href="{_href_attr(_filter_href(token, bookmaker='Smarkets'))}">Smarkets</a>
       <a href="{_href_attr(_filter_href(token, bookmaker='Betfair'))}">Betfair</a>
       <a href="{_href_attr(_filter_href(token, format='json'))}">JSON</a>
     </nav>
@@ -576,12 +577,14 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         "median_confirmed_liquidity_at_target": _median(
             _float(item.get("available_at_or_above_target"))
             for item in trades
-            if item.get("available_at_or_above_target") not in {None, ""}
+            if _has_applicable_liquidity(item)
+            and item.get("available_at_or_above_target") not in {None, ""}
         ),
         "median_available_risk_at_target": _median(
             _float(item.get("available_risk_at_target"))
             for item in trades
-            if item.get("available_risk_at_target") not in {None, ""}
+            if _has_applicable_liquidity(item)
+            and item.get("available_risk_at_target") not in {None, ""}
         ),
         "average_clv": average_closed_clv,
         "clv_trades": len(closed_clv_rows),
@@ -807,6 +810,11 @@ def _available_risk_at_target(item: dict[str, Any]) -> float:
     if _bet_side(item) == "lay":
         return max(0.0, available_size * max(0.0, odds - 1))
     return available_size
+
+
+def _has_applicable_liquidity(item: dict[str, Any]) -> bool:
+    status = str(item.get("liquidity_status") or "").casefold()
+    return status not in {"not_applicable", "not_checked"}
 
 
 def _edge_basis(item: dict[str, Any]) -> str:
