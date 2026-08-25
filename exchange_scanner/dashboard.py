@@ -265,12 +265,12 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
             <th>Book</th>
             <th>Side</th>
             <th>Event</th>
-            <th>Selection</th>
-            <th>Odds</th>
+            <th>Bet</th>
+            <th>Raw Odds</th>
+            <th>Risk Odds</th>
+            <th>Risk</th>
             <th>Liquidity</th>
-            <th>Liability</th>
             <th>Edge</th>
-            <th>Edge Basis</th>
             <th>Entry EV</th>
             <th>CLV</th>
             <th>Closing Fair Edge</th>
@@ -316,9 +316,9 @@ def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:
       {_metric("ROI", f"{summary['settled_roi']:.2%}", _class_for_number(summary["settled_roi"]))}
       {_metric("Risk ROI", f"{summary['settled_risk_roi']:.2%}", "profit / liability", tone=_class_for_number(summary["settled_risk_roi"]))}
       {_metric("Open Liability", f"{summary['open_liability']:.2f}")}
-      {_metric("Entry EV", f"{summary['entry_expected_value']:.2f}", "stake/liability adjusted", tone=_class_for_number(summary["entry_expected_value"]))}
-      {_metric("Avg Odds", f"{summary['average_booked_odds']:.2f}")}
-      {_metric("Median Liquidity", f"{summary['median_confirmed_liquidity_at_target']:.2f}")}
+      {_metric("Entry EV", f"{summary['entry_expected_value']:.2f}", "risk adjusted", tone=_class_for_number(summary["entry_expected_value"]))}
+      {_metric("Avg Risk Odds", f"{summary['average_risk_odds']:.2f}")}
+      {_metric("Median Liquidity", f"{summary['median_available_risk_at_target']:.2f}", "risk")}
       {_metric("Closed CLV", f"{summary['average_closed_clv']:.2%}", f"n={summary['closed_clv_trades']}", tone=_class_for_number(summary["average_closed_clv"]))}
       {_metric("Closed B/M/T", f"{summary['closed_clv_beats']}/{summary['closed_clv_misses']}/{summary['closed_clv_ties']}")}
       {_metric("Closed Fair Edge", f"{summary['average_closed_fair_edge']:.2%}", f"n={summary['closed_fair_edge_trades']}", tone=_class_for_number(summary["average_closed_fair_edge"]))}
@@ -350,12 +350,12 @@ def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
         f"<td>{_escape(row.get('target_bookmaker', ''))}</td>"
         f"<td>{_escape(_bet_side(row))}</td>"
         f"<td>{_escape(row.get('event_name', ''))}</td>"
-        f"<td>{_side_badge_html(row)}{_escape(row.get('outcome_name', ''))}</td>"
+        f"<td>{_side_badge_html(row)}{_escape(row.get('risk_selection', ''))}</td>"
         f"<td>{_format_number(row.get('target_odds'))}</td>"
-        f"<td>{_format_number(row.get('available_at_or_above_target'))}</td>"
+        f"<td>{_format_number(row.get('risk_odds'))}</td>"
         f"<td>{_format_number(row.get('liability'))}</td>"
+        f"<td>{_format_number(row.get('available_risk_at_target'))}</td>"
         f"<td>{_format_pct(row.get('edge'))}</td>"
-        f"<td>{_escape(row.get('edge_basis', 'stake'))}</td>"
         f"<td>{_format_number(row.get('entry_expected_value'))}</td>"
         f"<td>{_format_pct(row.get('target_clv'))}</td>"
         f"<td>{_format_pct(row.get('closing_edge'))}</td>"
@@ -597,10 +597,16 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         "settled_risk_roi": profit / settled_liability if settled_liability else 0.0,
         "entry_expected_value": entry_expected_value,
         "average_booked_odds": _average(_float(item.get("target_odds")) for item in trades),
+        "average_risk_odds": _average(_float(item.get("risk_odds")) for item in trades),
         "median_confirmed_liquidity_at_target": _median(
             _float(item.get("available_at_or_above_target"))
             for item in trades
             if item.get("available_at_or_above_target") not in {None, ""}
+        ),
+        "median_available_risk_at_target": _median(
+            _float(item.get("available_risk_at_target"))
+            for item in trades
+            if item.get("available_risk_at_target") not in {None, ""}
         ),
         "average_clv": average_closed_clv,
         "clv_trades": len(closed_clv_rows),
@@ -758,6 +764,9 @@ def _normalise_item(item: dict[str, Any]) -> dict[str, Any]:
     normalised["bet_side"] = _bet_side(normalised)
     normalised["edge_basis"] = _edge_basis(normalised)
     normalised["liability"] = _trade_liability(normalised)
+    normalised["risk_odds"] = _risk_odds(normalised)
+    normalised["risk_selection"] = _risk_selection(normalised)
+    normalised["available_risk_at_target"] = _available_risk_at_target(normalised)
     normalised["entry_expected_value"] = _trade_expected_value(normalised)
     return normalised
 
@@ -796,8 +805,44 @@ def _trade_expected_value(item: dict[str, Any]) -> float:
     return _trade_liability(item) * _float(item.get("edge"))
 
 
+def _risk_odds(item: dict[str, Any]) -> float:
+    odds = _float(item.get("target_odds"))
+    if odds <= 1:
+        return 0.0
+    commission_rate = _commission_rate(item)
+    if _bet_side(item) == "lay":
+        liability_per_unit = odds - 1
+        return 1 + ((1 - commission_rate) / liability_per_unit)
+    target_effective_odds = _float(item.get("target_effective_odds"))
+    if target_effective_odds > 1:
+        return target_effective_odds
+    return 1 + ((odds - 1) * (1 - commission_rate))
+
+
+def _risk_selection(item: dict[str, Any]) -> str:
+    outcome = str(item.get("outcome_name") or "")
+    if _bet_side(item) == "lay":
+        return f"Not {outcome}"
+    return outcome
+
+
+def _available_risk_at_target(item: dict[str, Any]) -> float:
+    available_size = _float(item.get("available_at_or_above_target"))
+    odds = _float(item.get("target_odds"))
+    if _bet_side(item) == "lay":
+        return max(0.0, available_size * max(0.0, odds - 1))
+    return available_size
+
+
 def _edge_basis(item: dict[str, Any]) -> str:
     return "liability" if _bet_side(item) == "lay" else "stake"
+
+
+def _commission_rate(item: dict[str, Any]) -> float:
+    bookmaker = str(item.get("target_bookmaker") or "").casefold()
+    if bookmaker in {"matchbook", "smarkets", "betfair", "betfair_ex_uk", "betfair_ex_eu"}:
+        return 0.02
+    return 0.0
 
 
 def _short_time(value: object) -> str:

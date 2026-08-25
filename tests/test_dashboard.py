@@ -246,9 +246,13 @@ def test_dashboard_payload_calculates_lay_liability_and_entry_ev() -> None:
 
     assert lay["edge_basis"] == "liability"
     assert lay["liability"] == 4.0
+    assert lay["risk_odds"] == pytest.approx(1.245)
+    assert lay["risk_selection"] == "Not Everton"
+    assert lay["available_risk_at_target"] == 40.0
     assert lay["entry_expected_value"] == 0.2
     assert payload["summary"]["open_liability"] == 4.0
     assert payload["summary"]["total_liability"] == 6.0
+    assert payload["summary"]["median_available_risk_at_target"] == 40.0
     assert payload["summary"]["entry_expected_value"] == pytest.approx(0.259)
 
 
@@ -269,11 +273,13 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "Arsenal v Chelsea" in html
     assert "Liverpool v Everton" in html
     assert "<th>Side</th>" in html
-    assert "<th>Liability</th>" in html
-    assert "<th>Edge Basis</th>" in html
+    assert "<th>Risk Odds</th>" in html
+    assert "<th>Risk</th>" in html
+    assert "<th>Liquidity</th>" in html
+    assert "<th>Edge Basis</th>" not in html
     assert "<th>Entry EV</th>" in html
     assert '<span class="side-badge side-back">BACK</span>Arsenal' in html
-    assert '<span class="side-badge side-lay">LAY</span>Everton' in html
+    assert '<span class="side-badge side-lay">LAY</span>Not Everton' in html
     assert "Risk ROI" in html
     assert "Open Liability" in html
     assert "Entry EV" in html
