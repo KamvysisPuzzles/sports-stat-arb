@@ -83,6 +83,12 @@ class ValueSignal:
     betfair_fair_odds: float | None = None
     betfair_fair_edge: float | None = None
     betfair_back_lay_spread_pct: float | None = None
+    reference_fair_odds_by_bookmaker: tuple[tuple[str, float], ...] = ()
+    reference_spread_pct_by_bookmaker: tuple[tuple[str, float], ...] = ()
+    reference_last_update_by_bookmaker: tuple[tuple[str, str], ...] = ()
+    reference_disagreement_pct: float | None = None
+    reference_max_spread_pct: float | None = None
+    reference_avg_spread_pct: float | None = None
 
     @property
     def effective_odds(self) -> float:
@@ -107,6 +113,30 @@ class ValueSignal:
             "betfair_fair_odds": self.betfair_fair_odds or "",
             "betfair_fair_edge": self.betfair_fair_edge or "",
             "betfair_back_lay_spread_pct": self.betfair_back_lay_spread_pct or "",
+            "reference_fair_odds_by_bookmaker": _json_diagnostic(
+                self.reference_fair_odds_by_bookmaker
+            ),
+            "reference_spread_pct_by_bookmaker": _json_diagnostic(
+                self.reference_spread_pct_by_bookmaker
+            ),
+            "reference_last_update_by_bookmaker": _json_diagnostic(
+                self.reference_last_update_by_bookmaker
+            ),
+            "reference_disagreement_pct": (
+                self.reference_disagreement_pct
+                if self.reference_disagreement_pct is not None
+                else ""
+            ),
+            "reference_max_spread_pct": (
+                self.reference_max_spread_pct
+                if self.reference_max_spread_pct is not None
+                else ""
+            ),
+            "reference_avg_spread_pct": (
+                self.reference_avg_spread_pct
+                if self.reference_avg_spread_pct is not None
+                else ""
+            ),
             "target_bookmaker_url": bookmaker_url(self.target_bookmaker),
             "event_search_url": bookmaker_event_search_url(self.target_bookmaker, self.event_name),
             "copy_search": f"{self.event_name} {self.outcome_name}",
@@ -482,6 +512,11 @@ def find_value_opportunities(
             )
             if target.comparable_outcome_name not in external_fair_probabilities:
                 continue
+            reference_diagnostics = _reference_diagnostics(
+                reference_prices,
+                target.comparable_outcome_name,
+                expected_outcomes=expected_outcomes,
+            )
             reference_prices.extend(
                 _target_venue_fair_value_reference_prices(
                     market_prices,
@@ -536,6 +571,20 @@ def find_value_opportunities(
                             target_venue_fair_odds,
                         ),
                         betfair_back_lay_spread_pct=target.exchange_spread_pct,
+                        reference_fair_odds_by_bookmaker=reference_diagnostics[
+                            "fair_odds_by_bookmaker"
+                        ],
+                        reference_spread_pct_by_bookmaker=reference_diagnostics[
+                            "spread_pct_by_bookmaker"
+                        ],
+                        reference_last_update_by_bookmaker=reference_diagnostics[
+                            "last_update_by_bookmaker"
+                        ],
+                        reference_disagreement_pct=reference_diagnostics[
+                            "disagreement_pct"
+                        ],
+                        reference_max_spread_pct=reference_diagnostics["max_spread_pct"],
+                        reference_avg_spread_pct=reference_diagnostics["avg_spread_pct"],
                     )
                 )
 
@@ -567,6 +616,24 @@ def find_value_opportunities(
                                 betfair_fair_odds=target_venue_fair_odds,
                                 betfair_fair_edge=None,
                                 betfair_back_lay_spread_pct=target.exchange_spread_pct,
+                                reference_fair_odds_by_bookmaker=reference_diagnostics[
+                                    "fair_odds_by_bookmaker"
+                                ],
+                                reference_spread_pct_by_bookmaker=reference_diagnostics[
+                                    "spread_pct_by_bookmaker"
+                                ],
+                                reference_last_update_by_bookmaker=reference_diagnostics[
+                                    "last_update_by_bookmaker"
+                                ],
+                                reference_disagreement_pct=reference_diagnostics[
+                                    "disagreement_pct"
+                                ],
+                                reference_max_spread_pct=reference_diagnostics[
+                                    "max_spread_pct"
+                                ],
+                                reference_avg_spread_pct=reference_diagnostics[
+                                    "avg_spread_pct"
+                                ],
                             )
                         )
 
@@ -961,6 +1028,67 @@ def _fair_probabilities(
     if aggregation != "mean":
         raise ValueError(f"Unsupported reference aggregation: {aggregation}")
     return _mean_probabilities(normalised_probs, min_reference_books=min_reference_books)
+
+
+def _reference_diagnostics(
+    prices: list[OutcomePrice],
+    outcome_name: str,
+    *,
+    expected_outcomes: int,
+) -> dict[str, Any]:
+    by_bookmaker: dict[str, dict[str, OutcomePrice]] = {}
+    for price in prices:
+        by_bookmaker.setdefault(_bookmaker_identity(price), {})[
+            price.comparable_outcome_name
+        ] = price
+
+    fair_odds_by_bookmaker: list[tuple[str, float]] = []
+    spread_pct_by_bookmaker: list[tuple[str, float]] = []
+    last_update_by_bookmaker: list[tuple[str, str]] = []
+    for bookmaker_prices in by_bookmaker.values():
+        if len(bookmaker_prices) != expected_outcomes or outcome_name not in bookmaker_prices:
+            continue
+        overround = sum(1 / price.odds for price in bookmaker_prices.values())
+        if overround <= 0:
+            continue
+        selected = bookmaker_prices[outcome_name]
+        probability = (1 / selected.odds) / overround
+        if probability <= 0:
+            continue
+        fair_odds_by_bookmaker.append((selected.bookmaker_title, 1 / probability))
+        last_update_by_bookmaker.append(
+            (selected.bookmaker_title, selected.last_update.isoformat())
+        )
+        if selected.exchange_spread_pct is not None:
+            spread_pct_by_bookmaker.append(
+                (selected.bookmaker_title, selected.exchange_spread_pct)
+            )
+
+    fair_odds = [odds for _, odds in fair_odds_by_bookmaker]
+    spread_pct = [spread for _, spread in spread_pct_by_bookmaker]
+    return {
+        "fair_odds_by_bookmaker": tuple(sorted(fair_odds_by_bookmaker)),
+        "spread_pct_by_bookmaker": tuple(sorted(spread_pct_by_bookmaker)),
+        "last_update_by_bookmaker": tuple(sorted(last_update_by_bookmaker)),
+        "disagreement_pct": _range_pct(fair_odds),
+        "max_spread_pct": max(spread_pct) if spread_pct else None,
+        "avg_spread_pct": sum(spread_pct) / len(spread_pct) if spread_pct else None,
+    }
+
+
+def _range_pct(values: list[float]) -> float | None:
+    if len(values) < 2:
+        return None
+    midpoint = median(values)
+    if midpoint <= 0:
+        return None
+    return (max(values) - min(values)) / midpoint
+
+
+def _json_diagnostic(items: tuple[tuple[str, float | str], ...]) -> str:
+    if not items:
+        return ""
+    return json.dumps(dict(items), sort_keys=True, separators=(",", ":"))
 
 
 def _reference_weight(

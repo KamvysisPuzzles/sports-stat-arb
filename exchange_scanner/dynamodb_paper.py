@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -269,6 +270,24 @@ def paper_item(
         "betfair_back_lay_spread_pct": _decimal(signal.betfair_back_lay_spread_pct)
         if signal.betfair_back_lay_spread_pct is not None
         else "",
+        "reference_fair_odds_by_bookmaker": _json_diagnostic(
+            signal.reference_fair_odds_by_bookmaker
+        ),
+        "reference_spread_pct_by_bookmaker": _json_diagnostic(
+            signal.reference_spread_pct_by_bookmaker
+        ),
+        "reference_last_update_by_bookmaker": _json_diagnostic(
+            signal.reference_last_update_by_bookmaker
+        ),
+        "reference_disagreement_pct": _decimal(signal.reference_disagreement_pct)
+        if signal.reference_disagreement_pct is not None
+        else "",
+        "reference_max_spread_pct": _decimal(signal.reference_max_spread_pct)
+        if signal.reference_max_spread_pct is not None
+        else "",
+        "reference_avg_spread_pct": _decimal(signal.reference_avg_spread_pct)
+        if signal.reference_avg_spread_pct is not None
+        else "",
         "stake": _decimal(stake),
         "status": "open",
         "execution_mode": "paper",
@@ -323,6 +342,12 @@ def _maybe_decimal(value: str) -> str | Decimal:
         return _decimal(float(value))
     except ValueError:
         return value
+
+
+def _json_diagnostic(items: tuple[tuple[str, float | str], ...]) -> str:
+    if not items:
+        return ""
+    return json.dumps(dict(items), sort_keys=True, separators=(",", ":"))
 
 
 def _decimal(value: float) -> Decimal:

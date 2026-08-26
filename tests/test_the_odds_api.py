@@ -540,6 +540,92 @@ def test_value_mode_can_apply_target_book_commission_to_edge() -> None:
     assert signals_with_commission == []
 
 
+def test_value_signal_logs_reference_diagnostics() -> None:
+    events = [
+        {
+            "id": "event-1",
+            "sport_key": "soccer_epl",
+            "home_team": "Arsenal",
+            "away_team": "Chelsea",
+            "commence_time": "2026-08-12T15:00:00Z",
+            "bookmakers": [
+                {
+                    "key": "matchbook",
+                    "title": "Matchbook",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 4.2},
+                                {"name": "Chelsea", "price": 1.3333333333},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "pinnacle",
+                    "title": "Pinnacle",
+                    "last_update": "2026-08-12T12:00:00Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 4.0},
+                                {"name": "Chelsea", "price": 1.3333333333},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "betfair_ex_uk",
+                    "title": "Betfair",
+                    "last_update": "2026-08-12T12:00:30Z",
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 4.1},
+                                {"name": "Chelsea", "price": 1.32},
+                            ],
+                        },
+                        {
+                            "key": "h2h_lay",
+                            "outcomes": [
+                                {"name": "Arsenal", "price": 4.2},
+                                {"name": "Chelsea", "price": 1.34},
+                            ],
+                        },
+                    ],
+                },
+            ],
+        }
+    ]
+
+    signal = find_value_opportunities(
+        normalise_odds_api_events(events),
+        target_bookmakers={"matchbook"},
+        reference_bookmakers={"pinnacle", "betfair"},
+        min_edge=0.0,
+        max_age_seconds=300,
+        min_reference_books=2,
+        now=datetime(2026, 8, 12, 12, 1, tzinfo=timezone.utc),
+    )[0]
+
+    reference_fair_odds = dict(signal.reference_fair_odds_by_bookmaker)
+    assert reference_fair_odds["Betfair"] == pytest.approx(4.1060606061)
+    assert reference_fair_odds["Pinnacle"] == pytest.approx(4.0)
+    assert signal.reference_last_update_by_bookmaker == (
+        ("Betfair", "2026-08-12T12:00:30+00:00"),
+        ("Pinnacle", "2026-08-12T12:00:00+00:00"),
+    )
+    reference_spreads = dict(signal.reference_spread_pct_by_bookmaker)
+    assert reference_spreads["Betfair"] == pytest.approx(0.0240963855)
+    assert signal.reference_disagreement_pct == pytest.approx(0.0261682243)
+    assert signal.reference_max_spread_pct == pytest.approx(0.0240963855)
+    assert signal.reference_avg_spread_pct == pytest.approx(0.0240963855)
+
+
 def test_value_mode_counts_duplicate_reference_titles_once() -> None:
     events = [
         {

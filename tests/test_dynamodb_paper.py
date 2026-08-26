@@ -97,6 +97,38 @@ def test_paper_item_uses_deterministic_trade_id_and_decimal_values() -> None:
     assert item["execution_mode"] == "paper"
 
 
+def test_paper_item_logs_reference_diagnostics() -> None:
+    logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
+    item = paper_item(
+        signal(
+            reference_fair_odds_by_bookmaker=(
+                ("Betfair", 4.1),
+                ("Pinnacle", 4.0),
+            ),
+            reference_spread_pct_by_bookmaker=(("Betfair", 0.02),),
+            reference_last_update_by_bookmaker=(
+                ("Betfair", "2026-08-14T11:59:00+00:00"),
+                ("Pinnacle", "2026-08-14T12:00:00+00:00"),
+            ),
+            reference_disagreement_pct=0.0247,
+            reference_max_spread_pct=0.02,
+            reference_avg_spread_pct=0.02,
+        ),
+        stake=1,
+        logged_at=logged_at,
+    )
+
+    assert item["reference_fair_odds_by_bookmaker"] == '{"Betfair":4.1,"Pinnacle":4.0}'
+    assert item["reference_spread_pct_by_bookmaker"] == '{"Betfair":0.02}'
+    assert item["reference_last_update_by_bookmaker"] == (
+        '{"Betfair":"2026-08-14T11:59:00+00:00",'
+        '"Pinnacle":"2026-08-14T12:00:00+00:00"}'
+    )
+    assert item["reference_disagreement_pct"] == Decimal("0.0247")
+    assert item["reference_max_spread_pct"] == Decimal("0.02")
+    assert item["reference_avg_spread_pct"] == Decimal("0.02")
+
+
 def test_log_signals_to_dynamodb_dedupes_existing_trade_ids() -> None:
     table = FakeTable()
     logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)

@@ -1105,6 +1105,7 @@ def _signal_rows(signals: list[ValueSignal]) -> list[dict[str, str]]:
 
 
 def _signal_row(signal: ValueSignal) -> dict[str, str]:
+    signal_dict = signal.as_dict()
     return {
         "sport_key": signal.sport_key,
         "event_id": signal.event_id,
@@ -1127,6 +1128,12 @@ def _signal_row(signal: ValueSignal) -> dict[str, str]:
         "betfair_fair_odds": _format_optional(signal.betfair_fair_odds),
         "betfair_fair_edge": _format_optional(signal.betfair_fair_edge),
         "betfair_back_lay_spread_pct": _format_optional(signal.betfair_back_lay_spread_pct),
+        "reference_fair_odds_by_bookmaker": signal_dict["reference_fair_odds_by_bookmaker"],
+        "reference_spread_pct_by_bookmaker": signal_dict["reference_spread_pct_by_bookmaker"],
+        "reference_last_update_by_bookmaker": signal_dict["reference_last_update_by_bookmaker"],
+        "reference_disagreement_pct": _format_optional(signal.reference_disagreement_pct),
+        "reference_max_spread_pct": _format_optional(signal.reference_max_spread_pct),
+        "reference_avg_spread_pct": _format_optional(signal.reference_avg_spread_pct),
     }
 
 
