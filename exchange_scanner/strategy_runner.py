@@ -511,18 +511,27 @@ def _write_latest_combined_summary(
     prefix = config.summary_s3_prefix.strip("/")
     text_key = f"{prefix}/latest_combined_strategy_runner_summary.txt"
     json_key = f"{prefix}/latest_combined_strategy_runner_summary.json"
-    s3_client.put_object(
-        Bucket=config.odds_s3_bucket,
-        Key=text_key,
-        Body=_combined_summary_text(run_result).encode("utf-8"),
-        ContentType="text/plain; charset=utf-8",
-    )
-    s3_client.put_object(
-        Bucket=config.odds_s3_bucket,
-        Key=json_key,
-        Body=json.dumps(_jsonable(run_result), indent=2).encode("utf-8"),
-        ContentType="application/json",
-    )
+    try:
+        s3_client.put_object(
+            Bucket=config.odds_s3_bucket,
+            Key=text_key,
+            Body=_combined_summary_text(run_result).encode("utf-8"),
+            ContentType="text/plain; charset=utf-8",
+        )
+        s3_client.put_object(
+            Bucket=config.odds_s3_bucket,
+            Key=json_key,
+            Body=json.dumps(_jsonable(run_result), indent=2).encode("utf-8"),
+            ContentType="application/json",
+        )
+    except Exception as exc:  # noqa: BLE001 - summary upload must not block trading.
+        return {
+            "uploaded": False,
+            "bucket": config.odds_s3_bucket,
+            "text_key": text_key,
+            "json_key": json_key,
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
     return {
         "uploaded": True,
         "bucket": config.odds_s3_bucket,
@@ -578,18 +587,27 @@ def _write_latest_summary(
     prefix = config.summary_s3_prefix.strip("/")
     text_key = f"{prefix}/latest_strategy_runner_summary.txt"
     json_key = f"{prefix}/latest_strategy_runner_summary.json"
-    s3_client.put_object(
-        Bucket=config.odds_s3_bucket,
-        Key=text_key,
-        Body=_summary_text(run_result).encode("utf-8"),
-        ContentType="text/plain; charset=utf-8",
-    )
-    s3_client.put_object(
-        Bucket=config.odds_s3_bucket,
-        Key=json_key,
-        Body=json.dumps(_jsonable(run_result), indent=2).encode("utf-8"),
-        ContentType="application/json",
-    )
+    try:
+        s3_client.put_object(
+            Bucket=config.odds_s3_bucket,
+            Key=text_key,
+            Body=_summary_text(run_result).encode("utf-8"),
+            ContentType="text/plain; charset=utf-8",
+        )
+        s3_client.put_object(
+            Bucket=config.odds_s3_bucket,
+            Key=json_key,
+            Body=json.dumps(_jsonable(run_result), indent=2).encode("utf-8"),
+            ContentType="application/json",
+        )
+    except Exception as exc:  # noqa: BLE001 - summary upload must not block trading.
+        return {
+            "uploaded": False,
+            "bucket": config.odds_s3_bucket,
+            "text_key": text_key,
+            "json_key": json_key,
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
     return {
         "uploaded": True,
         "bucket": config.odds_s3_bucket,
