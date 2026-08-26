@@ -143,6 +143,142 @@ def test_log_signals_to_dynamodb_dedupes_existing_trade_ids() -> None:
     assert len(table.items) == 1
 
 
+def test_log_signals_to_dynamodb_blocks_indirect_same_outcome_exposure() -> None:
+    table = FakeTable()
+    logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
+    log_signals_to_dynamodb(
+        table,
+        [
+            signal(
+                outcome_name="Chelsea",
+                target_odds=2.2,
+                target_effective_odds=2.176,
+                reference_fair_odds=2.1,
+                reference_probability=1 / 2.1,
+            )
+        ],
+        stake=1,
+        logged_at=logged_at,
+    )
+
+    result = log_signals_to_dynamodb(
+        table,
+        [
+            signal(
+                outcome_name="Arsenal",
+                bet_side="lay",
+                target_odds=2.1,
+                target_effective_odds=2.1,
+                reference_fair_odds=2.2,
+                reference_probability=1 / 2.2,
+            )
+        ],
+        stake=1,
+        logged_at=logged_at,
+    )
+
+    assert result.attempted == 1
+    assert result.inserted == 0
+    assert result.duplicates == 0
+    assert len(table.items) == 1
+
+
+def test_log_signals_to_dynamodb_allows_same_selection_back_lay_hedge() -> None:
+    table = FakeTable()
+    logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
+    log_signals_to_dynamodb(table, [signal()], stake=1, logged_at=logged_at)
+
+    result = log_signals_to_dynamodb(
+        table,
+        [
+            signal(
+                bet_side="lay",
+                target_odds=3.8,
+                target_effective_odds=3.8,
+                reference_fair_odds=4.0,
+                reference_probability=0.25,
+            )
+        ],
+        stake=1,
+        logged_at=logged_at,
+    )
+
+    assert result.inserted == 1
+    assert len(table.items) == 2
+
+
+def test_log_signals_to_dynamodb_scopes_exposure_to_same_venue() -> None:
+    table = FakeTable()
+    logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
+    log_signals_to_dynamodb(
+        table,
+        [
+            signal(
+                outcome_name="Chelsea",
+                target_bookmaker="Matchbook",
+                target_odds=2.2,
+                target_effective_odds=2.176,
+                reference_fair_odds=2.1,
+                reference_probability=1 / 2.1,
+            )
+        ],
+        stake=1,
+        logged_at=logged_at,
+    )
+
+    result = log_signals_to_dynamodb(
+        table,
+        [
+            signal(
+                outcome_name="Arsenal",
+                bet_side="lay",
+                target_bookmaker="Smarkets",
+                target_odds=2.1,
+                target_effective_odds=2.1,
+                reference_fair_odds=2.2,
+                reference_probability=1 / 2.2,
+            )
+        ],
+        stake=1,
+        logged_at=logged_at,
+    )
+
+    assert result.inserted == 1
+    assert len(table.items) == 2
+
+
+def test_log_signals_to_dynamodb_blocks_indirect_exposure_within_batch() -> None:
+    table = FakeTable()
+    logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
+
+    result = log_signals_to_dynamodb(
+        table,
+        [
+            signal(
+                outcome_name="Chelsea",
+                target_odds=2.2,
+                target_effective_odds=2.176,
+                reference_fair_odds=2.1,
+                reference_probability=1 / 2.1,
+            ),
+            signal(
+                outcome_name="Arsenal",
+                bet_side="lay",
+                target_odds=2.1,
+                target_effective_odds=2.1,
+                reference_fair_odds=2.2,
+                reference_probability=1 / 2.2,
+            ),
+        ],
+        stake=1,
+        logged_at=logged_at,
+    )
+
+    assert result.attempted == 2
+    assert result.inserted == 1
+    assert len(table.items) == 1
+
+
 def test_update_closing_values_in_dynamodb_updates_matching_open_trade() -> None:
     table = FakeTable()
     logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)

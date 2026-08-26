@@ -59,6 +59,11 @@ def log_signals_to_dynamodb(
     liquidity_by_key: dict[tuple[str, str, str, str, str], dict[str, str]] | None = None,
 ) -> DynamoPaperLogResult:
     logged_at = logged_at or datetime.now(timezone.utc)
+    attempted = len(signals)
+    signals = _filter_stacked_positive_exposure_signals(
+        signals,
+        existing_items=list_open_trades(table),
+    )
     inserted = 0
     duplicates = 0
     for signal in signals:
@@ -81,7 +86,7 @@ def log_signals_to_dynamodb(
                 continue
             raise
     return DynamoPaperLogResult(
-        attempted=len(signals),
+        attempted=attempted,
         inserted=inserted,
         duplicates=duplicates,
     )
@@ -335,6 +340,102 @@ def item_key(item: dict[str, Any]) -> tuple[str, str, str, str, str]:
         str(item["target_bookmaker"]).casefold(),
         str(item.get("bet_side") or "back").casefold(),
     )
+
+
+def _filter_stacked_positive_exposure_signals(
+    signals: list[ValueSignal],
+    *,
+    existing_items: list[dict[str, Any]],
+) -> list[ValueSignal]:
+    kept: list[ValueSignal] = []
+    existing_by_group: dict[tuple[str, str, str], list[dict[str, Any] | ValueSignal]] = {}
+    for item in existing_items:
+        if str(item.get("market") or item.get("market_key", "h2h")).casefold() != "h2h":
+            continue
+        existing_by_group.setdefault(_exposure_group_key(item), []).append(item)
+
+    for signal in signals:
+        if signal.market_key.casefold() != "h2h":
+            kept.append(signal)
+            continue
+        group_key = _exposure_group_key(signal)
+        group_items = existing_by_group.setdefault(group_key, [])
+        universe = _event_outcome_universe([*group_items, signal])
+        signal_positive = _positive_outcomes(signal, universe)
+        existing_positive: set[str] = set()
+        blocked = False
+        for item in group_items:
+            if _same_bet(item, signal):
+                continue
+            positive = _positive_outcomes(item, universe)
+            if signal_positive & existing_positive:
+                blocked = True
+                break
+            if signal_positive & positive:
+                blocked = True
+                break
+            existing_positive.update(positive)
+        if blocked:
+            continue
+        kept.append(signal)
+        group_items.append(signal)
+    return kept
+
+
+def _exposure_group_key(item: dict[str, Any] | ValueSignal) -> tuple[str, str, str]:
+    if isinstance(item, ValueSignal):
+        return (
+            item.event_id.casefold(),
+            item.market_key.casefold(),
+            item.target_bookmaker.casefold(),
+        )
+    return (
+        str(item["event_id"]).casefold(),
+        str(item.get("market") or item.get("market_key", "h2h")).casefold(),
+        str(item["target_bookmaker"]).casefold(),
+    )
+
+
+def _event_outcome_universe(items: list[dict[str, Any] | ValueSignal]) -> set[str]:
+    outcomes: set[str] = set()
+    soccer = False
+    for item in items:
+        if isinstance(item, ValueSignal):
+            outcomes.add(item.outcome_name.casefold())
+            event_name = item.event_name
+            sport_key = item.sport_key
+        else:
+            outcomes.add(str(item.get("outcome_name") or "").casefold())
+            event_name = str(item.get("event_name") or "")
+            sport_key = str(item.get("sport_key") or "")
+        soccer = soccer or sport_key.casefold().startswith("soccer_")
+        if " v " in event_name:
+            home, away = event_name.split(" v ", 1)
+            outcomes.update({home.casefold(), away.casefold()})
+    if soccer:
+        outcomes.add("draw")
+    return {outcome for outcome in outcomes if outcome}
+
+
+def _positive_outcomes(
+    item: dict[str, Any] | ValueSignal,
+    universe: set[str],
+) -> set[str]:
+    if isinstance(item, ValueSignal):
+        outcome = item.outcome_name.casefold()
+        bet_side = item.bet_side.casefold()
+    else:
+        outcome = str(item.get("outcome_name") or "").casefold()
+        bet_side = str(item.get("bet_side") or "back").casefold()
+    if bet_side == "lay":
+        return {other for other in universe if other != outcome}
+    return {outcome}
+
+
+def _same_bet(item: dict[str, Any] | ValueSignal, signal: ValueSignal) -> bool:
+    if isinstance(item, ValueSignal):
+        return signal_key(item) == signal_key(signal)
+    return item_key(item) == signal_key(signal)
 
 
 def _maybe_decimal(value: str) -> str | Decimal:
