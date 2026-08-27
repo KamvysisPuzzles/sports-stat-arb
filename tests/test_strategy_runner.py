@@ -390,6 +390,7 @@ def test_strategy_runner_default_markets_are_h2h_only() -> None:
     config = strategy_runner.config_from_event({})
 
     assert config.markets == "h2h,h2h_lay"
+    assert config.max_age_seconds == 180
 
 
 def test_run_strategy_mode_combined_defaults_to_active_exchange_clv_scope(monkeypatch) -> None:
@@ -530,7 +531,7 @@ def test_run_paper_log_updates_and_settles_existing_open_trade(monkeypatch) -> N
         matchbook_client=FakeMatchbookClient(),
         dynamodb_table=table,
         s3_client=FakeS3Client(),
-        now=datetime(2026, 8, 14, 12, 5, tzinfo=timezone.utc),
+        now=datetime(2026, 8, 14, 12, 2, tzinfo=timezone.utc),
     )
 
     assert second_result["closing_update"]["open_trades"] == 1

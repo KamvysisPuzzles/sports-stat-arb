@@ -64,7 +64,7 @@ scan-exchanges \
   --min-edge 0.015 \
   --max-edge 0.10 \
   --min-reference-books 2 \
-  --max-age-seconds 900 \
+  --max-age-seconds 180 \
   --max-event-days 4 \
   --unique-bets
 ```
@@ -99,7 +99,7 @@ For paper staking, pass a bankroll:
 scan-exchanges \
   --min-edge 0.015 \
   --min-reference-books 5 \
-  --max-age-seconds 900 \
+  --max-age-seconds 180 \
   --unique-events \
   --bankroll 1000
 ```

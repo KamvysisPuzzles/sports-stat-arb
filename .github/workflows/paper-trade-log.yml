@@ -64,7 +64,7 @@ jobs:
             --min-edge 0.005 \
             --max-edge "$MAX_EDGE" \
             --min-reference-books 2 \
-            --max-age-seconds 900 \
+            --max-age-seconds 180 \
             --max-event-days 4 \
             --store-odds-snapshot \
             --market-db "$MARKET_DB" \
@@ -174,7 +174,7 @@ jobs:
             --max-event-days 7 \
             --min-edge -999 \
             --min-reference-books 2 \
-            --max-age-seconds 900
+            --max-age-seconds 180
 
       - name: Settle recent results
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'settle-results') || github.event.schedule == '45 */6 * * *' }}
