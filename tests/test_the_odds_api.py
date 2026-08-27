@@ -613,7 +613,7 @@ def test_value_signal_logs_reference_diagnostics() -> None:
     )[0]
 
     reference_fair_odds = dict(signal.reference_fair_odds_by_bookmaker)
-    assert reference_fair_odds["Betfair"] == pytest.approx(4.1060606061)
+    assert reference_fair_odds["Betfair"] == pytest.approx(4.1200241945)
     assert reference_fair_odds["Pinnacle"] == pytest.approx(4.0)
     assert signal.reference_last_update_by_bookmaker == (
         ("Betfair", "2026-08-12T12:00:30+00:00"),
@@ -621,7 +621,7 @@ def test_value_signal_logs_reference_diagnostics() -> None:
     )
     reference_spreads = dict(signal.reference_spread_pct_by_bookmaker)
     assert reference_spreads["Betfair"] == pytest.approx(0.0240963855)
-    assert signal.reference_disagreement_pct == pytest.approx(0.0261682243)
+    assert signal.reference_disagreement_pct == pytest.approx(0.0295625214)
     assert signal.reference_max_spread_pct == pytest.approx(0.0240963855)
     assert signal.reference_avg_spread_pct == pytest.approx(0.0240963855)
 

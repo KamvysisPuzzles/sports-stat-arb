@@ -1010,13 +1010,15 @@ def _fair_probabilities(
     for bookmaker_identity, bookmaker_prices in by_bookmaker.items():
         if len(bookmaker_prices) != expected_outcomes:
             continue
-        overround = sum(1 / price.odds for price in bookmaker_prices.values())
+        overround = sum(
+            _reference_implied_probability(price) for price in bookmaker_prices.values()
+        )
         if overround <= 0:
             continue
         weight = _reference_weight(bookmaker_identity, reference_weights)
         for outcome_name, price in bookmaker_prices.items():
             normalised_probs.setdefault(outcome_name, []).append(
-                ((1 / price.odds) / overround, weight)
+                (_reference_implied_probability(price) / overround, weight)
             )
 
     if aggregation == "median":
@@ -1048,11 +1050,13 @@ def _reference_diagnostics(
     for bookmaker_prices in by_bookmaker.values():
         if len(bookmaker_prices) != expected_outcomes or outcome_name not in bookmaker_prices:
             continue
-        overround = sum(1 / price.odds for price in bookmaker_prices.values())
+        overround = sum(
+            _reference_implied_probability(price) for price in bookmaker_prices.values()
+        )
         if overround <= 0:
             continue
         selected = bookmaker_prices[outcome_name]
-        probability = (1 / selected.odds) / overround
+        probability = _reference_implied_probability(selected) / overround
         if probability <= 0:
             continue
         fair_odds_by_bookmaker.append((selected.bookmaker_title, 1 / probability))
@@ -1074,6 +1078,13 @@ def _reference_diagnostics(
         "max_spread_pct": max(spread_pct) if spread_pct else None,
         "avg_spread_pct": sum(spread_pct) / len(spread_pct) if spread_pct else None,
     }
+
+
+def _reference_implied_probability(price: OutcomePrice) -> float:
+    fair_odds = _target_venue_fair_odds(price)
+    if fair_odds is None or fair_odds <= 1:
+        return 0.0
+    return 1 / fair_odds
 
 
 def _range_pct(values: list[float]) -> float | None:
