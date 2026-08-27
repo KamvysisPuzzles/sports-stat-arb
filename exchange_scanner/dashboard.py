@@ -200,7 +200,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       color: var(--text);
       font-variant-numeric: tabular-nums;
       font-size: 12px;
-      min-width: 42px;
+      min-width: 64px;
       text-align: right;
     }}
     button {{
@@ -478,6 +478,7 @@ def _multi_filter_html(
         active_filters.get("max_reference_disagreement_pct")
     )
     max_reference_spread = _first_filter_value(active_filters.get("max_reference_spread_pct"))
+    min_liquidity = _first_filter_value(active_filters.get("min_liquidity"))
     return f"""<details class="advanced-filters">
       <summary>Advanced Filters</summary>
       <form class="filter-panel" method="get">
@@ -501,6 +502,8 @@ def _multi_filter_html(
               default=0.03,
               max_value=1.0,
               step=0.005,
+              scale=100,
+              suffix="%",
           )}
           {_range_filter(
               name="max_reference_spread_pct",
@@ -509,6 +512,21 @@ def _multi_filter_html(
               default=0.15,
               max_value=0.5,
               step=0.005,
+              scale=100,
+              suffix="%",
+          )}
+        </div>
+        <div class="filter-group">
+          <div class="filter-group-title">Execution</div>
+          {_range_filter(
+              name="min_liquidity",
+              label="Min liquidity",
+              value=min_liquidity,
+              default=25,
+              max_value=500,
+              step=5,
+              scale=1,
+              prefix="GBP ",
           )}
         </div>
         <div class="filter-group">
@@ -562,6 +580,9 @@ def _range_filter(
     default: float,
     max_value: float,
     step: float,
+    scale: float = 100,
+    prefix: str = "",
+    suffix: str = "%",
 ) -> str:
     enabled = value != ""
     slider_value = _bounded_float(value, default=default, min_value=0.0, max_value=max_value)
@@ -569,19 +590,33 @@ def _range_filter(
     output_id = f"{input_id}-value"
     disabled = "" if enabled else " disabled"
     checked = " checked" if enabled else ""
+    checkbox_formatter = _range_value_formatter("r.value", scale=scale, prefix=prefix, suffix=suffix)
+    input_formatter = _range_value_formatter("this.value", scale=scale, prefix=prefix, suffix=suffix)
     return (
         '<label class="range-filter">'
         f'<input type="checkbox"{checked} '
         f'onchange="const r=document.getElementById(\'{input_id}\');'
-        f"r.disabled=!this.checked;document.getElementById('{output_id}').textContent=this.checked?(Number(r.value)*100).toFixed(1)+'%':'off';\">"
+        f"r.disabled=!this.checked;document.getElementById('{output_id}').textContent=this.checked?{checkbox_formatter}:'off';\">"
         f'<span>{_escape(label)}</span>'
         f'<input id="{_escape(input_id)}" type="range" name="{_escape(name)}" '
         f'min="0" max="{max_value:g}" step="{step:g}" value="{slider_value:g}"{disabled} '
-        f"oninput=\"document.getElementById('{output_id}').textContent=(Number(this.value)*100).toFixed(1)+'%';\">"
+        f"oninput=\"document.getElementById('{output_id}').textContent={input_formatter};\">"
         f'<span id="{_escape(output_id)}" class="range-value">'
-        f"{_escape(f'{slider_value * 100:.1f}%' if enabled else 'off')}</span>"
+        f"{_escape(_format_range_value(slider_value, scale=scale, prefix=prefix, suffix=suffix) if enabled else 'off')}</span>"
         "</label>"
     )
+
+
+def _range_value_formatter(value_expression: str, *, scale: float, prefix: str, suffix: str) -> str:
+    decimals = 1 if scale == 100 else 0
+    return (
+        f"'{_escape(prefix)}'+(Number({value_expression})*{scale:g}).toFixed({decimals})+'{_escape(suffix)}'"
+    )
+
+
+def _format_range_value(value: float, *, scale: float, prefix: str, suffix: str) -> str:
+    decimals = 1 if scale == 100 else 0
+    return f"{prefix}{value * scale:.{decimals}f}{suffix}"
 
 
 def _hidden_input(name: str, value: str) -> str:
@@ -809,6 +844,7 @@ def _apply_filters(
         filters.get("max_reference_disagreement_pct")
     )
     max_reference_spread = _optional_filter_float(filters.get("max_reference_spread_pct"))
+    min_liquidity = _optional_filter_float(filters.get("min_liquidity"))
     sports = {value.casefold() for value in _filter_values(filters.get("sport"))}
     leagues = {value.casefold() for value in _filter_values(filters.get("league"))}
     output = trades
@@ -838,6 +874,13 @@ def _apply_filters(
             for item in output
             if _has_number_at_or_below(item, "reference_max_spread_pct", max_reference_spread)
         ]
+    if min_liquidity is not None:
+        output = [
+            item
+            for item in output
+            if _has_applicable_liquidity(item)
+            and _has_number_at_or_above(item, "available_risk_at_target", min_liquidity)
+        ]
     return output
 
 
@@ -857,6 +900,13 @@ def _has_number_at_or_below(item: dict[str, Any], field: str, maximum: float) ->
     if value in {None, ""}:
         return False
     return _float(value) <= maximum
+
+
+def _has_number_at_or_above(item: dict[str, Any], field: str, minimum: float) -> bool:
+    value = item.get(field)
+    if value in {None, ""}:
+        return False
+    return _float(value) >= minimum
 
 
 def _normalise_item(item: dict[str, Any]) -> dict[str, Any]:

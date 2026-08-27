@@ -37,6 +37,7 @@ def lambda_handler(event, context):
         "sport": params.get("sport", []),
         "league": params.get("league", []),
         "clv": params.get("clv", ""),
+        "min_liquidity": params.get("min_liquidity", ""),
         "max_reference_disagreement_pct": params.get("max_reference_disagreement_pct", ""),
         "max_reference_spread_pct": params.get("max_reference_spread_pct", ""),
         "format": params.get("format", ""),

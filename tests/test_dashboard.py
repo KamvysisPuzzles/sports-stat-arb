@@ -221,6 +221,18 @@ def test_dashboard_payload_filters_by_reference_quality() -> None:
     assert payload["filters"]["max_reference_spread_pct"] == "0.15"
 
 
+def test_dashboard_payload_filters_by_min_liquidity() -> None:
+    payload = dashboard_payload(
+        FakeTable(trades()),
+        filters={"min_liquidity": "30"},
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+
+    assert payload["summary"]["total_trades"] == 1
+    assert payload["trades"][0]["trade_id"] == "paper#2"
+    assert payload["filters"]["min_liquidity"] == "30"
+
+
 def test_dashboard_payload_includes_filtered_trades_last_24h() -> None:
     payload = dashboard_payload(
         FakeTable([*trades(), cricket_trade(), next_day_trade()]),
@@ -360,6 +372,7 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert 'name="sport" value="soccer"' in html
     assert 'name="league" value="soccer_epl"' in html
     assert 'name="clv" value="closed"' in html
+    assert 'name="min_liquidity"' in html
     assert 'name="max_reference_disagreement_pct"' in html
     assert 'name="max_reference_spread_pct"' in html
     assert "token=secret&amp;clv=closed" not in html
@@ -411,7 +424,14 @@ def test_lambda_handler_returns_json(monkeypatch) -> None:
     )
 
     response = lambda_function.lambda_handler(
-        {"queryStringParameters": {"token": "secret", "format": "json", "clv": "missing"}},
+        {
+            "queryStringParameters": {
+                "token": "secret",
+                "format": "json",
+                "clv": "missing",
+                "min_liquidity": "30",
+            }
+        },
         None,
     )
 
@@ -420,6 +440,7 @@ def test_lambda_handler_returns_json(monkeypatch) -> None:
     body = json.loads(response["body"])
     assert body["summary"]["total_trades"] == 1
     assert body["trades"][0]["trade_id"] == "paper#2"
+    assert body["filters"]["min_liquidity"] == "30"
     assert body["trading_control"]["enabled"] is True
 
 
