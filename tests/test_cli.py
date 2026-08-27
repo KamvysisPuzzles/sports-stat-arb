@@ -9,6 +9,7 @@ import pytest
 from exchange_scanner.bookmaker_links import EventPageResolution
 from exchange_scanner.cli import (
     ACTIVE_H2H_PROFILE,
+    EXCHANGE_CLV_EXTRA_H2H_SPORT_KEYS,
     EXCHANGE_CLV_TARGET_BOOKMAKERS,
     MATCHBOOK_DISCOVERY_H2H_PROFILE,
     MATCHBOOK_TARGET_BOOKMAKERS,
@@ -20,6 +21,7 @@ from exchange_scanner.cli import (
     _filter_prices_by_event_horizon,
     _filter_signals_by_max_edge,
     _filter_signals_by_strategy_rules,
+    _filter_sports_by_strategy_scope,
     _fractional_odds,
     _markets_for_sport,
     _recommended_value_stake,
@@ -108,7 +110,12 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
     assert strategy["target_commission_rates"]["betfair"] == pytest.approx(0.02)
     assert strategy["reference_weights"] is None
     assert strategy["reference_aggregation"] == "median"
-    assert strategy["allowed_sport_prefixes"] == ("soccer_",)
+    assert strategy["allowed_sport_prefixes"] == ("soccer_", "tennis_")
+    assert strategy["allowed_sport_keys"] == EXCHANGE_CLV_EXTRA_H2H_SPORT_KEYS
+    assert "baseball_mlb" in strategy["allowed_sport_keys"]
+    assert "basketball_nba" in strategy["allowed_sport_keys"]
+    assert "americanfootball_nfl" in strategy["allowed_sport_keys"]
+    assert "icehockey_nhl" in strategy["allowed_sport_keys"]
     assert strategy["allowed_markets"] == {"h2h", "h2h_lay"}
     assert strategy["max_target_odds"] == pytest.approx(6.0)
     assert strategy["max_betfair_spread_pct"] == pytest.approx(0.06)
@@ -236,6 +243,31 @@ def test_markets_for_sport_applies_exchange_clv_allowed_markets() -> None:
         )
         == "h2h,h2h_lay"
     )
+
+
+def test_exchange_clv_sport_scope_allows_soccer_tennis_and_selected_us_sports() -> None:
+    sports = _filter_sports_by_strategy_scope(
+        [
+            "soccer_epl",
+            "tennis_wta_monterrey_open",
+            "baseball_mlb",
+            "basketball_wnba",
+            "americanfootball_nfl",
+            "icehockey_nhl",
+            "cricket_international_t20",
+            "mma_mixed_martial_arts",
+        ],
+        STRATEGIES["exchange-clv"],
+    )
+
+    assert sports == [
+        "soccer_epl",
+        "tennis_wta_monterrey_open",
+        "baseball_mlb",
+        "basketball_wnba",
+        "americanfootball_nfl",
+        "icehockey_nhl",
+    ]
 
 
 def test_unique_event_signals_keeps_highest_edge_per_event() -> None:

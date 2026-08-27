@@ -28,7 +28,7 @@ jobs:
       THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
       PAPER_ALERT_WEBHOOK_URL: ${{ secrets.PAPER_ALERT_WEBHOOK_URL }}
       PAPER_DB: data/paper_trades.sqlite3
-      SPORTS_PROFILE: soccer-h2h
+      SPORTS_PROFILE: active-h2h
       MAX_API_REQUESTS: "100"
       MAX_EDGE: "0.10"
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
@@ -59,7 +59,7 @@ jobs:
           scan-exchanges \
             --strategy exchange-clv \
             --sports-profile "$SPORTS_PROFILE" \
-            --markets h2h \
+            --markets h2h,h2h_lay \
             --max-api-requests "$MAX_API_REQUESTS" \
             --min-edge 0.005 \
             --max-edge "$MAX_EDGE" \
@@ -169,7 +169,7 @@ jobs:
             --paper-db "$PAPER_DB" \
             --paper-update-closing \
             --sports-profile "$SPORTS_PROFILE" \
-            --markets h2h \
+            --markets h2h,h2h_lay \
             --max-api-requests "$MAX_API_REQUESTS" \
             --max-event-days 7 \
             --min-edge -999 \

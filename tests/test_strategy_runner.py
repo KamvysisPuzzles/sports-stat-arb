@@ -392,7 +392,7 @@ def test_strategy_runner_default_markets_are_h2h_only() -> None:
     assert config.markets == "h2h,h2h_lay"
 
 
-def test_run_strategy_mode_combined_defaults_to_active_soccer_only(monkeypatch) -> None:
+def test_run_strategy_mode_combined_defaults_to_active_exchange_clv_scope(monkeypatch) -> None:
     monkeypatch.setitem(strategy_runner.SPORT_PROFILES, "test-profile", ["soccer_epl"])
     table = FakeTable()
     odds_client = FakeMultiSportOddsClient()
@@ -418,15 +418,15 @@ def test_run_strategy_mode_combined_defaults_to_active_soccer_only(monkeypatch) 
     )
 
     assert result["mode"] == "paper-log-combined"
-    assert result["branches"]["soccer"]["sports"] == 2
+    assert result["branches"]["soccer"]["sports"] == 3
     assert result["branches"]["matchbook_discovery"]["sports"] == 0
-    assert odds_client.requested_sports == ["soccer_epl", "soccer_fa_cup"]
-    assert result["paper_log"]["inserted"] == 2
-    assert len(table.items) == 2
+    assert odds_client.requested_sports == ["soccer_epl", "soccer_fa_cup", "basketball_nba"]
+    assert result["paper_log"]["inserted"] == 3
+    assert len(table.items) == 3
     assert {
         item["sport_key"]
         for item in table.items.values()
-    } == {"soccer_epl", "soccer_fa_cup"}
+    } == {"soccer_epl", "soccer_fa_cup", "basketball_nba"}
     assert s3_client.uploads[0][2].rsplit("hour=", maxsplit=1)[0] == (
         "odds_snapshots/soccer/snapshot_date=2026-08-14/"
     )
@@ -461,9 +461,14 @@ def test_run_strategy_mode_combined_can_enable_matchbook_discovery(monkeypatch) 
         now=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
     )
 
-    assert result["branches"]["soccer"]["sports"] == 2
+    assert result["branches"]["soccer"]["sports"] == 3
     assert result["branches"]["matchbook_discovery"]["sports"] == 1
-    assert odds_client.requested_sports == ["soccer_epl", "soccer_fa_cup", "basketball_nba"]
+    assert odds_client.requested_sports == [
+        "soccer_epl",
+        "soccer_fa_cup",
+        "basketball_nba",
+        "basketball_nba",
+    ]
     assert {item["sport_key"] for item in table.items.values()} == {
         "soccer_epl",
         "soccer_fa_cup",

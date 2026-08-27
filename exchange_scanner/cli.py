@@ -84,6 +84,18 @@ EXCHANGE_CLV_TARGET_REFERENCE_BOOKMAKERS = {
     },
 }
 
+EXCHANGE_CLV_EXTRA_H2H_SPORT_KEYS = {
+    "americanfootball_ncaaf",
+    "americanfootball_nfl",
+    "americanfootball_nfl_preseason",
+    "baseball_mlb",
+    "basketball_euroleague",
+    "basketball_nba",
+    "basketball_ncaab",
+    "basketball_wnba",
+    "icehockey_nhl",
+}
+
 MATCHBOOK_DISCOVERY_SPORT_KEYS = {
     "americanfootball_cfl",
     "americanfootball_ncaaf",
@@ -152,7 +164,8 @@ STRATEGIES = {
         "reference_weights": None,
         "reference_aggregation": "median",
         "target_commission_rates": EXCHANGE_CLV_COMMISSION_RATES,
-        "allowed_sport_prefixes": ("soccer_",),
+        "allowed_sport_prefixes": ("soccer_", "tennis_"),
+        "allowed_sport_keys": EXCHANGE_CLV_EXTRA_H2H_SPORT_KEYS,
         "allowed_markets": {"h2h", "h2h_lay"},
         "max_target_odds": 6.0,
         "max_betfair_spread_pct": 0.06,
@@ -917,8 +930,15 @@ def find_strategy_value_opportunities(
 
 def _filter_prices_by_strategy_scope(prices, strategy):
     allowed_prefixes = tuple(strategy.get("allowed_sport_prefixes") or ())
+    allowed_keys = set(strategy.get("allowed_sport_keys") or ())
     if allowed_prefixes:
-        prices = [price for price in prices if price.sport_key.startswith(allowed_prefixes)]
+        prices = [
+            price
+            for price in prices
+            if price.sport_key in allowed_keys or price.sport_key.startswith(allowed_prefixes)
+        ]
+    elif allowed_keys:
+        prices = [price for price in prices if price.sport_key in allowed_keys]
     allowed_markets = strategy.get("allowed_markets")
     if allowed_markets:
         prices = [price for price in prices if price.market_key in allowed_markets]
@@ -927,9 +947,14 @@ def _filter_prices_by_strategy_scope(prices, strategy):
 
 def _filter_sports_by_strategy_scope(sports: list[str], strategy) -> list[str]:
     allowed_prefixes = tuple(strategy.get("allowed_sport_prefixes") or ())
-    if not allowed_prefixes:
+    allowed_keys = set(strategy.get("allowed_sport_keys") or ())
+    if not allowed_prefixes and not allowed_keys:
         return sports
-    return [sport for sport in sports if sport.startswith(allowed_prefixes)]
+    return [
+        sport
+        for sport in sports
+        if sport in allowed_keys or sport.startswith(allowed_prefixes)
+    ]
 
 
 def _allowed_by_matchbook_soccer_market_rule(signal, markets: set[str]) -> bool:
