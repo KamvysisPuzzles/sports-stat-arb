@@ -527,6 +527,7 @@ def _multi_filter_html(
               step=5,
               scale=1,
               prefix="GBP ",
+              suffix="",
           )}
         </div>
         <div class="filter-group">
@@ -645,14 +646,12 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
     open_trades = [item for item in trades if item.get("status") == "open"]
     clv_rows = [item for item in trades if _has_clv(item)]
     closed_clv_rows = [item for item in clv_rows if _market_has_closed(item, now=now)]
-    mark_to_market_clv_rows = [item for item in clv_rows if not _market_has_closed(item, now=now)]
+    mark_to_market_clv_rows = clv_rows
     fair_edge_rows = [item for item in trades if _has_closing_edge(item)]
     closed_fair_edge_rows = [
         item for item in fair_edge_rows if _market_has_closed(item, now=now)
     ]
-    mark_to_market_fair_edge_rows = [
-        item for item in fair_edge_rows if not _market_has_closed(item, now=now)
-    ]
+    mark_to_market_fair_edge_rows = fair_edge_rows
     staked = sum(_float(item.get("stake")) for item in settled)
     settled_liability = sum(_trade_liability(item) for item in settled)
     open_liability = sum(_trade_liability(item) for item in open_trades)
@@ -889,7 +888,7 @@ def _matches_clv_filter(item: dict[str, Any], *, clv: str, now: datetime) -> boo
     if clv == "closed":
         return has_clv and _market_has_closed(item, now=now)
     if clv == "mtm":
-        return has_clv and not _market_has_closed(item, now=now)
+        return has_clv
     if clv == "missing":
         return not has_clv
     return True

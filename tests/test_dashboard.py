@@ -131,6 +131,7 @@ def mark_to_market_trade():
     row["event_name"] = "Newcastle v Brighton"
     row["commence_time"] = "2026-08-18T23:00:00+00:00"
     row["target_clv"] = Decimal("0.03")
+    row["closing_edge"] = Decimal("0.03")
     return row
 
 
@@ -160,7 +161,7 @@ def test_dashboard_payload_ignores_not_applicable_liquidity_in_medians() -> None
     assert payload["summary"]["median_available_risk_at_target"] == 0.0
 
 
-def test_dashboard_payload_splits_closed_clv_from_mark_to_market() -> None:
+def test_dashboard_payload_includes_closed_rows_in_mark_to_market_stats() -> None:
     payload = dashboard_payload(
         FakeTable([*trades(), mark_to_market_trade()]),
         now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
@@ -171,15 +172,20 @@ def test_dashboard_payload_splits_closed_clv_from_mark_to_market() -> None:
     assert payload["summary"]["median_closed_clv"] == 0.005
     assert payload["summary"]["closed_clv_beats"] == 1
     assert payload["summary"]["closed_clv_misses"] == 1
-    assert payload["summary"]["mark_to_market_clv_trades"] == 1
-    assert payload["summary"]["average_mark_to_market_clv"] == 0.03
-    assert payload["summary"]["median_mark_to_market_clv"] == 0.03
-    assert payload["summary"]["mark_to_market_clv_beats"] == 1
+    assert payload["summary"]["mark_to_market_clv_trades"] == 3
+    assert payload["summary"]["average_mark_to_market_clv"] == pytest.approx(0.013333333)
+    assert payload["summary"]["median_mark_to_market_clv"] == 0.02
+    assert payload["summary"]["mark_to_market_clv_beats"] == 2
+    assert payload["summary"]["mark_to_market_clv_misses"] == 1
     assert payload["summary"]["average_clv"] == payload["summary"]["average_closed_clv"]
     assert payload["summary"]["closed_fair_edge_trades"] == 2
     assert payload["summary"]["average_closed_fair_edge"] == pytest.approx(0.005)
     assert payload["summary"]["median_closed_fair_edge"] == pytest.approx(0.005)
     assert payload["summary"]["positive_closed_fair_edge"] == 1
+    assert payload["summary"]["mark_to_market_fair_edge_trades"] == 3
+    assert payload["summary"]["average_mark_to_market_fair_edge"] == pytest.approx(0.013333333)
+    assert payload["summary"]["median_mark_to_market_fair_edge"] == pytest.approx(0.03)
+    assert payload["summary"]["positive_mark_to_market_fair_edge"] == 2
 
 
 def test_dashboard_payload_filters_by_clv_scope() -> None:
@@ -201,7 +207,7 @@ def test_dashboard_payload_filters_by_clv_scope() -> None:
     )
 
     assert {row["trade_id"] for row in closed_payload["trades"]} == {"paper#1", "paper#3"}
-    assert {row["trade_id"] for row in mtm_payload["trades"]} == {"paper#6"}
+    assert {row["trade_id"] for row in mtm_payload["trades"]} == {"paper#1", "paper#3", "paper#6"}
     assert {row["trade_id"] for row in missing_payload["trades"]} == {"paper#2"}
 
 
@@ -378,6 +384,16 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "token=secret&amp;clv=closed" not in html
     assert "token=secret&amp;status=open" in html
     assert "3.14" in html
+
+    active_payload = dashboard_payload(
+        FakeTable(trades()),
+        filters={"min_liquidity": "25"},
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+    active_payload["token"] = "secret"
+    active_html = render_dashboard_html(active_payload)
+    assert "GBP 25" in active_html
+    assert "GBP 25%" not in active_html
 
 
 def test_render_dashboard_html_shows_paused_without_resume_button() -> None:
