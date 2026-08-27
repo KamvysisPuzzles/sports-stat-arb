@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from exchange_scanner.dynamodb_paper import (
+    STRATEGY_REFERENCE_VERSION,
     log_signals_to_dynamodb,
     paper_item,
     settle_results_in_dynamodb,
@@ -93,6 +94,7 @@ def test_paper_item_uses_deterministic_trade_id_and_decimal_values() -> None:
     assert item["trade_id"] == trade_id(signal())
     assert item["target_odds"] == Decimal("4.2")
     assert item["available_at_or_above_target"] == Decimal("25.5")
+    assert item["strategy_reference_version"] == STRATEGY_REFERENCE_VERSION
     assert item["status"] == "open"
     assert item["execution_mode"] == "paper"
 

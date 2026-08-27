@@ -28,6 +28,8 @@ LIQUIDITY_FIELDS = [
     "back_lay_spread_pct",
 ]
 
+STRATEGY_REFERENCE_VERSION = "exchange_midpoint_reference_v2"
+
 
 @dataclass(frozen=True)
 class DynamoPaperLogResult:
@@ -264,6 +266,7 @@ def paper_item(
         "reference_fair_odds": _decimal(signal.reference_fair_odds),
         "reference_probability": _decimal(signal.reference_probability),
         "edge": _decimal(signal.edge),
+        "strategy_reference_version": STRATEGY_REFERENCE_VERSION,
         "reference_bookmakers": list(signal.reference_bookmakers),
         "reference_bookmakers_text": ", ".join(signal.reference_bookmakers),
         "betfair_fair_odds": _decimal(signal.betfair_fair_odds)
