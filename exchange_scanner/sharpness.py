@@ -41,6 +41,8 @@ def init_market_db(path: Path) -> None:
                 outcome_name TEXT NOT NULL,
                 point_key TEXT NOT NULL,
                 odds REAL NOT NULL,
+                exchange_lay_odds REAL,
+                exchange_spread_pct REAL,
                 last_update TEXT NOT NULL,
                 UNIQUE (
                     snapshot_time,
@@ -53,6 +55,8 @@ def init_market_db(path: Path) -> None:
             )
             """
         )
+        _ensure_column(db, "odds_snapshots", "exchange_lay_odds", "REAL")
+        _ensure_column(db, "odds_snapshots", "exchange_spread_pct", "REAL")
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS sharpness_weights (
@@ -97,8 +101,10 @@ def store_odds_snapshot(
                     outcome_name,
                     point_key,
                     odds,
+                    exchange_lay_odds,
+                    exchange_spread_pct,
                     last_update
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     snapshot_time.isoformat(),
@@ -113,6 +119,8 @@ def store_odds_snapshot(
                     price.comparable_outcome_name,
                     _point_key(price.point),
                     price.odds,
+                    price.exchange_lay_odds,
+                    price.exchange_spread_pct,
                     price.last_update.isoformat(),
                 ),
             )
@@ -399,3 +407,9 @@ def _connect(path: Path) -> sqlite3.Connection:
     db = sqlite3.connect(path)
     db.row_factory = sqlite3.Row
     return db
+
+
+def _ensure_column(db: sqlite3.Connection, table: str, column: str, column_type: str) -> None:
+    columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
+    if column not in columns:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")

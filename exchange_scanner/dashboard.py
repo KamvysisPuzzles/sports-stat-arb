@@ -181,6 +181,28 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       gap: 8px;
       align-items: end;
     }}
+    .range-filter {{
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+    }}
+    .range-filter input[type="range"] {{
+      width: 100%;
+      min-width: 120px;
+    }}
+    .range-value {{
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+      min-width: 42px;
+      text-align: right;
+    }}
     button {{
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -257,6 +279,8 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
             <th>Edge</th>
             <th>CLV</th>
             <th>Closing Fair Edge</th>
+            <th>Ref Disagree</th>
+            <th>Ref Spread</th>
             <th>Venue Fair Edge</th>
             <th>Venue Spread</th>
             <th>Profit</th>
@@ -327,7 +351,7 @@ def _metric(label: str, value: object, extra: str = "", *, tone: str = "") -> st
 
 def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
     if not rows:
-        return '<tr><td colspan="16">No trades match the current filters.</td></tr>'
+        return '<tr><td colspan="18">No trades match the current filters.</td></tr>'
     return "\n".join(
         "<tr>"
         f"<td>{_short_time(row.get('logged_at'))}</td>"
@@ -342,6 +366,8 @@ def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
         f"<td>{_format_pct(row.get('edge'))}</td>"
         f"<td>{_format_pct(row.get('target_clv'))}</td>"
         f"<td>{_format_pct(row.get('closing_edge'))}</td>"
+        f"<td>{_format_pct(row.get('reference_disagreement_pct'))}</td>"
+        f"<td>{_format_pct(row.get('reference_max_spread_pct'))}</td>"
         f"<td>{_format_pct(row.get('betfair_fair_edge'))}</td>"
         f"<td>{_format_pct(row.get('betfair_back_lay_spread_pct'))}</td>"
         f"<td>{_format_number(row.get('profit'))}</td>"
@@ -448,6 +474,10 @@ def _multi_filter_html(
     bookmaker = _first_filter_value(active_filters.get("bookmaker"))
     format_value = _first_filter_value(active_filters.get("format"))
     clv_value = _first_filter_value(active_filters.get("clv"))
+    max_reference_disagreement = _first_filter_value(
+        active_filters.get("max_reference_disagreement_pct")
+    )
+    max_reference_spread = _first_filter_value(active_filters.get("max_reference_spread_pct"))
     return f"""<details class="advanced-filters">
       <summary>Advanced Filters</summary>
       <form class="filter-panel" method="get">
@@ -461,6 +491,25 @@ def _multi_filter_html(
           {_radio("clv", "closed", "Closed market", clv_value)}
           {_radio("clv", "mtm", "Mark to market", clv_value)}
           {_radio("clv", "missing", "Missing", clv_value)}
+        </div>
+        <div class="filter-group">
+          <div class="filter-group-title">Reference Quality</div>
+          {_range_filter(
+              name="max_reference_disagreement_pct",
+              label="Max disagreement",
+              value=max_reference_disagreement,
+              default=0.03,
+              max_value=1.0,
+              step=0.005,
+          )}
+          {_range_filter(
+              name="max_reference_spread_pct",
+              label="Max spread",
+              value=max_reference_spread,
+              default=0.15,
+              max_value=0.5,
+              step=0.005,
+          )}
         </div>
         <div class="filter-group">
           <div class="filter-group-title">Sports</div>
@@ -501,6 +550,36 @@ def _radio(name: str, value: str, label: str, selected_value: str) -> str:
         f'<input type="radio" name="{_escape(name)}" value="{_escape(value)}"'
         f"{' checked' if value == selected_value else ''}>"
         f"{_escape(label)}"
+        "</label>"
+    )
+
+
+def _range_filter(
+    *,
+    name: str,
+    label: str,
+    value: str,
+    default: float,
+    max_value: float,
+    step: float,
+) -> str:
+    enabled = value != ""
+    slider_value = _bounded_float(value, default=default, min_value=0.0, max_value=max_value)
+    input_id = f"filter-{name}"
+    output_id = f"{input_id}-value"
+    disabled = "" if enabled else " disabled"
+    checked = " checked" if enabled else ""
+    return (
+        '<label class="range-filter">'
+        f'<input type="checkbox"{checked} '
+        f'onchange="const r=document.getElementById(\'{input_id}\');'
+        f"r.disabled=!this.checked;document.getElementById('{output_id}').textContent=this.checked?(Number(r.value)*100).toFixed(1)+'%':'off';\">"
+        f'<span>{_escape(label)}</span>'
+        f'<input id="{_escape(input_id)}" type="range" name="{_escape(name)}" '
+        f'min="0" max="{max_value:g}" step="{step:g}" value="{slider_value:g}"{disabled} '
+        f"oninput=\"document.getElementById('{output_id}').textContent=(Number(this.value)*100).toFixed(1)+'%';\">"
+        f'<span id="{_escape(output_id)}" class="range-value">'
+        f"{_escape(f'{slider_value * 100:.1f}%' if enabled else 'off')}</span>"
         "</label>"
     )
 
@@ -726,6 +805,10 @@ def _apply_filters(
     status = _first_filter_value(filters.get("status")).casefold()
     bookmaker = _first_filter_value(filters.get("bookmaker")).casefold()
     clv = _first_filter_value(filters.get("clv")).casefold()
+    max_reference_disagreement = _optional_filter_float(
+        filters.get("max_reference_disagreement_pct")
+    )
+    max_reference_spread = _optional_filter_float(filters.get("max_reference_spread_pct"))
     sports = {value.casefold() for value in _filter_values(filters.get("sport"))}
     leagues = {value.casefold() for value in _filter_values(filters.get("league"))}
     output = trades
@@ -743,6 +826,18 @@ def _apply_filters(
         output = [item for item in output if str(item.get("sport_key", "")).casefold() in leagues]
     if clv:
         output = [item for item in output if _matches_clv_filter(item, clv=clv, now=now)]
+    if max_reference_disagreement is not None:
+        output = [
+            item
+            for item in output
+            if _has_number_at_or_below(item, "reference_disagreement_pct", max_reference_disagreement)
+        ]
+    if max_reference_spread is not None:
+        output = [
+            item
+            for item in output
+            if _has_number_at_or_below(item, "reference_max_spread_pct", max_reference_spread)
+        ]
     return output
 
 
@@ -755,6 +850,13 @@ def _matches_clv_filter(item: dict[str, Any], *, clv: str, now: datetime) -> boo
     if clv == "missing":
         return not has_clv
     return True
+
+
+def _has_number_at_or_below(item: dict[str, Any], field: str, maximum: float) -> bool:
+    value = item.get(field)
+    if value in {None, ""}:
+        return False
+    return _float(value) <= maximum
 
 
 def _normalise_item(item: dict[str, Any]) -> dict[str, Any]:
@@ -922,6 +1024,24 @@ def _filter_values(value: Any) -> list[str]:
 def _first_filter_value(value: Any) -> str:
     values = _filter_values(value)
     return values[0] if values else ""
+
+
+def _optional_filter_float(value: Any) -> float | None:
+    text = _first_filter_value(value)
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _bounded_float(value: str, *, default: float, min_value: float, max_value: float) -> float:
+    try:
+        parsed = float(value)
+    except ValueError:
+        parsed = default
+    return min(max(parsed, min_value), max_value)
 
 
 def _sport_family(sport_key: str) -> str:

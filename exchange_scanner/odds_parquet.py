@@ -55,6 +55,8 @@ def snapshot_rows(db_path: Path, snapshot_time: str) -> list[dict[str, Any]]:
                 outcome_name,
                 point_key,
                 odds,
+                exchange_lay_odds,
+                exchange_spread_pct,
                 last_update
             FROM odds_snapshots
             WHERE snapshot_time = ?
@@ -82,6 +84,12 @@ def parquet_row(row: sqlite3.Row) -> dict[str, Any]:
         "bookmaker_title": row["bookmaker_title"],
         "bookmaker_identity": row["bookmaker_identity"],
         "odds": odds,
+        "exchange_lay_odds": (
+            float(row["exchange_lay_odds"]) if row["exchange_lay_odds"] is not None else None
+        ),
+        "exchange_spread_pct": (
+            float(row["exchange_spread_pct"]) if row["exchange_spread_pct"] is not None else None
+        ),
         "implied_probability": 1 / odds if odds else None,
         "last_update": parse_time(row["last_update"]),
         "days_to_start": (commence_time - snapshot_time).total_seconds() / 86400,

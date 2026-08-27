@@ -37,6 +37,8 @@ def lambda_handler(event, context):
         "sport": params.get("sport", []),
         "league": params.get("league", []),
         "clv": params.get("clv", ""),
+        "max_reference_disagreement_pct": params.get("max_reference_disagreement_pct", ""),
+        "max_reference_spread_pct": params.get("max_reference_spread_pct", ""),
         "format": params.get("format", ""),
     }
     payload = dashboard_payload(table, filters=filters)

@@ -48,6 +48,8 @@ def trades():
             "target_odds": Decimal("4.2"),
             "available_at_or_above_target": Decimal("25.5"),
             "edge": Decimal("0.034"),
+            "reference_disagreement_pct": Decimal("0.02"),
+            "reference_max_spread_pct": Decimal("0.10"),
             "target_clv": Decimal("0.02"),
             "closing_edge": Decimal("0.03"),
             "stake": Decimal(1),
@@ -66,6 +68,8 @@ def trades():
             "target_odds": Decimal("5.0"),
             "available_at_or_above_target": Decimal(10),
             "edge": Decimal("0.05"),
+            "reference_disagreement_pct": Decimal("0.01"),
+            "reference_max_spread_pct": Decimal("0.16"),
             "betfair_fair_edge": Decimal("0.02"),
             "betfair_back_lay_spread_pct": Decimal("0.025"),
             "stake": Decimal(1),
@@ -83,6 +87,8 @@ def trades():
             "available_at_or_above_target": Decimal(1000),
             "liquidity_status": "not_applicable",
             "edge": Decimal("0.025"),
+            "reference_disagreement_pct": Decimal("0.04"),
+            "reference_max_spread_pct": Decimal("0.08"),
             "target_clv": Decimal("-0.01"),
             "closing_edge": Decimal("-0.02"),
             "stake": Decimal(1),
@@ -199,6 +205,22 @@ def test_dashboard_payload_filters_by_clv_scope() -> None:
     assert {row["trade_id"] for row in missing_payload["trades"]} == {"paper#2"}
 
 
+def test_dashboard_payload_filters_by_reference_quality() -> None:
+    payload = dashboard_payload(
+        FakeTable(trades()),
+        filters={
+            "max_reference_disagreement_pct": "0.03",
+            "max_reference_spread_pct": "0.15",
+        },
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+
+    assert payload["summary"]["total_trades"] == 1
+    assert payload["trades"][0]["trade_id"] == "paper#1"
+    assert payload["filters"]["max_reference_disagreement_pct"] == "0.03"
+    assert payload["filters"]["max_reference_spread_pct"] == "0.15"
+
+
 def test_dashboard_payload_includes_filtered_trades_last_24h() -> None:
     payload = dashboard_payload(
         FakeTable([*trades(), cricket_trade(), next_day_trade()]),
@@ -307,6 +329,8 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert "<th>Risk Odds</th>" in html
     assert "<th>Risk</th>" in html
     assert "<th>Liquidity</th>" in html
+    assert "<th>Ref Disagree</th>" in html
+    assert "<th>Ref Spread</th>" in html
     assert "<th>Edge Basis</th>" not in html
     assert "<th>Entry EV</th>" not in html
     assert "Arsenal" in html
@@ -336,6 +360,8 @@ def test_render_dashboard_html_contains_metrics_and_trade_rows() -> None:
     assert 'name="sport" value="soccer"' in html
     assert 'name="league" value="soccer_epl"' in html
     assert 'name="clv" value="closed"' in html
+    assert 'name="max_reference_disagreement_pct"' in html
+    assert 'name="max_reference_spread_pct"' in html
     assert "token=secret&amp;clv=closed" not in html
     assert "token=secret&amp;status=open" in html
     assert "3.14" in html

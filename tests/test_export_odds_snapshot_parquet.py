@@ -11,7 +11,13 @@ from exchange_scanner.the_odds_api import OutcomePrice
 from scripts import export_odds_snapshot_parquet
 
 
-def price(*, outcome_name: str, odds: float) -> OutcomePrice:
+def price(
+    *,
+    outcome_name: str,
+    odds: float,
+    exchange_lay_odds: float | None = None,
+    exchange_spread_pct: float | None = None,
+) -> OutcomePrice:
     return OutcomePrice(
         bookmaker_key="pinnacle",
         bookmaker_title="Pinnacle",
@@ -24,6 +30,8 @@ def price(*, outcome_name: str, odds: float) -> OutcomePrice:
         outcome_name=outcome_name,
         point=None,
         odds=odds,
+        exchange_lay_odds=exchange_lay_odds,
+        exchange_spread_pct=exchange_spread_pct,
         last_update=datetime(2026, 8, 14, 23, 5, tzinfo=timezone.utc),
     )
 
@@ -36,7 +44,12 @@ def test_export_latest_odds_snapshot_to_partitioned_parquet(tmp_path, monkeypatc
     store_odds_snapshot(
         db_path,
         [
-            price(outcome_name="Arsenal", odds=2.0),
+            price(
+                outcome_name="Arsenal",
+                odds=2.0,
+                exchange_lay_odds=2.08,
+                exchange_spread_pct=0.0392156863,
+            ),
             price(outcome_name="Chelsea", odds=2.2),
         ],
         snapshot_time=snapshot_time,
@@ -81,5 +94,7 @@ def test_export_latest_odds_snapshot_to_partitioned_parquet(tmp_path, monkeypatc
     assert arsenal["snapshot_time"] == snapshot_time
     assert arsenal["market"] == "h2h"
     assert arsenal["point"] is None
+    assert arsenal["exchange_lay_odds"] == pytest.approx(2.08)
+    assert arsenal["exchange_spread_pct"] == pytest.approx(0.0392156863)
     assert arsenal["implied_probability"] == pytest.approx(0.5)
     assert arsenal["days_to_start"] == pytest.approx((15 + 55 / 60) / 24)
