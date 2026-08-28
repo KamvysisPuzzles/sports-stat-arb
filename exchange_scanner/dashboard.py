@@ -27,6 +27,7 @@ def dashboard_payload(
         "filter_options": _filter_options(trades),
         "summary": _summary(filtered, now=now),
         "all_summary": _summary(trades, now=now),
+        "kelly": _kelly_curve(filtered, filters),
         "venue_results": _venue_results(filtered, now=now),
         "sport_results": _group_results(filtered, group_key="sport_family", label_key="sport", now=now),
         "league_results": _group_results(filtered, group_key="sport_key", label_key="league", now=now),
@@ -203,6 +204,43 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       min-width: 64px;
       text-align: right;
     }}
+    .kelly-section {{
+      margin: 0 0 16px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }}
+    .kelly-head {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }}
+    .kelly-form {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }}
+    .kelly-chart {{
+      width: 100%;
+      height: auto;
+      display: block;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #111820;
+    }}
+    .kelly-stats {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 8px;
+    }}
     button {{
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -260,6 +298,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       <a href="{_href_attr(_filter_href(token, format='json'))}">JSON</a>
     </nav>
     {_multi_filter_html(token, active_filters, filter_options)}
+    {_kelly_html(payload.get("kelly", {}), token, active_filters)}
     {_venue_results_html(payload.get("venue_results", []))}
     {_group_results_html("Results by Sport", payload.get("sport_results", []), "Sport")}
     {_group_results_html("Results by League", payload.get("league_results", []), "League")}
@@ -546,6 +585,176 @@ def _multi_filter_html(
     </details>"""
 
 
+def _kelly_html(kelly: dict[str, Any], token: str, active_filters: dict[str, Any]) -> str:
+    params = kelly.get("params", {})
+    hidden = "\n".join(
+        _hidden_inputs(name, active_filters.get(name))
+        for name in (
+            "status",
+            "bookmaker",
+            "format",
+            "clv",
+            "max_reference_disagreement_pct",
+            "max_reference_spread_pct",
+            "min_liquidity",
+            "sport",
+            "league",
+        )
+    )
+    return f"""<section class="kelly-section">
+      <div class="kelly-head">
+        <h2>Kelly Equity Curve</h2>
+        <div class="meta">Settled trades only, sized from booked edge and risk odds.</div>
+      </div>
+      <form class="kelly-form" method="get">
+        <input type="hidden" name="token" value="{_escape(token)}">
+        {hidden}
+        {_range_filter(
+            name="kelly_bankroll",
+            label="Bankroll",
+            value=str(params.get("bankroll", "")),
+            default=1000,
+            max_value=10000,
+            step=100,
+            scale=1,
+            prefix="GBP ",
+            suffix="",
+        )}
+        {_range_filter(
+            name="kelly_fraction",
+            label="Kelly fraction",
+            value=str(params.get("fraction", "")),
+            default=0.25,
+            max_value=1.0,
+            step=0.05,
+            scale=100,
+            suffix="%",
+        )}
+        {_range_filter(
+            name="kelly_max_risk_pct",
+            label="Max risk",
+            value=str(params.get("max_risk_pct", "")),
+            default=0.05,
+            max_value=0.25,
+            step=0.005,
+            scale=100,
+            suffix="%",
+        )}
+        <div class="filter-actions">
+          <button type="submit">Update</button>
+        </div>
+      </form>
+      {_kelly_svg(kelly)}
+      <div class="kelly-stats">
+        <span>Trades: {_escape(kelly.get("trades", 0))}</span>
+        <span>Final: {_format_money(kelly.get("final_bankroll"))}</span>
+        <span>Return: {_format_pct(kelly.get("return_pct"))}</span>
+        <span>Max drawdown: {_format_pct(kelly.get("max_drawdown_pct"))}</span>
+        <span>Avg risk: {_format_pct(kelly.get("average_risk_pct"))}</span>
+      </div>
+    </section>"""
+
+
+def _kelly_curve(trades: list[dict[str, Any]], filters: dict[str, Any]) -> dict[str, Any]:
+    bankroll = _bounded_filter_float(
+        filters.get("kelly_bankroll"), default=1000.0, min_value=1.0, max_value=10000.0
+    )
+    fraction = _bounded_filter_float(
+        filters.get("kelly_fraction"), default=0.25, min_value=0.0, max_value=1.0
+    )
+    max_risk_pct = _bounded_filter_float(
+        filters.get("kelly_max_risk_pct"), default=0.05, min_value=0.0, max_value=0.25
+    )
+    equity = bankroll
+    peak = bankroll
+    max_drawdown = 0.0
+    total_risk_pct = 0.0
+    points = [{"index": 0, "equity": equity}]
+    settled = sorted(
+        (item for item in trades if str(item.get("status", "")).casefold() == "settled"),
+        key=lambda item: str(item.get("logged_at") or ""),
+    )
+    for index, item in enumerate(settled, start=1):
+        risk_odds = _float(item.get("risk_odds"))
+        edge = max(0.0, _float(item.get("edge")))
+        if risk_odds <= 1 or edge <= 0 or fraction <= 0 or max_risk_pct <= 0:
+            risk_pct = 0.0
+        else:
+            full_kelly = edge / (risk_odds - 1)
+            risk_pct = min(max_risk_pct, max(0.0, full_kelly * fraction))
+        risk_amount = equity * risk_pct
+        liability = _trade_liability(item)
+        profit_per_risk = _float(item.get("profit")) / liability if liability > 0 else 0.0
+        equity += risk_amount * profit_per_risk
+        peak = max(peak, equity)
+        if peak > 0:
+            max_drawdown = max(max_drawdown, (peak - equity) / peak)
+        total_risk_pct += risk_pct
+        points.append({"index": index, "equity": equity})
+    return {
+        "params": {
+            "bankroll": bankroll,
+            "fraction": fraction,
+            "max_risk_pct": max_risk_pct,
+        },
+        "trades": len(settled),
+        "points": points,
+        "final_bankroll": equity,
+        "return_pct": (equity / bankroll - 1) if bankroll > 0 else 0.0,
+        "max_drawdown_pct": max_drawdown,
+        "average_risk_pct": total_risk_pct / len(settled) if settled else 0.0,
+    }
+
+
+def _kelly_svg(kelly: dict[str, Any]) -> str:
+    points = list(kelly.get("points") or [])
+    if len(points) < 2:
+        return (
+            '<svg class="kelly-chart" viewBox="0 0 720 220" role="img" '
+            'aria-label="Kelly equity curve">'
+            '<text x="360" y="112" text-anchor="middle" fill="#9aa8b5" font-size="13">'
+            "No settled trades for the current filters."
+            "</text></svg>"
+        )
+    width = 720
+    height = 220
+    pad_left = 48
+    pad_right = 16
+    pad_top = 16
+    pad_bottom = 34
+    equities = [_float(point.get("equity")) for point in points]
+    min_equity = min(equities)
+    max_equity = max(equities)
+    if min_equity == max_equity:
+        min_equity *= 0.98
+        max_equity *= 1.02
+    usable_width = width - pad_left - pad_right
+    usable_height = height - pad_top - pad_bottom
+
+    def xy(index: int, equity: float) -> tuple[float, float]:
+        x = pad_left + (index / max(1, len(points) - 1)) * usable_width
+        y = pad_top + (max_equity - equity) / (max_equity - min_equity) * usable_height
+        return x, y
+
+    path = []
+    for point_index, point in enumerate(points):
+        x, y = xy(point_index, _float(point.get("equity")))
+        path.append(("M" if point_index == 0 else "L") + f"{x:.1f},{y:.1f}")
+    zero_y = xy(0, _float(kelly.get("params", {}).get("bankroll", 0)))[1]
+    final_class = _class_for_number(_float(kelly.get("return_pct")))
+    stroke = "#3ecf8e" if final_class == "good" else "#ff6b6b" if final_class == "bad" else "#ffd166"
+    return f"""<svg class="kelly-chart" viewBox="0 0 {width} {height}" role="img" aria-label="Kelly equity curve">
+      <line x1="{pad_left}" y1="{zero_y:.1f}" x2="{width - pad_right}" y2="{zero_y:.1f}" stroke="#2d3742" stroke-dasharray="4 4"/>
+      <line x1="{pad_left}" y1="{pad_top}" x2="{pad_left}" y2="{height - pad_bottom}" stroke="#2d3742"/>
+      <line x1="{pad_left}" y1="{height - pad_bottom}" x2="{width - pad_right}" y2="{height - pad_bottom}" stroke="#2d3742"/>
+      <path d="{' '.join(path)}" fill="none" stroke="{stroke}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+      <text x="{pad_left}" y="{height - 10}" fill="#9aa8b5" font-size="11">0</text>
+      <text x="{width - pad_right}" y="{height - 10}" text-anchor="end" fill="#9aa8b5" font-size="11">{len(points) - 1} trades</text>
+      <text x="{pad_left - 8}" y="{pad_top + 4}" text-anchor="end" fill="#9aa8b5" font-size="11">{_format_money(max_equity)}</text>
+      <text x="{pad_left - 8}" y="{height - pad_bottom}" text-anchor="end" fill="#9aa8b5" font-size="11">{_format_money(min_equity)}</text>
+    </svg>"""
+
+
 def _checkboxes(
     name: str,
     options: list[dict[str, str]],
@@ -624,6 +833,10 @@ def _hidden_input(name: str, value: str) -> str:
     if not value:
         return ""
     return f'<input type="hidden" name="{_escape(name)}" value="{_escape(value)}">'
+
+
+def _hidden_inputs(name: str, value: Any) -> str:
+    return "\n".join(_hidden_input(name, item) for item in _filter_values(value))
 
 
 def _filter_href(token: str, **params: str) -> str:
@@ -944,6 +1157,12 @@ def _format_number(value: object) -> str:
     return f"{_float(value):.2f}"
 
 
+def _format_money(value: object) -> str:
+    if value in {None, ""}:
+        return ""
+    return f"GBP {_float(value):,.2f}"
+
+
 def _trade_liability(item: dict[str, Any]) -> float:
     stake = _float(item.get("stake"))
     odds = _float(item.get("target_odds"))
@@ -1091,6 +1310,15 @@ def _bounded_float(value: str, *, default: float, min_value: float, max_value: f
     except ValueError:
         parsed = default
     return min(max(parsed, min_value), max_value)
+
+
+def _bounded_filter_float(
+    value: Any, *, default: float, min_value: float, max_value: float
+) -> float:
+    text = _first_filter_value(value)
+    if not text:
+        return default
+    return _bounded_float(text, default=default, min_value=min_value, max_value=max_value)
 
 
 def _sport_family(sport_key: str) -> str:

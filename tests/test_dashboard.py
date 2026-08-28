@@ -239,6 +239,33 @@ def test_dashboard_payload_filters_by_min_liquidity() -> None:
     assert payload["filters"]["min_liquidity"] == "30"
 
 
+def test_dashboard_payload_includes_kelly_curve() -> None:
+    payload = dashboard_payload(
+        FakeTable(trades()),
+        filters={
+            "kelly_bankroll": "2000",
+            "kelly_fraction": "0.5",
+            "kelly_max_risk_pct": "0.02",
+        },
+        now=datetime(2026, 8, 19, 12, tzinfo=timezone.utc),
+    )
+
+    assert payload["kelly"]["params"] == {
+        "bankroll": 2000.0,
+        "fraction": 0.5,
+        "max_risk_pct": 0.02,
+    }
+    assert payload["kelly"]["trades"] == 2
+    assert len(payload["kelly"]["points"]) == 3
+    assert payload["kelly"]["final_bankroll"] > 2000
+
+    html = render_dashboard_html(payload)
+    assert "Kelly Equity Curve" in html
+    assert 'name="kelly_bankroll"' in html
+    assert 'name="kelly_fraction"' in html
+    assert 'name="kelly_max_risk_pct"' in html
+
+
 def test_dashboard_payload_includes_filtered_trades_last_24h() -> None:
     payload = dashboard_payload(
         FakeTable([*trades(), cricket_trade(), next_day_trade()]),
