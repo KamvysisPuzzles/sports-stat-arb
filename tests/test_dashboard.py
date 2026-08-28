@@ -244,16 +244,18 @@ def test_dashboard_payload_includes_kelly_curve() -> None:
         FakeTable(trades()),
         filters={
             "kelly_bankroll": "2000",
+            "kelly_edge": "0.02",
             "kelly_fraction": "0.5",
-            "kelly_max_risk_pct": "0.02",
+            "kelly_sizing": "0.02",
         },
         now=datetime(2026, 8, 19, 12, tzinfo=timezone.utc),
     )
 
     assert payload["kelly"]["params"] == {
         "bankroll": 2000.0,
+        "edge": 0.02,
         "fraction": 0.5,
-        "max_risk_pct": 0.02,
+        "sizing": 0.02,
     }
     assert payload["kelly"]["trades"] == 2
     assert len(payload["kelly"]["points"]) == 3
@@ -262,8 +264,9 @@ def test_dashboard_payload_includes_kelly_curve() -> None:
     html = render_dashboard_html(payload)
     assert "Kelly Equity Curve" in html
     assert 'name="kelly_bankroll"' in html
+    assert 'name="kelly_edge"' in html
     assert 'name="kelly_fraction"' in html
-    assert 'name="kelly_max_risk_pct"' in html
+    assert 'name="kelly_sizing"' in html
 
 
 def test_dashboard_payload_includes_filtered_trades_last_24h() -> None:

@@ -518,6 +518,10 @@ def _multi_filter_html(
     )
     max_reference_spread = _first_filter_value(active_filters.get("max_reference_spread_pct"))
     min_liquidity = _first_filter_value(active_filters.get("min_liquidity"))
+    kelly_bankroll = _first_filter_value(active_filters.get("kelly_bankroll"))
+    kelly_edge = _first_filter_value(active_filters.get("kelly_edge"))
+    kelly_fraction = _first_filter_value(active_filters.get("kelly_fraction"))
+    kelly_sizing = _first_filter_value(active_filters.get("kelly_sizing"))
     return f"""<details class="advanced-filters">
       <summary>Advanced Filters</summary>
       <form class="filter-panel" method="get">
@@ -525,6 +529,10 @@ def _multi_filter_html(
         {_hidden_input("status", status)}
         {_hidden_input("bookmaker", bookmaker)}
         {_hidden_input("format", format_value)}
+        {_hidden_input("kelly_bankroll", kelly_bankroll)}
+        {_hidden_input("kelly_edge", kelly_edge)}
+        {_hidden_input("kelly_fraction", kelly_fraction)}
+        {_hidden_input("kelly_sizing", kelly_sizing)}
         <div class="filter-group">
           <div class="filter-group-title">CLV</div>
           {_radio("clv", "", "All", clv_value)}
@@ -604,7 +612,7 @@ def _kelly_html(kelly: dict[str, Any], token: str, active_filters: dict[str, Any
     return f"""<section class="kelly-section">
       <div class="kelly-head">
         <h2>Kelly Equity Curve</h2>
-        <div class="meta">Settled trades only, sized from booked edge and risk odds.</div>
+        <div class="meta">Settled trades only, capped by sizing and recorded liquidity.</div>
       </div>
       <form class="kelly-form" method="get">
         <input type="hidden" name="token" value="{_escape(token)}">
@@ -621,6 +629,16 @@ def _kelly_html(kelly: dict[str, Any], token: str, active_filters: dict[str, Any
             suffix="",
         )}
         {_range_filter(
+            name="kelly_edge",
+            label="Edge",
+            value=str(params.get("edge", "")),
+            default=0.01,
+            max_value=0.10,
+            step=0.001,
+            scale=100,
+            suffix="%",
+        )}
+        {_range_filter(
             name="kelly_fraction",
             label="Kelly fraction",
             value=str(params.get("fraction", "")),
@@ -631,9 +649,9 @@ def _kelly_html(kelly: dict[str, Any], token: str, active_filters: dict[str, Any
             suffix="%",
         )}
         {_range_filter(
-            name="kelly_max_risk_pct",
-            label="Max risk",
-            value=str(params.get("max_risk_pct", "")),
+            name="kelly_sizing",
+            label="Sizing",
+            value=str(params.get("sizing", "")),
             default=0.05,
             max_value=0.25,
             step=0.005,
@@ -650,6 +668,7 @@ def _kelly_html(kelly: dict[str, Any], token: str, active_filters: dict[str, Any
         <span>Final: {_format_money(kelly.get("final_bankroll"))}</span>
         <span>Return: {_format_pct(kelly.get("return_pct"))}</span>
         <span>Max drawdown: {_format_pct(kelly.get("max_drawdown_pct"))}</span>
+        <span>Edge: {_format_pct(params.get("edge"))}</span>
         <span>Avg risk: {_format_pct(kelly.get("average_risk_pct"))}</span>
       </div>
     </section>"""
@@ -659,11 +678,17 @@ def _kelly_curve(trades: list[dict[str, Any]], filters: dict[str, Any]) -> dict[
     bankroll = _bounded_filter_float(
         filters.get("kelly_bankroll"), default=1000.0, min_value=1.0, max_value=10000.0
     )
+    edge = _bounded_filter_float(
+        filters.get("kelly_edge"), default=0.01, min_value=0.0, max_value=0.10
+    )
     fraction = _bounded_filter_float(
         filters.get("kelly_fraction"), default=0.25, min_value=0.0, max_value=1.0
     )
-    max_risk_pct = _bounded_filter_float(
-        filters.get("kelly_max_risk_pct"), default=0.05, min_value=0.0, max_value=0.25
+    sizing = _bounded_filter_float(
+        filters.get("kelly_sizing") or filters.get("kelly_max_risk_pct"),
+        default=0.05,
+        min_value=0.0,
+        max_value=0.25,
     )
     equity = bankroll
     peak = bankroll
@@ -676,26 +701,30 @@ def _kelly_curve(trades: list[dict[str, Any]], filters: dict[str, Any]) -> dict[
     )
     for index, item in enumerate(settled, start=1):
         risk_odds = _float(item.get("risk_odds"))
-        edge = max(0.0, _float(item.get("edge")))
-        if risk_odds <= 1 or edge <= 0 or fraction <= 0 or max_risk_pct <= 0:
+        if risk_odds <= 1 or edge <= 0 or fraction <= 0 or sizing <= 0:
             risk_pct = 0.0
         else:
             full_kelly = edge / (risk_odds - 1)
-            risk_pct = min(max_risk_pct, max(0.0, full_kelly * fraction))
+            risk_pct = min(sizing, max(0.0, full_kelly * fraction))
         risk_amount = equity * risk_pct
+        available_risk = _float(item.get("available_risk_at_target"))
+        if available_risk > 0:
+            risk_amount = min(risk_amount, available_risk)
+        starting_equity = equity
         liability = _trade_liability(item)
         profit_per_risk = _float(item.get("profit")) / liability if liability > 0 else 0.0
         equity += risk_amount * profit_per_risk
         peak = max(peak, equity)
         if peak > 0:
             max_drawdown = max(max_drawdown, (peak - equity) / peak)
-        total_risk_pct += risk_pct
+        total_risk_pct += risk_amount / starting_equity if starting_equity > 0 else 0.0
         points.append({"index": index, "equity": equity})
     return {
         "params": {
             "bankroll": bankroll,
+            "edge": edge,
             "fraction": fraction,
-            "max_risk_pct": max_risk_pct,
+            "sizing": sizing,
         },
         "trades": len(settled),
         "points": points,
