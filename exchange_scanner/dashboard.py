@@ -225,6 +225,32 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       gap: 10px;
       margin-bottom: 12px;
     }}
+    .number-filter {{
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-2);
+    }}
+    .number-filter input[type="number"] {{
+      min-width: 0;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--bg);
+      color: var(--text);
+      padding: 6px 8px;
+      font: inherit;
+      font-variant-numeric: tabular-nums;
+    }}
+    .number-unit {{
+      color: var(--muted);
+      font-size: 12px;
+    }}
     .kelly-chart {{
       width: 100%;
       height: auto;
@@ -519,9 +545,9 @@ def _multi_filter_html(
     max_reference_spread = _first_filter_value(active_filters.get("max_reference_spread_pct"))
     min_liquidity = _first_filter_value(active_filters.get("min_liquidity"))
     kelly_bankroll = _first_filter_value(active_filters.get("kelly_bankroll"))
-    kelly_edge = _first_filter_value(active_filters.get("kelly_edge"))
-    kelly_fraction = _first_filter_value(active_filters.get("kelly_fraction"))
-    kelly_sizing = _first_filter_value(active_filters.get("kelly_sizing"))
+    kelly_edge = _kelly_percent_filter_value(active_filters, "kelly_edge")
+    kelly_fraction = _kelly_percent_filter_value(active_filters, "kelly_fraction")
+    kelly_sizing = _kelly_percent_filter_value(active_filters, "kelly_sizing")
     return f"""<details class="advanced-filters">
       <summary>Advanced Filters</summary>
       <form class="filter-panel" method="get">
@@ -530,9 +556,9 @@ def _multi_filter_html(
         {_hidden_input("bookmaker", bookmaker)}
         {_hidden_input("format", format_value)}
         {_hidden_input("kelly_bankroll", kelly_bankroll)}
-        {_hidden_input("kelly_edge", kelly_edge)}
-        {_hidden_input("kelly_fraction", kelly_fraction)}
-        {_hidden_input("kelly_sizing", kelly_sizing)}
+        {_hidden_input("kelly_edge_pct", kelly_edge)}
+        {_hidden_input("kelly_fraction_pct", kelly_fraction)}
+        {_hidden_input("kelly_sizing_pct", kelly_sizing)}
         <div class="filter-group">
           <div class="filter-group-title">CLV</div>
           {_radio("clv", "", "All", clv_value)}
@@ -617,46 +643,48 @@ def _kelly_html(kelly: dict[str, Any], token: str, active_filters: dict[str, Any
       <form class="kelly-form" method="get">
         <input type="hidden" name="token" value="{_escape(token)}">
         {hidden}
-        {_range_filter(
+        {_number_filter(
             name="kelly_bankroll",
             label="Bankroll",
-            value=str(params.get("bankroll", "")),
+            value=params.get("bankroll", 1000),
             default=1000,
-            max_value=10000,
+            min_value=1,
+            max_value=1000000,
             step=100,
-            scale=1,
-            prefix="GBP ",
-            suffix="",
+            unit="GBP",
         )}
-        {_range_filter(
-            name="kelly_edge",
+        {_number_filter(
+            name="kelly_edge_pct",
             label="Edge",
-            value=str(params.get("edge", "")),
-            default=0.01,
-            max_value=0.10,
-            step=0.001,
+            value=params.get("edge", 0.01),
+            default=1,
+            min_value=0,
+            max_value=10,
+            step=0.1,
             scale=100,
-            suffix="%",
+            unit="%",
         )}
-        {_range_filter(
-            name="kelly_fraction",
+        {_number_filter(
+            name="kelly_fraction_pct",
             label="Kelly fraction",
-            value=str(params.get("fraction", "")),
-            default=0.25,
-            max_value=1.0,
-            step=0.05,
+            value=params.get("fraction", 0.25),
+            default=25,
+            min_value=0,
+            max_value=100,
+            step=1,
             scale=100,
-            suffix="%",
+            unit="%",
         )}
-        {_range_filter(
-            name="kelly_sizing",
+        {_number_filter(
+            name="kelly_sizing_pct",
             label="Sizing",
-            value=str(params.get("sizing", "")),
-            default=0.05,
-            max_value=0.25,
-            step=0.005,
+            value=params.get("sizing", 0.05),
+            default=5,
+            min_value=0,
+            max_value=25,
+            step=0.5,
             scale=100,
-            suffix="%",
+            unit="%",
         )}
         <div class="filter-actions">
           <button type="submit">Update</button>
@@ -676,16 +704,25 @@ def _kelly_html(kelly: dict[str, Any], token: str, active_filters: dict[str, Any
 
 def _kelly_curve(trades: list[dict[str, Any]], filters: dict[str, Any]) -> dict[str, Any]:
     bankroll = _bounded_filter_float(
-        filters.get("kelly_bankroll"), default=1000.0, min_value=1.0, max_value=10000.0
+        filters.get("kelly_bankroll"), default=1000.0, min_value=1.0, max_value=1000000.0
     )
-    edge = _bounded_filter_float(
-        filters.get("kelly_edge"), default=0.01, min_value=0.0, max_value=0.10
+    edge = _bounded_percent_filter_float(
+        filters.get("kelly_edge_pct"),
+        legacy_value=filters.get("kelly_edge"),
+        default=0.01,
+        min_value=0.0,
+        max_value=0.10,
     )
-    fraction = _bounded_filter_float(
-        filters.get("kelly_fraction"), default=0.25, min_value=0.0, max_value=1.0
+    fraction = _bounded_percent_filter_float(
+        filters.get("kelly_fraction_pct"),
+        legacy_value=filters.get("kelly_fraction"),
+        default=0.25,
+        min_value=0.0,
+        max_value=1.0,
     )
-    sizing = _bounded_filter_float(
-        filters.get("kelly_sizing") or filters.get("kelly_max_risk_pct"),
+    sizing = _bounded_percent_filter_float(
+        filters.get("kelly_sizing_pct"),
+        legacy_value=filters.get("kelly_sizing") or filters.get("kelly_max_risk_pct"),
         default=0.05,
         min_value=0.0,
         max_value=0.25,
@@ -842,6 +879,30 @@ def _range_filter(
         f"oninput=\"document.getElementById('{output_id}').textContent={input_formatter};\">"
         f'<span id="{_escape(output_id)}" class="range-value">'
         f"{_escape(_format_range_value(slider_value, scale=scale, prefix=prefix, suffix=suffix) if enabled else 'off')}</span>"
+        "</label>"
+    )
+
+
+def _number_filter(
+    *,
+    name: str,
+    label: str,
+    value: object,
+    default: float,
+    min_value: float,
+    max_value: float,
+    step: float,
+    scale: float = 1,
+    unit: str = "",
+) -> str:
+    numeric_value = _float(value) * scale if value not in {None, ""} else default
+    numeric_value = min(max(numeric_value, min_value), max_value)
+    return (
+        '<label class="number-filter">'
+        f"<span>{_escape(label)}</span>"
+        f'<input type="number" name="{_escape(name)}" min="{min_value:g}" '
+        f'max="{max_value:g}" step="{step:g}" value="{numeric_value:g}">'
+        f'<span class="number-unit">{_escape(unit)}</span>'
         "</label>"
     )
 
@@ -1323,6 +1384,16 @@ def _first_filter_value(value: Any) -> str:
     return values[0] if values else ""
 
 
+def _kelly_percent_filter_value(filters: dict[str, Any], base_name: str) -> str:
+    pct_value = _first_filter_value(filters.get(f"{base_name}_pct"))
+    if pct_value:
+        return pct_value
+    legacy_value = _first_filter_value(filters.get(base_name))
+    if not legacy_value:
+        return ""
+    return f"{_float(legacy_value) * 100:g}"
+
+
 def _optional_filter_float(value: Any) -> float | None:
     text = _first_filter_value(value)
     if not text:
@@ -1348,6 +1419,27 @@ def _bounded_filter_float(
     if not text:
         return default
     return _bounded_float(text, default=default, min_value=min_value, max_value=max_value)
+
+
+def _bounded_percent_filter_float(
+    value: Any,
+    *,
+    legacy_value: Any = None,
+    default: float,
+    min_value: float,
+    max_value: float,
+) -> float:
+    text = _first_filter_value(value)
+    if text:
+        return _bounded_float(
+            text,
+            default=default * 100,
+            min_value=min_value * 100,
+            max_value=max_value * 100,
+        ) / 100
+    return _bounded_filter_float(
+        legacy_value, default=default, min_value=min_value, max_value=max_value
+    )
 
 
 def _sport_family(sport_key: str) -> str:
