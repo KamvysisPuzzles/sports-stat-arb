@@ -311,6 +311,67 @@ def test_smarkets_rows_require_available_liquidity_to_paper_log() -> None:
     )
 
 
+def test_betfair_target_rows_log_with_unavailable_liquidity_only() -> None:
+    rows = strategy_runner._mark_betfair_target_liquidity_unavailable(
+        [
+            {
+                "target_bookmaker": "Betfair",
+                "liquidity_status": "not_applicable",
+                "available_at_or_above_target": "10.00",
+            }
+        ]
+    )
+
+    assert rows[0]["liquidity_status"] == "unavailable"
+    assert rows[0]["available_at_or_above_target"] == "0.00"
+    assert strategy_runner._paper_loggable_row(rows[0])
+    assert not strategy_runner._paper_loggable_row(
+        {"target_bookmaker": "Betfair", "liquidity_status": "available"}
+    )
+
+
+def test_betfair_target_requires_two_percent_edge() -> None:
+    weak_betfair = strategy_runner.ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-1",
+        event_name="Arsenal v Chelsea",
+        commence_time=datetime(2026, 8, 15, 15, tzinfo=timezone.utc),
+        market_key="h2h",
+        outcome_name="Arsenal",
+        target_bookmaker="Betfair",
+        target_odds=4.0,
+        reference_fair_odds=3.94,
+        reference_probability=1 / 3.94,
+        edge=0.015,
+        reference_bookmakers=("Pinnacle", "Smarkets"),
+        betfair_back_lay_spread_pct=0.02,
+    )
+    strong_betfair = strategy_runner.ValueSignal(
+        sport_key="soccer_epl",
+        event_id="event-2",
+        event_name="Liverpool v Everton",
+        commence_time=datetime(2026, 8, 15, 15, tzinfo=timezone.utc),
+        market_key="h2h",
+        outcome_name="Liverpool",
+        target_bookmaker="Betfair",
+        target_odds=4.1,
+        reference_fair_odds=3.9,
+        reference_probability=1 / 3.9,
+        edge=0.025,
+        reference_bookmakers=("Pinnacle", "Smarkets"),
+        betfair_back_lay_spread_pct=0.02,
+    )
+
+    filtered = strategy_runner._filter_betfair_dislocation_signals(
+        [weak_betfair, strong_betfair],
+        max_betfair_spread_pct=0.06,
+        min_sharp_reference_books=0,
+        target_min_edges={"betfair": 0.02},
+    )
+
+    assert filtered == [strong_betfair]
+
+
 def test_run_paper_log_filters_static_profile_to_active_sports(monkeypatch) -> None:
     monkeypatch.setitem(
         strategy_runner.SPORT_PROFILES,

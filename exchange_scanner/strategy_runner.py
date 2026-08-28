@@ -324,6 +324,7 @@ def run_paper_log(
     rows = _enrich_matchbook_rows(config, rows, matchbook_client=matchbook_client, now=now)
     rows = _enrich_smarkets_rows(config, rows, smarkets_client=smarkets_client, now=now)
     rows = _enrich_betfair_rows(config, rows, lambda_client=lambda_client)
+    rows = _mark_betfair_target_liquidity_unavailable(rows)
     executable_rows = [row for row in rows if _paper_loggable_row(row)]
     executable_keys = {_row_key(row) for row in executable_rows}
     executable_signals = [
@@ -732,6 +733,7 @@ def _find_signals(
     matchbook_soccer_only_markets = strategy.get("matchbook_soccer_only_markets") or set()
     line_market_min_reference_books = strategy.get("line_market_min_reference_books", 0)
     market_min_edges = strategy.get("market_min_edges") or {}
+    target_min_edges = strategy.get("target_min_edges") or {}
     max_target_odds = strategy.get("max_target_odds")
     signals = find_strategy_value_opportunities(
         prices,
@@ -750,6 +752,7 @@ def _find_signals(
         matchbook_soccer_only_markets=matchbook_soccer_only_markets,
         line_market_min_reference_books=line_market_min_reference_books,
         market_min_edges=market_min_edges,
+        target_min_edges=target_min_edges,
         max_target_odds=max_target_odds,
     )
     signals = _filter_signals_by_max_edge(signals, max_edge=config.max_edge)
@@ -801,10 +804,12 @@ def _filter_betfair_dislocation_signals(
     matchbook_soccer_only_markets: set[str] | None = None,
     line_market_min_reference_books: int = 0,
     market_min_edges: dict[str, float] | None = None,
+    target_min_edges: dict[str, float] | None = None,
     max_target_odds: float | None = None,
 ) -> list[ValueSignal]:
     matchbook_soccer_only_markets = matchbook_soccer_only_markets or set()
     market_min_edges = market_min_edges or {}
+    target_min_edges = target_min_edges or {}
     if (
         max_betfair_spread_pct is None
         and min_sharp_reference_books <= 0
@@ -812,12 +817,15 @@ def _filter_betfair_dislocation_signals(
         and not matchbook_soccer_only_markets
         and line_market_min_reference_books <= 0
         and not market_min_edges
+        and not target_min_edges
         and max_target_odds is None
     ):
         return signals
     filtered = []
     for signal in signals:
         if signal.edge < market_min_edges.get(signal.market_key, float("-inf")):
+            continue
+        if signal.edge < _target_min_edge(signal, target_min_edges):
             continue
         if max_target_odds is not None and signal.target_odds > max_target_odds:
             continue
@@ -853,7 +861,14 @@ def _allowed_by_matchbook_soccer_market_rule(signal: ValueSignal, markets: set[s
 
 
 def _paper_loggable_row(row: dict[str, str]) -> bool:
+    if row.get("target_bookmaker", "").casefold() in BETFAIR_TARGET_BOOKMAKERS:
+        return row.get("liquidity_status") == "unavailable"
     return row.get("liquidity_status") == "available"
+
+
+def _target_min_edge(signal: ValueSignal, target_min_edges: dict[str, float]) -> float:
+    target = signal.target_bookmaker.casefold()
+    return target_min_edges.get(target, float("-inf"))
 
 
 def _sharp_reference_count(signal: ValueSignal) -> int:
@@ -1116,6 +1131,31 @@ def _enrich_betfair_rows(
     if status_code >= 400:
         raise RuntimeError(f"Betfair enrichment Lambda returned {status_code}: {body}")
     return _read_rows_csv(str(body["csv"]))
+
+
+def _mark_betfair_target_liquidity_unavailable(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    marked = []
+    for row in rows:
+        if row.get("target_bookmaker", "").casefold() not in BETFAIR_TARGET_BOOKMAKERS:
+            marked.append(row)
+            continue
+        output = dict(row)
+        output.update(
+            {
+                "matchbook_event_id": "",
+                "matchbook_market_id": "",
+                "matchbook_runner_id": "",
+                "liquidity_status": "unavailable",
+                "available_at_or_above_target": "0.00",
+                "best_back_odds": "",
+                "best_back_available": "0.00",
+                "best_lay_odds": "",
+                "best_lay_available": "0.00",
+                "back_lay_spread_pct": "",
+            }
+        )
+        marked.append(output)
+    return marked
 
 
 def _signal_rows(signals: list[ValueSignal]) -> list[dict[str, str]]:

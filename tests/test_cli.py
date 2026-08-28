@@ -81,10 +81,11 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
 
     assert strategy["target_bookmakers"] == EXCHANGE_CLV_TARGET_BOOKMAKERS
     assert strategy["target_bookmakers"] == {
+        "betfair_ex_uk",
         "matchbook",
         "smarkets",
     }
-    assert strategy["target_lay_bookmakers"] == {"matchbook", "smarkets"}
+    assert strategy["target_lay_bookmakers"] == {"betfair_ex_uk", "matchbook", "smarkets"}
     assert strategy["reference_bookmakers"] == {
         "betfair",
         "betfair_ex_eu",
@@ -106,6 +107,10 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
         "betfair_ex_uk",
         "pinnacle",
     }
+    assert strategy["target_reference_bookmakers"][frozenset({"betfair_ex_uk"})] == {
+        "pinnacle",
+        "smarkets",
+    }
     assert strategy["allow_target_bookmakers_as_references"] is False
     assert strategy["target_commission_rates"]["betfair"] == pytest.approx(0.02)
     assert strategy["reference_weights"] is None
@@ -118,6 +123,7 @@ def test_exchange_clv_targets_available_exchange_books() -> None:
     assert "icehockey_nhl" in strategy["allowed_sport_keys"]
     assert strategy["allowed_markets"] == {"h2h", "h2h_lay"}
     assert strategy["max_target_odds"] == pytest.approx(6.0)
+    assert strategy["target_min_edges"]["betfair"] == pytest.approx(0.02)
     assert strategy["max_betfair_spread_pct"] == pytest.approx(0.06)
     assert strategy["market_min_edges"] == {"totals": 0.02, "spreads": 0.02}
     assert strategy["poisson_total_conversion"] is True

@@ -321,6 +321,8 @@ def trade_id(signal: ValueSignal) -> str:
             f"{signal.market_key.casefold()}|"
             f"{signal.outcome_name.casefold()}"
         )
+    if signal.target_bookmaker.casefold() in {"betfair", "betfair_ex_uk", "betfair_ex_eu"}:
+        key = f"{key}|{signal.target_bookmaker.casefold()}"
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:24]
     return f"paper#{digest}"
 

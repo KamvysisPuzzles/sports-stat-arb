@@ -66,6 +66,7 @@ BETFAIR_TARGET_BOOKMAKERS = {
 EXCHANGE_CLV_TARGET_BOOKMAKERS = {
     "matchbook",
     "smarkets",
+    "betfair_ex_uk",
 }
 
 EXCHANGE_CLV_TARGET_REFERENCE_BOOKMAKERS = {
@@ -81,6 +82,10 @@ EXCHANGE_CLV_TARGET_REFERENCE_BOOKMAKERS = {
         "betfair",
         "betfair_ex_uk",
         "betfair_ex_eu",
+    },
+    frozenset({"betfair_ex_uk"}): {
+        "pinnacle",
+        "smarkets",
     },
 }
 
@@ -157,7 +162,7 @@ STRATEGIES = {
     },
     "exchange-clv": {
         "target_bookmakers": EXCHANGE_CLV_TARGET_BOOKMAKERS,
-        "target_lay_bookmakers": {"matchbook", "smarkets"},
+        "target_lay_bookmakers": {"matchbook", "smarkets", "betfair_ex_uk"},
         "reference_bookmakers": SHARP_REFERENCE_BOOKMAKERS | BETFAIR_TARGET_BOOKMAKERS,
         "target_reference_bookmakers": EXCHANGE_CLV_TARGET_REFERENCE_BOOKMAKERS,
         "allow_target_bookmakers_as_references": False,
@@ -171,6 +176,10 @@ STRATEGIES = {
         "max_betfair_spread_pct": 0.06,
         "line_market_min_reference_books": 1,
         "market_min_edges": {"totals": 0.02, "spreads": 0.02},
+        "target_min_edges": {
+            "betfair": 0.02,
+            "betfair_ex_uk": 0.02,
+        },
         "poisson_total_conversion": True,
         "poisson_total_max_line_distance": 0.5,
     },
