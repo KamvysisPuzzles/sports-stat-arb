@@ -20,17 +20,20 @@ def lambda_handler(event, context):
     if token != expected_token:
         return _response(401, "Unauthorized", content_type="text/plain")
 
-    table_name = os.getenv("PAPER_TRADES_TABLE", "sports-stat-arb-paper-trades")
+    page = _dashboard_page(_first_param(params.get("page", "")))
+    paper_table_name = os.getenv("PAPER_TRADES_TABLE", "sports-stat-arb-paper-trades")
+    live_table_name = os.getenv("LIVE_ORDER_TABLE", "sports-stat-arb-live-orders")
     region = os.getenv("AWS_REGION", "eu-west-2")
-    table = _dynamodb_table(table_name, region=region)
+    paper_table = _dynamodb_table(paper_table_name, region=region)
+    table = paper_table if page == "paper" else _dynamodb_table(live_table_name, region=region)
     action = _first_param(params.get("action", "")).casefold()
     if action in {"pause", "resume"}:
         set_trading_paused(
-            table,
+            paper_table,
             paused=action == "pause",
             updated_by="dashboard",
         )
-        return _redirect(_dashboard_url(token))
+        return _redirect(_dashboard_url(token, page=page))
     filters = {
         "status": params.get("status", ""),
         "bookmaker": params.get("bookmaker", ""),
@@ -42,7 +45,7 @@ def lambda_handler(event, context):
         "max_reference_spread_pct": params.get("max_reference_spread_pct", ""),
         "format": params.get("format", ""),
     }
-    payload = dashboard_payload(table, filters=filters)
+    payload = dashboard_payload(table, filters=filters, page=page, control_table=paper_table)
     payload["token"] = token
     if _first_param(params.get("format", "")).casefold() == "json":
         return _response(200, dashboard_json(payload), content_type="application/json")
@@ -91,8 +94,14 @@ def _request_method(event) -> str:
     return str(method or event.get("httpMethod") or "").upper()
 
 
-def _dashboard_url(token: str) -> str:
+def _dashboard_url(token: str, *, page: str = "paper") -> str:
+    if page == "live":
+        return f"?token={token}&page=live"
     return f"?token={token}"
+
+
+def _dashboard_page(page: str) -> str:
+    return "live" if str(page or "").casefold() == "live" else "paper"
 
 
 def _token(event, params: dict[str, object]) -> str:

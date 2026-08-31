@@ -135,6 +135,63 @@ def mark_to_market_trade():
     return row
 
 
+def live_orders():
+    return [
+        {
+            "order_id": "dryrun#1",
+            "paper_trade_id": "paper#1",
+            "signal_key": "event-1|h2h|arsenal|matchbook|back",
+            "logged_at": "2026-08-18T10:00:00+00:00",
+            "sport_key": "soccer_epl",
+            "event_name": "Arsenal v Chelsea",
+            "commence_time": "2026-08-18T20:00:00+00:00",
+            "outcome_name": "Arsenal",
+            "target_bookmaker": "Matchbook",
+            "bet_side": "back",
+            "limit_odds": Decimal("4.2"),
+            "stake": Decimal("1"),
+            "liability": Decimal("1"),
+            "sizing_method": "flat",
+            "flat_order_risk": Decimal("1"),
+            "edge": Decimal("0.034"),
+            "reference_disagreement_pct": Decimal("0.02"),
+            "available_at_target": Decimal("25.5"),
+            "execution_mode": "dry_run",
+            "status": "dry_run",
+            "venue_order_id": "",
+            "matched_size": Decimal("0"),
+            "avg_matched_odds": Decimal("0"),
+            "error": "",
+        },
+        {
+            "order_id": "live#2",
+            "paper_trade_id": "paper#2",
+            "signal_key": "event-2|h2h|everton|betfair|lay",
+            "logged_at": "2026-08-18T11:00:00+00:00",
+            "sport_key": "soccer_epl",
+            "event_name": "Liverpool v Everton",
+            "commence_time": "2026-08-18T21:00:00+00:00",
+            "outcome_name": "Everton",
+            "target_bookmaker": "Betfair",
+            "bet_side": "lay",
+            "limit_odds": Decimal("5.0"),
+            "stake": Decimal("0.25"),
+            "liability": Decimal("1"),
+            "sizing_method": "flat",
+            "flat_order_risk": Decimal("1"),
+            "edge": Decimal("0.05"),
+            "reference_disagreement_pct": Decimal("0.01"),
+            "available_at_target": Decimal("0"),
+            "execution_mode": "live",
+            "status": "submitted",
+            "venue_order_id": "betfair-order-1",
+            "matched_size": Decimal("0.10"),
+            "avg_matched_odds": Decimal("5.0"),
+            "error": "",
+        },
+    ]
+
+
 def test_dashboard_payload_summarises_and_filters_trades() -> None:
     payload = dashboard_payload(
         FakeTable(trades()),
@@ -267,6 +324,51 @@ def test_dashboard_payload_includes_kelly_curve() -> None:
     assert 'type="number" name="kelly_edge_pct"' in html
     assert 'type="number" name="kelly_fraction_pct"' in html
     assert 'type="number" name="kelly_sizing_pct"' in html
+
+
+def test_dashboard_payload_summarises_live_orders() -> None:
+    payload = dashboard_payload(
+        FakeTable(live_orders()),
+        page="live",
+        control_table=FakeTable(trades()),
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+
+    assert payload["page"] == "live"
+    assert payload["summary"]["total_trades"] == 2
+    assert payload["summary"]["dry_run_orders"] == 1
+    assert payload["summary"]["submitted_orders"] == 1
+    assert payload["summary"]["live_open_orders"] == 2
+    assert payload["summary"]["total_liability"] == 2
+    assert payload["summary"]["matched_size"] == 0.1
+    assert payload["trades"][0]["target_odds"] == 5.0
+
+
+def test_render_dashboard_html_contains_paper_and_live_pages() -> None:
+    paper_payload = dashboard_payload(
+        FakeTable(trades()),
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+    paper_payload["token"] = "secret"
+    live_payload = dashboard_payload(
+        FakeTable(live_orders()),
+        page="live",
+        control_table=FakeTable(trades()),
+        now=datetime(2026, 8, 18, 12, tzinfo=timezone.utc),
+    )
+    live_payload["token"] = "secret"
+
+    paper_html = render_dashboard_html(paper_payload)
+    live_html = render_dashboard_html(live_payload)
+
+    assert "<h1>Paper Trades</h1>" in paper_html
+    assert 'href="?token=secret&amp;page=live">Live</a>' in paper_html
+    assert "<h1>Live Orders</h1>" in live_html
+    assert 'href="?token=secret">Paper</a>' in live_html
+    assert "Orders by Venue" in live_html
+    assert "<th>Venue Order</th>" in live_html
+    assert "betfair-order-1" in live_html
+    assert "Kelly Equity Curve" not in live_html
 
 
 def test_dashboard_payload_includes_filtered_trades_last_24h() -> None:
@@ -488,6 +590,35 @@ def test_lambda_handler_returns_json(monkeypatch) -> None:
     assert body["trades"][0]["trade_id"] == "paper#2"
     assert body["filters"]["min_liquidity"] == "30"
     assert body["trading_control"]["enabled"] is True
+
+
+def test_lambda_handler_routes_live_page_to_live_order_table(monkeypatch) -> None:
+    monkeypatch.setenv("DASHBOARD_TOKEN", "secret")
+    monkeypatch.setenv("PAPER_TRADES_TABLE", "paper")
+    monkeypatch.setenv("LIVE_ORDER_TABLE", "live-orders")
+    tables = {
+        "paper": FakeTable(trades()),
+        "live-orders": FakeTable(live_orders()),
+    }
+    seen_tables = []
+
+    def table_factory(name, region):
+        seen_tables.append(name)
+        return tables[name]
+
+    monkeypatch.setattr(lambda_function, "_dynamodb_table", table_factory)
+
+    response = lambda_function.lambda_handler(
+        {"queryStringParameters": {"token": "secret", "page": "live", "format": "json"}},
+        None,
+    )
+
+    assert response["statusCode"] == 200
+    body = json.loads(response["body"])
+    assert body["page"] == "live"
+    assert body["summary"]["total_trades"] == 2
+    assert body["trades"][0]["order_id"] == "live#2"
+    assert seen_tables == ["paper", "live-orders"]
 
 
 def test_dashboard_payload_falls_back_to_scan_for_control_state() -> None:

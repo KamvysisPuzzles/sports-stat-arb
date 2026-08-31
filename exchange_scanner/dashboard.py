@@ -14,13 +14,18 @@ def dashboard_payload(
     *,
     filters: dict[str, Any] | None = None,
     now: datetime | None = None,
+    page: str = "paper",
+    control_table: Any | None = None,
 ) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     filters = filters or {}
-    control = trading_control_state(table)
-    trades = [_normalise_item(item) for item in _scan_all(table) if not is_control_item(item)]
+    page = _dashboard_page(page)
+    control = trading_control_state(control_table or table)
+    normalise = _normalise_live_order if page == "live" else _normalise_item
+    trades = [normalise(item) for item in _scan_all(table) if not is_control_item(item)]
     filtered = _apply_filters(trades, filters, now=now)
     return {
+        "page": page,
         "generated_at": now.isoformat(),
         "trading_control": _jsonable(control),
         "filters": {key: value for key, value in filters.items() if _filter_values(value)},
@@ -40,6 +45,7 @@ def dashboard_payload(
 
 
 def render_dashboard_html(payload: dict[str, Any]) -> str:
+    page = _dashboard_page(str(payload.get("page") or "paper"))
     summary = payload["summary"]
     all_summary = payload["all_summary"]
     rows = payload["trades"][:200]
@@ -122,6 +128,24 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
       border-radius: 999px;
       padding: 7px 10px;
       font-size: 13px;
+    }}
+    .page-tabs {{
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }}
+    .page-tabs a {{
+      color: var(--text);
+      text-decoration: none;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 13px;
+      background: var(--panel-2);
+    }}
+    .page-tabs a.active {{
+      background: var(--text);
+      color: var(--bg);
     }}
     .control {{
       display: flex;
@@ -308,59 +332,61 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
 </head>
 <body>
   <header>
-    <h1>Sports Stat Arb Dashboard</h1>
+    <h1>{_escape(_page_title(page))}</h1>
     <div class="meta">Generated {generated}<br>Active filters: {_escape(filter_label)}</div>
+    {_page_tabs_html(token, page)}
   </header>
   <main>
     {_trading_control_html(trading_control)}
-    {_metrics_html(summary, all_summary)}
-    <nav class="filters">
-      <a href="{_href_attr(_filter_href(token))}">All</a>
-      <a href="{_href_attr(_filter_href(token, status='open'))}">Open</a>
-      <a href="{_href_attr(_filter_href(token, status='settled'))}">Settled</a>
-      <a href="{_href_attr(_filter_href(token, bookmaker='Matchbook'))}">Matchbook</a>
-      <a href="{_href_attr(_filter_href(token, bookmaker='Smarkets'))}">Smarkets</a>
-      <a href="{_href_attr(_filter_href(token, bookmaker='Betfair'))}">Betfair</a>
-      <a href="{_href_attr(_filter_href(token, format='json'))}">JSON</a>
-    </nav>
-    {_multi_filter_html(token, active_filters, filter_options)}
-    {_kelly_html(payload.get("kelly", {}), token, active_filters)}
-    {_venue_results_html(payload.get("venue_results", []))}
+    {_metrics_html(summary, all_summary) if page == "paper" else _live_metrics_html(summary, all_summary)}
+    {_quick_filters_html(token, page)}
+    {_multi_filter_html(token, active_filters, filter_options, page=page)}
+    {_kelly_html(payload.get("kelly", {}), token, active_filters) if page == "paper" else ""}
+    {_venue_results_html(payload.get("venue_results", [])) if page == "paper" else _live_venue_results_html(payload.get("venue_results", []))}
     {_group_results_html("Results by Sport", payload.get("sport_results", []), "Sport")}
     {_group_results_html("Results by League", payload.get("league_results", []), "League")}
     <div class="table-wrap">
       <table>
-        <thead>
-          <tr>
-            <th>Logged</th>
-            <th>Status</th>
-            <th>Book</th>
-            <th>Event</th>
-            <th>Bet</th>
-            <th>Raw Odds</th>
-            <th>Risk Odds</th>
-            <th>Risk</th>
-            <th>Liquidity</th>
-            <th>Edge</th>
-            <th>CLV</th>
-            <th>Closing Fair Edge</th>
-            <th>Ref Disagree</th>
-            <th>Ref Spread</th>
-            <th>Venue Fair Edge</th>
-            <th>Venue Spread</th>
-            <th>Profit</th>
-            <th>Starts</th>
-          </tr>
-        </thead>
-        <tbody>
-          {_trade_rows_html(rows)}
-        </tbody>
+        {_live_orders_table_html(rows) if page == "live" else _paper_trades_table_html(rows)}
       </table>
     </div>
   </main>
 </body>
 </html>
 """
+
+
+def _dashboard_page(page: str) -> str:
+    return "live" if str(page or "").casefold() == "live" else "paper"
+
+
+def _page_title(page: str) -> str:
+    return "Live Orders" if page == "live" else "Paper Trades"
+
+
+def _page_tabs_html(token: str, page: str) -> str:
+    return (
+        '<nav class="page-tabs" aria-label="Dashboard pages">'
+        f'<a class="{"active" if page == "paper" else ""}" href="{_href_attr(_filter_href(token, page="paper"))}">Paper</a>'
+        f'<a class="{"active" if page == "live" else ""}" href="{_href_attr(_filter_href(token, page="live"))}">Live</a>'
+        "</nav>"
+    )
+
+
+def _quick_filters_html(token: str, page: str) -> str:
+    open_status = "submitted" if page == "live" else "open"
+    settled_status = "matched" if page == "live" else "settled"
+    open_label = "Submitted" if page == "live" else "Open"
+    settled_label = "Matched" if page == "live" else "Settled"
+    return f"""<nav class="filters">
+      <a href="{_href_attr(_filter_href(token, page=page))}">All</a>
+      <a href="{_href_attr(_filter_href(token, page=page, status=open_status))}">{_escape(open_label)}</a>
+      <a href="{_href_attr(_filter_href(token, page=page, status=settled_status))}">{_escape(settled_label)}</a>
+      <a href="{_href_attr(_filter_href(token, page=page, bookmaker='Matchbook'))}">Matchbook</a>
+      <a href="{_href_attr(_filter_href(token, page=page, bookmaker='Smarkets'))}">Smarkets</a>
+      <a href="{_href_attr(_filter_href(token, page=page, bookmaker='Betfair'))}">Betfair</a>
+      <a href="{_href_attr(_filter_href(token, page=page, format='json'))}">JSON</a>
+    </nav>"""
 
 
 def _trading_control_html(control: dict[str, Any]) -> str:
@@ -403,6 +429,25 @@ def _metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:
     </section>"""
 
 
+def _live_metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> str:
+    return f"""<section class="grid">
+      {_metric("Orders", summary["total_trades"], f"all {all_summary['total_trades']}")}
+      {_metric("Dry Run", summary["dry_run_orders"])}
+      {_metric("Submitted", summary["submitted_orders"])}
+      {_metric("Open", summary["live_open_orders"])}
+      {_metric("Matched", summary["matched_orders"])}
+      {_metric("Failed", summary["failed_orders"], tone="bad" if summary["failed_orders"] else "")}
+      {_metric("Orders Last 24h", summary["trades_last_24h"])}
+      {_metric("Total Risk", f"{summary['total_liability']:.2f}")}
+      {_metric("Open Risk", f"{summary['live_open_liability']:.2f}")}
+      {_metric("Matched Size", f"{summary['matched_size']:.2f}")}
+      {_metric("Avg Limit Odds", f"{summary['average_booked_odds']:.2f}")}
+      {_metric("Median Liquidity", f"{summary['median_available_risk_at_target']:.2f}", "risk")}
+      {_metric("Entry EV", f"{summary['entry_expected_value']:.2f}", tone=_class_for_number(summary["entry_expected_value"]))}
+      {_metric("Avg Edge", f"{summary['average_edge']:.2%}", tone=_class_for_number(summary["average_edge"]))}
+    </section>"""
+
+
 def _metric(label: str, value: object, extra: str = "", *, tone: str = "") -> str:
     class_name = tone or (extra if extra in {"good", "bad", "warn"} else "")
     subtitle = "" if extra in {"", "good", "bad", "warn"} else f'<div class="label">{_escape(extra)}</div>'
@@ -412,6 +457,34 @@ def _metric(label: str, value: object, extra: str = "", *, tone: str = "") -> st
         f'<div class="value {class_name}">{_escape(value)}</div>'
         f"{subtitle}</div>"
     )
+
+
+def _paper_trades_table_html(rows: list[dict[str, Any]]) -> str:
+    return f"""<thead>
+          <tr>
+            <th>Logged</th>
+            <th>Status</th>
+            <th>Book</th>
+            <th>Event</th>
+            <th>Bet</th>
+            <th>Raw Odds</th>
+            <th>Risk Odds</th>
+            <th>Risk</th>
+            <th>Liquidity</th>
+            <th>Edge</th>
+            <th>CLV</th>
+            <th>Closing Fair Edge</th>
+            <th>Ref Disagree</th>
+            <th>Ref Spread</th>
+            <th>Venue Fair Edge</th>
+            <th>Venue Spread</th>
+            <th>Profit</th>
+            <th>Starts</th>
+          </tr>
+        </thead>
+        <tbody>
+          {_trade_rows_html(rows)}
+        </tbody>"""
 
 
 def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
@@ -436,6 +509,62 @@ def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
         f"<td>{_format_pct(row.get('betfair_fair_edge'))}</td>"
         f"<td>{_format_pct(row.get('betfair_back_lay_spread_pct'))}</td>"
         f"<td>{_format_number(row.get('profit'))}</td>"
+        f"<td>{_short_time(row.get('commence_time'))}</td>"
+        "</tr>"
+        for row in rows
+    )
+
+
+def _live_orders_table_html(rows: list[dict[str, Any]]) -> str:
+    return f"""<thead>
+          <tr>
+            <th>Logged</th>
+            <th>Status</th>
+            <th>Mode</th>
+            <th>Book</th>
+            <th>Event</th>
+            <th>Bet</th>
+            <th>Limit Odds</th>
+            <th>Stake</th>
+            <th>Liability</th>
+            <th>Sizing</th>
+            <th>Edge</th>
+            <th>Ref Disagree</th>
+            <th>Available</th>
+            <th>Venue Order</th>
+            <th>Matched</th>
+            <th>Avg Matched</th>
+            <th>Error</th>
+            <th>Starts</th>
+          </tr>
+        </thead>
+        <tbody>
+          {_live_order_rows_html(rows)}
+        </tbody>"""
+
+
+def _live_order_rows_html(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return '<tr><td colspan="18">No live orders match the current filters.</td></tr>'
+    return "\n".join(
+        "<tr>"
+        f"<td>{_short_time(row.get('logged_at'))}</td>"
+        f"<td>{_escape(row.get('status', ''))}</td>"
+        f"<td>{_escape(row.get('execution_mode', ''))}</td>"
+        f"<td>{_escape(row.get('target_bookmaker', ''))}</td>"
+        f"<td>{_escape(row.get('event_name', ''))}</td>"
+        f"<td>{_escape(row.get('risk_selection', ''))}</td>"
+        f"<td>{_format_number(row.get('target_odds'))}</td>"
+        f"<td>{_format_number(row.get('stake'))}</td>"
+        f"<td>{_format_number(row.get('liability'))}</td>"
+        f"<td>{_escape(row.get('sizing_method', ''))}</td>"
+        f"<td>{_format_pct(row.get('edge'))}</td>"
+        f"<td>{_format_pct(row.get('reference_disagreement_pct'))}</td>"
+        f"<td>{_format_number(row.get('available_risk_at_target'))}</td>"
+        f"<td>{_escape(row.get('venue_order_id', ''))}</td>"
+        f"<td>{_format_number(row.get('matched_size'))}</td>"
+        f"<td>{_format_number(row.get('avg_matched_odds'))}</td>"
+        f"<td>{_escape(row.get('error', ''))}</td>"
         f"<td>{_short_time(row.get('commence_time'))}</td>"
         "</tr>"
         for row in rows
@@ -475,6 +604,56 @@ def _venue_results_html(venues: list[dict[str, Any]]) -> str:
         </table>
       </div>
     </section>"""
+
+
+def _live_venue_results_html(venues: list[dict[str, Any]]) -> str:
+    rows = _live_group_rows_html(venues, label_key="venue")
+    return f"""<section class="venue-section">
+      <h2>Orders by Venue</h2>
+      <div class="table-wrap venue-wrap">
+        <table class="venue-table">
+          <thead>
+            <tr>
+              <th>Venue</th>
+              <th>Orders</th>
+              <th>Dry Run</th>
+              <th>Submitted</th>
+              <th>Open</th>
+              <th>Matched</th>
+              <th>Failed</th>
+              <th>Total Risk</th>
+              <th>Matched Size</th>
+              <th>Avg Edge</th>
+              <th>Median Liquidity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows}
+          </tbody>
+        </table>
+      </div>
+    </section>"""
+
+
+def _live_group_rows_html(rows: list[dict[str, Any]], *, label_key: str) -> str:
+    if not rows:
+        return '<tr><td colspan="11">No live orders for the current filters.</td></tr>'
+    return "\n".join(
+        "<tr>"
+        f"<td>{_escape(row[label_key])}</td>"
+        f"<td>{_escape(row['total_trades'])}</td>"
+        f"<td>{_escape(row['dry_run_orders'])}</td>"
+        f"<td>{_escape(row['submitted_orders'])}</td>"
+        f"<td>{_escape(row['live_open_orders'])}</td>"
+        f"<td>{_escape(row['matched_orders'])}</td>"
+        f"<td class='bad'>{_escape(row['failed_orders'])}</td>"
+        f"<td>{row['total_liability']:.2f}</td>"
+        f"<td>{row['matched_size']:.2f}</td>"
+        f"<td class='{_class_for_number(row['average_edge'])}'>{row['average_edge']:.2%}</td>"
+        f"<td>{row['median_available_risk_at_target']:.2f}</td>"
+        "</tr>"
+        for row in rows
+    )
 
 
 def _group_results_html(title: str, rows: list[dict[str, Any]], label: str) -> str:
@@ -532,6 +711,8 @@ def _multi_filter_html(
     token: str,
     active_filters: dict[str, Any],
     filter_options: dict[str, list[dict[str, str]]],
+    *,
+    page: str,
 ) -> str:
     sport_values = set(_filter_values(active_filters.get("sport")))
     league_values = set(_filter_values(active_filters.get("league")))
@@ -552,6 +733,7 @@ def _multi_filter_html(
       <summary>Advanced Filters</summary>
       <form class="filter-panel" method="get">
         <input type="hidden" name="token" value="{_escape(token)}">
+        <input type="hidden" name="page" value="{_escape(page)}">
         {_hidden_input("status", status)}
         {_hidden_input("bookmaker", bookmaker)}
         {_hidden_input("format", format_value)}
@@ -613,7 +795,7 @@ def _multi_filter_html(
         </div>
         <div class="filter-actions">
           <button type="submit">Apply</button>
-          <a href="{_href_attr(_filter_href(token))}">Clear</a>
+          <a href="{_href_attr(_filter_href(token, page=page))}">Clear</a>
         </div>
       </form>
     </details>"""
@@ -930,7 +1112,10 @@ def _hidden_inputs(name: str, value: Any) -> str:
 
 
 def _filter_href(token: str, **params: str) -> str:
+    page = params.pop("page", "paper")
     pairs = [("token", token), *params.items()]
+    if page == "live":
+        pairs.insert(1, ("page", page))
     query = "&".join(
         f"{_url_escape(key)}={_url_escape(value)}"
         for key, value in pairs
@@ -966,6 +1151,27 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
     closed_counts = _clv_counts(closed_clv_rows)
     mark_to_market_counts = _clv_counts(mark_to_market_clv_rows)
     trades_last_24h = sum(1 for item in trades if _is_logged_in_last_24h(item, now=now))
+    dry_run_orders = sum(1 for item in trades if str(item.get("status", "")).casefold() == "dry_run")
+    submitted_orders = sum(
+        1 for item in trades if str(item.get("status", "")).casefold() == "submitted"
+    )
+    matched_orders = sum(
+        1 for item in trades if str(item.get("status", "")).casefold() == "matched"
+    )
+    failed_orders = sum(1 for item in trades if str(item.get("status", "")).casefold() == "failed")
+    live_open_orders = sum(
+        1
+        for item in trades
+        if str(item.get("status", "")).casefold()
+        in {"dry_run", "submitted", "open", "partially_matched"}
+    )
+    live_open_liability = sum(
+        _trade_liability(item)
+        for item in trades
+        if str(item.get("status", "")).casefold()
+        in {"dry_run", "submitted", "open", "partially_matched"}
+    )
+    matched_size = sum(_float(item.get("matched_size")) for item in trades)
     average_closed_clv = _average(_float(item.get("target_clv")) for item in closed_clv_rows)
     median_closed_clv = _median(_float(item.get("target_clv")) for item in closed_clv_rows)
     average_mark_to_market_clv = _average(
@@ -997,6 +1203,13 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         "open_trades": len(open_trades),
         "settled_trades": len(settled),
         "trades_last_24h": trades_last_24h,
+        "dry_run_orders": dry_run_orders,
+        "submitted_orders": submitted_orders,
+        "matched_orders": matched_orders,
+        "failed_orders": failed_orders,
+        "live_open_orders": live_open_orders,
+        "live_open_liability": live_open_liability,
+        "matched_size": matched_size,
         "settled_won": wins,
         "settled_lost": losses,
         "settled_profit": profit,
@@ -1007,6 +1220,7 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         "settled_risk_roi": profit / settled_liability if settled_liability else 0.0,
         "entry_expected_value": entry_expected_value,
         "average_booked_odds": _average(_float(item.get("target_odds")) for item in trades),
+        "average_edge": _average(_float(item.get("edge")) for item in trades),
         "average_risk_odds": _average(_float(item.get("risk_odds")) for item in trades),
         "median_confirmed_liquidity_at_target": _median(
             _float(item.get("available_at_or_above_target"))
@@ -1218,6 +1432,26 @@ def _normalise_item(item: dict[str, Any]) -> dict[str, Any]:
     normalised["bet_side"] = _bet_side(normalised)
     normalised["edge_basis"] = _edge_basis(normalised)
     normalised["liability"] = _trade_liability(normalised)
+    normalised["risk_odds"] = _risk_odds(normalised)
+    normalised["risk_selection"] = _risk_selection(normalised)
+    normalised["available_risk_at_target"] = _available_risk_at_target(normalised)
+    normalised["entry_expected_value"] = _trade_expected_value(normalised)
+    return normalised
+
+
+def _normalise_live_order(item: dict[str, Any]) -> dict[str, Any]:
+    normalised = {key: _jsonable(value) for key, value in item.items()}
+    if "trade_id" not in normalised and normalised.get("order_id"):
+        normalised["trade_id"] = normalised["order_id"]
+    if "target_odds" not in normalised and normalised.get("limit_odds") not in {None, ""}:
+        normalised["target_odds"] = normalised["limit_odds"]
+    if "available_at_or_above_target" not in normalised:
+        normalised["available_at_or_above_target"] = normalised.get("available_at_target")
+    sport_key = str(normalised.get("sport_key") or "")
+    normalised["sport_family"] = _sport_family(sport_key)
+    normalised["bet_side"] = _bet_side(normalised)
+    normalised["edge_basis"] = _edge_basis(normalised)
+    normalised["liability"] = _float(normalised.get("liability")) or _trade_liability(normalised)
     normalised["risk_odds"] = _risk_odds(normalised)
     normalised["risk_selection"] = _risk_selection(normalised)
     normalised["available_risk_at_target"] = _available_risk_at_target(normalised)

@@ -297,15 +297,14 @@ Important paper columns:
 - `closing_edge`: original paper price versus closing sharp fair odds.
 - `positive_closing_edge`: true when the original value still exists at close.
 
-## AWS Paper Trade Dashboard
+## AWS Trade Dashboard
 
-The repository includes a small dashboard Lambda for the DynamoDB paper
-trade table. It shows total trades, open/settled counts, win/loss record, settled
-PnL, ROI, trades logged in the last 24 hours, average booked odds, median confirmed
-liquidity, CLV beat/miss/tie counts, results by venue, results by sport, and
-results by league. The page also supports quick filters for open, settled,
-Matchbook, Betfair, multi-select sport and league inclusion, JSON output, and a
-pause/resume control for new paper trade logging.
+The repository includes a small dashboard Lambda for the DynamoDB paper trade
+table and live order table. It splits the dashboard into Paper and Live pages.
+Paper shows trade PnL, CLV, Kelly, and grouping views; Live shows live order
+status, execution mode, venue order ids, matched size, sizing method, and risk.
+Both pages support quick filters, multi-select sport and league inclusion, JSON
+output, and the shared pause/resume control for new paper/live logging.
 
 Required Lambda configuration:
 
@@ -315,8 +314,10 @@ Runtime: python3.11
 Environment:
   DASHBOARD_TOKEN=<unguessable shared token>
   PAPER_TRADES_TABLE=sports-stat-arb-paper-trades
+  LIVE_ORDER_TABLE=sports-stat-arb-live-orders
 IAM:
   dynamodb:GetItem, dynamodb:PutItem, and dynamodb:Scan on the paper trades table
+  dynamodb:Scan on the live order table
 ```
 
 ## Live Execution
