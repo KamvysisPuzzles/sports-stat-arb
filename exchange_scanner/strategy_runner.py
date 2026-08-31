@@ -121,6 +121,7 @@ class StrategyRunnerConfig:
     live_require_confirmed_liquidity: bool = True
     live_allow_unconfirmed_liquidity_bookmakers: tuple[str, ...] = ("betfair",)
     live_prevent_stacked_event_exposure: bool = True
+    live_prevent_cross_venue_event_exposure: bool = True
 
 
 def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
@@ -281,6 +282,12 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
             event.get(
                 "live_prevent_stacked_event_exposure",
                 env.get("LIVE_PREVENT_STACKED_EVENT_EXPOSURE", "true"),
+            )
+        ),
+        live_prevent_cross_venue_event_exposure=_bool(
+            event.get(
+                "live_prevent_cross_venue_event_exposure",
+                env.get("LIVE_PREVENT_CROSS_VENUE_EVENT_EXPOSURE", "true"),
             )
         ),
     )
@@ -454,9 +461,13 @@ def run_paper_log(
         logged_at=now,
         liquidity_by_key=liquidity_by_key,
     )
+    live_signals = _signals_for_inserted_signal_keys(
+        executable_signals,
+        inserted_signal_keys=log_result.inserted_signal_keys,
+    )
     live_result = _execute_live_signals(
         config,
-        executable_signals,
+        live_signals,
         logged_at=now,
         liquidity_by_key=live_liquidity_by_key,
         live_order_table=live_order_table,
@@ -1428,6 +1439,7 @@ def _live_execution_config(config: StrategyRunnerConfig) -> LiveExecutionConfig:
             config.live_allow_unconfirmed_liquidity_bookmakers
         ),
         prevent_stacked_event_exposure=config.live_prevent_stacked_event_exposure,
+        prevent_cross_venue_event_exposure=config.live_prevent_cross_venue_event_exposure,
     )
 
 
@@ -1530,11 +1542,24 @@ def _matchbook_discovery_sports(sports_payload: list[dict[str, object]]) -> list
     return sports
 
 
-def _log_result_dict(result: DynamoPaperLogResult) -> dict[str, int]:
+def _signals_for_inserted_signal_keys(
+    signals: list[ValueSignal],
+    *,
+    inserted_signal_keys: tuple[tuple[str, str, str, str, str], ...],
+) -> list[ValueSignal]:
+    inserted = set(inserted_signal_keys)
+    if not inserted:
+        return []
+    return [signal for signal in signals if signal_key(signal) in inserted]
+
+
+def _log_result_dict(result: DynamoPaperLogResult) -> dict[str, Any]:
     return {
         "attempted": result.attempted,
         "inserted": result.inserted,
         "duplicates": result.duplicates,
+        "inserted_trade_ids": list(result.inserted_trade_ids),
+        "inserted_signal_keys": ["|".join(key) for key in result.inserted_signal_keys],
     }
 
 

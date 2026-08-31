@@ -31,6 +31,7 @@ class LiveExecutionConfig:
     require_confirmed_liquidity: bool = True
     allow_unconfirmed_liquidity_bookmakers: tuple[str, ...] = ("betfair",)
     prevent_stacked_event_exposure: bool = True
+    prevent_cross_venue_event_exposure: bool = True
 
 
 @dataclass(frozen=True)
@@ -226,9 +227,52 @@ def _filter_stacked_live_exposure(
         if str(item.get("status") or "").casefold()
         in {"dry_run", "submitted", "matched", "partially_matched", "open"}
     ]
-    return _filter_stacked_positive_exposure_signals(
-        signals,
-        existing_items=active_items,
+    if not config.prevent_cross_venue_event_exposure:
+        return _filter_stacked_positive_exposure_signals(
+            signals,
+            existing_items=active_items,
+        )
+    scoped_existing = [_without_venue_scope(item) for item in active_items]
+    scoped_signals = [_signal_without_venue_scope(signal) for signal in signals]
+    kept_scoped = _filter_stacked_positive_exposure_signals(
+        scoped_signals,
+        existing_items=scoped_existing,
+    )
+    kept_ids = {id(signal) for signal in kept_scoped}
+    return [signal for signal, scoped in zip(signals, scoped_signals) if id(scoped) in kept_ids]
+
+
+def _without_venue_scope(item: dict[str, Any]) -> dict[str, Any]:
+    scoped = dict(item)
+    scoped["target_bookmaker"] = "__all_live_venues__"
+    return scoped
+
+
+def _signal_without_venue_scope(signal: ValueSignal) -> ValueSignal:
+    return ValueSignal(
+        sport_key=signal.sport_key,
+        event_id=signal.event_id,
+        event_name=signal.event_name,
+        commence_time=signal.commence_time,
+        market_key=signal.market_key,
+        outcome_name=signal.outcome_name,
+        target_bookmaker="__all_live_venues__",
+        bet_side=signal.bet_side,
+        target_odds=signal.target_odds,
+        target_effective_odds=signal.target_effective_odds,
+        reference_fair_odds=signal.reference_fair_odds,
+        reference_probability=signal.reference_probability,
+        edge=signal.edge,
+        reference_bookmakers=signal.reference_bookmakers,
+        betfair_fair_odds=signal.betfair_fair_odds,
+        betfair_fair_edge=signal.betfair_fair_edge,
+        betfair_back_lay_spread_pct=signal.betfair_back_lay_spread_pct,
+        reference_fair_odds_by_bookmaker=signal.reference_fair_odds_by_bookmaker,
+        reference_spread_pct_by_bookmaker=signal.reference_spread_pct_by_bookmaker,
+        reference_last_update_by_bookmaker=signal.reference_last_update_by_bookmaker,
+        reference_disagreement_pct=signal.reference_disagreement_pct,
+        reference_max_spread_pct=signal.reference_max_spread_pct,
+        reference_avg_spread_pct=signal.reference_avg_spread_pct,
     )
 
 

@@ -36,6 +36,8 @@ class DynamoPaperLogResult:
     attempted: int
     inserted: int
     duplicates: int
+    inserted_trade_ids: tuple[str, ...] = ()
+    inserted_signal_keys: tuple[tuple[str, str, str, str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -68,6 +70,8 @@ def log_signals_to_dynamodb(
     )
     inserted = 0
     duplicates = 0
+    inserted_trade_ids: list[str] = []
+    inserted_signal_keys: list[tuple[str, str, str, str, str]] = []
     for signal in signals:
         liquidity = (liquidity_by_key or {}).get(signal_key(signal), {})
         item = paper_item(
@@ -82,6 +86,8 @@ def log_signals_to_dynamodb(
                 ConditionExpression="attribute_not_exists(trade_id)",
             )
             inserted += 1
+            inserted_trade_ids.append(str(item["trade_id"]))
+            inserted_signal_keys.append(signal_key(signal))
         except Exception as exc:
             if _is_conditional_check_failed(exc):
                 duplicates += 1
@@ -91,6 +97,8 @@ def log_signals_to_dynamodb(
         attempted=attempted,
         inserted=inserted,
         duplicates=duplicates,
+        inserted_trade_ids=tuple(inserted_trade_ids),
+        inserted_signal_keys=tuple(inserted_signal_keys),
     )
 
 

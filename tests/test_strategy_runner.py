@@ -358,6 +358,55 @@ def test_run_paper_log_can_dry_run_live_execution_alongside_paper(monkeypatch) -
     assert order["sport_key"] == "soccer_epl"
 
 
+def test_run_paper_log_only_executes_live_for_fresh_paper_inserts(monkeypatch) -> None:
+    monkeypatch.setitem(strategy_runner.SPORT_PROFILES, "test-profile", ["soccer_epl"])
+    paper_table = FakeTable()
+    live_table = FakeLiveOrderTable()
+    config = StrategyRunnerConfig(
+        mode="paper-log",
+        odds_api_key="test-key",
+        dynamodb_table_name="paper-trades",
+        odds_s3_bucket="odds-bucket",
+        sports_profile="test-profile",
+        max_api_requests=1,
+        min_reference_books=2,
+        use_betfair_lambda=False,
+        live_execution_enabled=True,
+        live_execution_dry_run=True,
+        live_bankroll=1000,
+        live_kelly_fraction=0.25,
+        live_max_order_risk_pct=0.01,
+        live_max_order_risk=20,
+    )
+
+    first = run_paper_log(
+        config,
+        odds_client=FakeOddsClient(),
+        matchbook_client=FakeMatchbookClient(),
+        dynamodb_table=paper_table,
+        live_order_table=live_table,
+        s3_client=FakeS3Client(),
+        now=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+    )
+    second = run_paper_log(
+        config,
+        odds_client=FakeOddsClient(),
+        matchbook_client=FakeMatchbookClient(),
+        dynamodb_table=paper_table,
+        live_order_table=live_table,
+        s3_client=FakeS3Client(),
+        now=datetime(2026, 8, 14, 12, 2, tzinfo=timezone.utc),
+    )
+
+    assert first["paper_log"]["inserted"] == 1
+    assert first["live_execution"]["recorded"] == 1
+    assert second["paper_log"]["inserted"] == 0
+    assert second["paper_log"]["duplicates"] == 1
+    assert second["live_execution"]["candidates"] == 0
+    assert second["live_execution"]["recorded"] == 0
+    assert len(live_table.items) == 1
+
+
 def test_smarkets_rows_require_available_liquidity_to_paper_log() -> None:
     assert strategy_runner._paper_loggable_row(
         {"target_bookmaker": "Smarkets", "liquidity_status": "available"}

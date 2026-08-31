@@ -302,7 +302,7 @@ def test_execute_live_signals_allows_same_selection_back_lay_hedge() -> None:
     assert len(table.items) == 2
 
 
-def test_execute_live_signals_scopes_exposure_guardrail_to_same_venue() -> None:
+def test_execute_live_signals_blocks_cross_venue_positive_exposure_by_default() -> None:
     table = FakeLiveOrderTable()
     result = execute_live_signals(
         table,
@@ -319,6 +319,45 @@ def test_execute_live_signals_scopes_exposure_guardrail_to_same_venue() -> None:
             ),
         ],
         config=LiveExecutionConfig(enabled=True, dry_run=True),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key={
+            ("event-1", "h2h", "chelsea", "matchbook", "back"): {
+                "liquidity_status": "available",
+                "available_at_or_above_target": 25,
+            },
+            ("event-1", "h2h", "arsenal", "smarkets", "lay"): {
+                "liquidity_status": "available",
+                "available_at_or_above_target": 25,
+            },
+        },
+    )
+
+    assert result.recorded == 1
+    assert result.skipped == {"stacked_event_exposure": 1}
+    assert len(table.items) == 1
+
+
+def test_execute_live_signals_can_scope_exposure_guardrail_to_same_venue() -> None:
+    table = FakeLiveOrderTable()
+    result = execute_live_signals(
+        table,
+        [
+            signal(outcome_name="Chelsea", target_bookmaker="Matchbook"),
+            signal(
+                outcome_name="Arsenal",
+                bet_side="lay",
+                target_bookmaker="Smarkets",
+                target_odds=2.1,
+                target_effective_odds=2.1,
+                reference_fair_odds=2.2,
+                reference_probability=1 / 2.2,
+            ),
+        ],
+        config=LiveExecutionConfig(
+            enabled=True,
+            dry_run=True,
+            prevent_cross_venue_event_exposure=False,
+        ),
         logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
         liquidity_by_key={
             ("event-1", "h2h", "chelsea", "matchbook", "back"): {

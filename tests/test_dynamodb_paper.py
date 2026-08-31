@@ -8,6 +8,7 @@ from exchange_scanner.dynamodb_paper import (
     log_signals_to_dynamodb,
     paper_item,
     settle_results_in_dynamodb,
+    signal_key,
     trade_id,
     update_closing_values_in_dynamodb,
 )
@@ -129,6 +130,18 @@ def test_paper_item_logs_reference_diagnostics() -> None:
     assert item["reference_disagreement_pct"] == Decimal("0.0247")
     assert item["reference_max_spread_pct"] == Decimal("0.02")
     assert item["reference_avg_spread_pct"] == Decimal("0.02")
+
+
+def test_log_signals_to_dynamodb_returns_inserted_trade_ids_and_signal_keys() -> None:
+    table = FakeTable()
+    logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
+    value_signal = signal(reference_disagreement_pct=0.02)
+
+    result = log_signals_to_dynamodb(table, [value_signal], stake=1, logged_at=logged_at)
+
+    assert result.inserted == 1
+    assert result.inserted_trade_ids == (trade_id(value_signal),)
+    assert result.inserted_signal_keys == (signal_key(value_signal),)
 
 
 def test_log_signals_to_dynamodb_dedupes_existing_trade_ids() -> None:
