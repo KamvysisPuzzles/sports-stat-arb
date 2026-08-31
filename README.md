@@ -319,6 +319,42 @@ IAM:
   dynamodb:GetItem, dynamodb:PutItem, and dynamodb:Scan on the paper trades table
 ```
 
+## Live Execution
+
+The strategy runner can keep broad paper logging enabled while sending a narrower
+set of signals to a live execution ledger. Live execution is disabled by default,
+and dry-run is enabled by default when the live gate is turned on.
+
+Initial production filter:
+
+```text
+LIVE_EXECUTION_ENABLED=false
+LIVE_EXECUTION_DRY_RUN=true
+LIVE_ORDER_TABLE=sports-stat-arb-live-orders
+LIVE_ALLOWED_SPORT_PREFIXES=soccer_
+LIVE_ALLOWED_BOOKMAKERS=matchbook,betfair,smarkets
+LIVE_ALLOWED_BET_SIDES=back,lay
+LIVE_MAX_REFERENCE_DISAGREEMENT_PCT=0.03
+LIVE_REQUIRE_CONFIRMED_LIQUIDITY=true
+LIVE_PREVENT_STACKED_EVENT_EXPOSURE=true
+```
+
+Kelly and risk controls:
+
+```text
+LIVE_BANKROLL=1000
+LIVE_KELLY_FRACTION=0.10
+LIVE_MAX_ORDER_RISK_PCT=0.005
+LIVE_MAX_DAILY_RISK_PCT=0.02
+LIVE_MIN_ORDER_RISK=1
+LIVE_MAX_ORDER_RISK=10
+```
+
+Dry-run mode writes deterministic order-intent rows to the live order table with
+`execution_mode=dry_run` and `status=dry_run`. With dry-run off, the runner calls
+configured venue executors and records submitted, rejected, or failed attempts in
+the same table. Paper trades continue to be logged separately.
+
 Expose it with either a Lambda Function URL or API Gateway HTTP API. Open the
 dashboard with:
 

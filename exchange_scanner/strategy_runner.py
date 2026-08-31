@@ -42,6 +42,11 @@ from exchange_scanner.dynamodb_paper import (
     signal_key,
     update_closing_values_in_dynamodb,
 )
+from exchange_scanner.live_execution import (
+    LiveExecutionConfig,
+    execute_live_signals,
+    result_dict as live_execution_result_dict,
+)
 from exchange_scanner.matchbook_liquidity import (
     MatchbookLiquidityClient,
     unavailable_liquidity as unavailable_matchbook_liquidity,
@@ -98,6 +103,21 @@ class StrategyRunnerConfig:
     betfair_lambda_function_name: str = ""
     use_betfair_lambda: bool = True
     max_betfair_spread_pct: float | None = None
+    live_execution_enabled: bool = False
+    live_execution_dry_run: bool = True
+    live_order_table_name: str = "sports-stat-arb-live-orders"
+    live_allowed_sport_prefixes: tuple[str, ...] = ("soccer_",)
+    live_allowed_bookmakers: tuple[str, ...] = ("matchbook", "betfair", "smarkets")
+    live_allowed_bet_sides: tuple[str, ...] = ("back", "lay")
+    live_max_reference_disagreement_pct: float = 0.03
+    live_bankroll: float = 1000.0
+    live_kelly_fraction: float = 0.10
+    live_max_order_risk_pct: float = 0.005
+    live_max_daily_risk_pct: float = 0.02
+    live_min_order_risk: float = 1.0
+    live_max_order_risk: float = 10.0
+    live_require_confirmed_liquidity: bool = True
+    live_prevent_stacked_event_exposure: bool = True
 
 
 def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
@@ -186,6 +206,69 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
         max_betfair_spread_pct=_optional_float(
             event.get("max_betfair_spread_pct") or env.get("MAX_BETFAIR_SPREAD_PCT")
         ),
+        live_execution_enabled=_bool(
+            event.get("live_execution_enabled", env.get("LIVE_EXECUTION_ENABLED", "false"))
+        ),
+        live_execution_dry_run=_bool(
+            event.get("live_execution_dry_run", env.get("LIVE_EXECUTION_DRY_RUN", "true"))
+        ),
+        live_order_table_name=str(
+            event.get("live_order_table_name")
+            or env.get("LIVE_ORDER_TABLE")
+            or "sports-stat-arb-live-orders"
+        ),
+        live_allowed_sport_prefixes=_csv_tuple(
+            event.get("live_allowed_sport_prefixes")
+            or env.get("LIVE_ALLOWED_SPORT_PREFIXES")
+            or "soccer_"
+        ),
+        live_allowed_bookmakers=_csv_tuple(
+            event.get("live_allowed_bookmakers")
+            or env.get("LIVE_ALLOWED_BOOKMAKERS")
+            or "matchbook,betfair,smarkets"
+        ),
+        live_allowed_bet_sides=_csv_tuple(
+            event.get("live_allowed_bet_sides")
+            or env.get("LIVE_ALLOWED_BET_SIDES")
+            or "back,lay"
+        ),
+        live_max_reference_disagreement_pct=float(
+            event.get("live_max_reference_disagreement_pct")
+            or env.get("LIVE_MAX_REFERENCE_DISAGREEMENT_PCT")
+            or 0.03
+        ),
+        live_bankroll=float(event.get("live_bankroll") or env.get("LIVE_BANKROLL") or 1000.0),
+        live_kelly_fraction=float(
+            event.get("live_kelly_fraction") or env.get("LIVE_KELLY_FRACTION") or 0.10
+        ),
+        live_max_order_risk_pct=float(
+            event.get("live_max_order_risk_pct")
+            or env.get("LIVE_MAX_ORDER_RISK_PCT")
+            or 0.005
+        ),
+        live_max_daily_risk_pct=float(
+            event.get("live_max_daily_risk_pct")
+            or env.get("LIVE_MAX_DAILY_RISK_PCT")
+            or 0.02
+        ),
+        live_min_order_risk=float(
+            event.get("live_min_order_risk") or env.get("LIVE_MIN_ORDER_RISK") or 1.0
+        ),
+        live_max_order_risk=float(
+            event.get("live_max_order_risk") or env.get("LIVE_MAX_ORDER_RISK") or 10.0
+        ),
+        live_require_confirmed_liquidity=_bool(
+            event.get(
+                "live_require_confirmed_liquidity",
+                env.get("LIVE_REQUIRE_CONFIRMED_LIQUIDITY", "true"),
+            )
+        ),
+        live_prevent_stacked_event_exposure=_bool(
+            event.get(
+                "live_prevent_stacked_event_exposure",
+                env.get("LIVE_PREVENT_STACKED_EVENT_EXPOSURE", "true"),
+            )
+        ),
     )
 
 
@@ -198,6 +281,8 @@ def run_strategy_mode(
     dynamodb_table: Any | None = None,
     s3_client: Any | None = None,
     lambda_client: Any | None = None,
+    live_order_table: Any | None = None,
+    live_executors: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     config = config_from_event(event)
@@ -217,6 +302,8 @@ def run_strategy_mode(
             dynamodb_table=dynamodb_table,
             s3_client=s3_client,
             lambda_client=lambda_client,
+            live_order_table=live_order_table,
+            live_executors=live_executors,
             now=now,
         )
     if config.mode != "paper-log":
@@ -229,6 +316,8 @@ def run_strategy_mode(
         dynamodb_table=dynamodb_table,
         s3_client=s3_client,
         lambda_client=lambda_client,
+        live_order_table=live_order_table,
+        live_executors=live_executors,
         now=now,
     )
 
@@ -242,6 +331,8 @@ def run_paper_log(
     dynamodb_table: Any | None = None,
     s3_client: Any | None = None,
     lambda_client: Any | None = None,
+    live_order_table: Any | None = None,
+    live_executors: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     _validate_config(config)
@@ -307,6 +398,7 @@ def run_paper_log(
             "paper_eligible_signals": 0,
             "liquidity_confirmed_signals": 0,
             "paper_log": {"attempted": 0, "inserted": 0, "duplicates": 0},
+            "live_execution": _disabled_live_execution_result(0),
         }
         portfolio_summary = build_portfolio_summary(table, generated_at=now)
         result["portfolio_summary"] = portfolio_summary
@@ -324,6 +416,10 @@ def run_paper_log(
     rows = _enrich_matchbook_rows(config, rows, matchbook_client=matchbook_client, now=now)
     rows = _enrich_smarkets_rows(config, rows, smarkets_client=smarkets_client, now=now)
     rows = _enrich_betfair_rows(config, rows, lambda_client=lambda_client)
+    live_liquidity_by_key = {
+        _row_key(row): {field: row.get(field, "") for field in LIQUIDITY_FIELDS}
+        for row in rows
+    }
     rows = _mark_betfair_target_liquidity_unavailable(rows)
     executable_rows = [row for row in rows if _paper_loggable_row(row)]
     executable_keys = {_row_key(row) for row in executable_rows}
@@ -344,6 +440,14 @@ def run_paper_log(
         logged_at=now,
         liquidity_by_key=liquidity_by_key,
     )
+    live_result = _execute_live_signals(
+        config,
+        executable_signals,
+        logged_at=now,
+        liquidity_by_key=live_liquidity_by_key,
+        live_order_table=live_order_table,
+        live_executors=live_executors,
+    )
     result = {
         "mode": config.mode,
         "sports": len(sports),
@@ -357,6 +461,7 @@ def run_paper_log(
         "paper_eligible_signals": len(executable_signals),
         "liquidity_confirmed_signals": len(liquidity_confirmed_rows),
         "paper_log": _log_result_dict(log_result),
+        "live_execution": live_result,
     }
     portfolio_summary = build_portfolio_summary(table, generated_at=now)
     result["portfolio_summary"] = portfolio_summary
@@ -378,6 +483,8 @@ def run_combined_paper_log(
     dynamodb_table: Any | None = None,
     s3_client: Any | None = None,
     lambda_client: Any | None = None,
+    live_order_table: Any | None = None,
+    live_executors: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
@@ -399,6 +506,8 @@ def run_combined_paper_log(
         dynamodb_table=table,
         s3_client=s3_client,
         lambda_client=lambda_client,
+        live_order_table=live_order_table,
+        live_executors=live_executors,
         now=now,
     )
     discovery_result = (
@@ -416,6 +525,8 @@ def run_combined_paper_log(
             dynamodb_table=table,
             s3_client=s3_client,
             lambda_client=lambda_client,
+            live_order_table=live_order_table,
+            live_executors=live_executors,
             now=now,
         )
         if config.enable_matchbook_discovery
@@ -455,6 +566,10 @@ def run_combined_paper_log(
                 + discovery_result["paper_log"]["duplicates"]
             ),
         },
+        "live_execution": _combine_live_execution_results(
+            soccer_result["live_execution"],
+            discovery_result["live_execution"],
+        ),
         "settlement": _settlement_result_dict(settlement),
         "portfolio_summary": portfolio_summary,
     }
@@ -475,6 +590,7 @@ def _empty_branch_result() -> dict[str, Any]:
         "paper_eligible_signals": 0,
         "liquidity_confirmed_signals": 0,
         "paper_log": {"attempted": 0, "inserted": 0, "duplicates": 0},
+        "live_execution": _disabled_live_execution_result(0),
     }
 
 
@@ -637,6 +753,13 @@ def _summary_text(result: dict[str, Any]) -> str:
             f"- Liquidity-confirmed signals: {result['liquidity_confirmed_signals']}",
             f"- New paper trades: {paper_log['inserted']}",
             f"- Duplicate paper trades: {paper_log['duplicates']}",
+            (
+                "- Live execution: "
+                f"{result['live_execution']['recorded']} recorded, "
+                f"{result['live_execution']['submitted']} submitted, "
+                f"enabled={result['live_execution']['enabled']}, "
+                f"dry_run={result['live_execution']['dry_run']}"
+            ),
             f"- Closing updates: {closing['updated']}/{closing['open_trades']} open trades",
             f"- Settled this run: {settlement['settled']}",
             f"- S3 snapshot: s3://{snapshot.get('bucket', '')}/{snapshot.get('key', '')}",
@@ -680,6 +803,13 @@ def _combined_summary_text(result: dict[str, Any]) -> str:
         f"- Liquidity-confirmed signals: {result['liquidity_confirmed_signals']}",
         f"- New paper trades: {paper_log['inserted']}",
         f"- Duplicate paper trades: {paper_log['duplicates']}",
+        (
+            "- Live execution: "
+            f"{result['live_execution']['recorded']} recorded, "
+            f"{result['live_execution']['submitted']} submitted, "
+            f"enabled={result['live_execution']['enabled']}, "
+            f"dry_run={result['live_execution']['dry_run']}"
+        ),
         f"- Settled this run: {result['settlement']['settled']}",
         "",
         "Branches",
@@ -1238,6 +1368,82 @@ def _read_lambda_payload(response: dict[str, Any]) -> dict[str, Any]:
     return json.loads(raw or "{}")
 
 
+def _execute_live_signals(
+    config: StrategyRunnerConfig,
+    signals: list[ValueSignal],
+    *,
+    logged_at: datetime,
+    liquidity_by_key: dict[tuple[str, str, str, str, str], dict[str, Any]],
+    live_order_table: Any | None,
+    live_executors: dict[str, Any] | None,
+) -> dict[str, Any]:
+    live_config = _live_execution_config(config)
+    if not live_config.enabled:
+        return _disabled_live_execution_result(len(signals), dry_run=live_config.dry_run)
+    table = live_order_table or _dynamodb_named_table(config.live_order_table_name, config.aws_region)
+    result = execute_live_signals(
+        table,
+        signals,
+        config=live_config,
+        logged_at=logged_at,
+        liquidity_by_key=liquidity_by_key,
+        executors=live_executors,
+    )
+    return live_execution_result_dict(result)
+
+
+def _live_execution_config(config: StrategyRunnerConfig) -> LiveExecutionConfig:
+    return LiveExecutionConfig(
+        enabled=config.live_execution_enabled,
+        dry_run=config.live_execution_dry_run,
+        order_table_name=config.live_order_table_name,
+        allowed_sport_prefixes=config.live_allowed_sport_prefixes,
+        allowed_bookmakers=config.live_allowed_bookmakers,
+        allowed_bet_sides=config.live_allowed_bet_sides,
+        max_reference_disagreement_pct=config.live_max_reference_disagreement_pct,
+        bankroll=config.live_bankroll,
+        kelly_fraction=config.live_kelly_fraction,
+        max_order_risk_pct=config.live_max_order_risk_pct,
+        max_daily_risk_pct=config.live_max_daily_risk_pct,
+        min_order_risk=config.live_min_order_risk,
+        max_order_risk=config.live_max_order_risk,
+        require_confirmed_liquidity=config.live_require_confirmed_liquidity,
+        prevent_stacked_event_exposure=config.live_prevent_stacked_event_exposure,
+    )
+
+
+def _disabled_live_execution_result(candidates: int, *, dry_run: bool = True) -> dict[str, Any]:
+    return {
+        "enabled": False,
+        "dry_run": dry_run,
+        "candidates": candidates,
+        "eligible": 0,
+        "sized": 0,
+        "submitted": 0,
+        "recorded": 0,
+        "skipped": {"disabled": candidates},
+    }
+
+
+def _combine_live_execution_results(*results: dict[str, Any]) -> dict[str, Any]:
+    combined = {
+        "enabled": any(result.get("enabled") for result in results),
+        "dry_run": all(result.get("dry_run", True) for result in results),
+        "candidates": 0,
+        "eligible": 0,
+        "sized": 0,
+        "submitted": 0,
+        "recorded": 0,
+        "skipped": {},
+    }
+    for result in results:
+        for field in ("candidates", "eligible", "sized", "submitted", "recorded"):
+            combined[field] += int(result.get(field) or 0)
+        for reason, count in dict(result.get("skipped") or {}).items():
+            combined["skipped"][reason] = combined["skipped"].get(reason, 0) + int(count)
+    return combined
+
+
 def _row_key(row: dict[str, str]) -> tuple[str, str, str, str, str]:
     return (
         row["event_id"].casefold(),
@@ -1249,11 +1455,13 @@ def _row_key(row: dict[str, str]) -> tuple[str, str, str, str, str]:
 
 
 def _dynamodb_table(config: StrategyRunnerConfig):
+    return _dynamodb_named_table(config.dynamodb_table_name, config.aws_region)
+
+
+def _dynamodb_named_table(name: str, region: str):
     import boto3
 
-    return boto3.resource("dynamodb", region_name=config.aws_region).Table(
-        config.dynamodb_table_name
-    )
+    return boto3.resource("dynamodb", region_name=region).Table(name)
 
 
 def _boto3_client(service: str, region: str):
@@ -1338,6 +1546,12 @@ def _optional_float(value: Any) -> float | None:
     if value in {None, ""}:
         return None
     return float(value)
+
+
+def _csv_tuple(value: Any) -> tuple[str, ...]:
+    if isinstance(value, (tuple, list)):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    return tuple(item.strip() for item in str(value).split(",") if item.strip())
 
 
 def _average(values) -> float:
