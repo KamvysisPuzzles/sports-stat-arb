@@ -125,6 +125,73 @@ def test_lay_size_is_capped_by_liability_not_stake() -> None:
     assert intent.stake == 8.5 / 4.0
 
 
+def test_size_live_order_supports_flat_back_risk() -> None:
+    intent = size_live_order(
+        signal(),
+        config=LiveExecutionConfig(
+            enabled=True,
+            sizing_method="flat",
+            flat_order_risk=1,
+            bankroll=1000,
+            max_order_risk_pct=0.01,
+            max_order_risk=20,
+            min_order_risk=1,
+        ),
+        liquidity={"available_at_or_above_target": 100},
+        dry_run=True,
+    )
+
+    assert intent is not None
+    assert intent.sizing_method == "flat"
+    assert intent.flat_order_risk == 1
+    assert intent.stake == 1
+    assert intent.liability == 1
+    assert intent.full_kelly_fraction == 0.034 / 3.2
+
+
+def test_size_live_order_supports_flat_lay_liability() -> None:
+    intent = size_live_order(
+        signal(bet_side="lay", target_odds=5.0, target_effective_odds=5.0),
+        config=LiveExecutionConfig(
+            enabled=True,
+            sizing_method="flat",
+            flat_order_risk=1,
+            bankroll=1000,
+            max_order_risk_pct=0.01,
+            max_order_risk=20,
+            min_order_risk=1,
+        ),
+        liquidity={"available_at_or_above_target": 100},
+        dry_run=True,
+    )
+
+    assert intent is not None
+    assert intent.sizing_method == "flat"
+    assert intent.liability == 1
+    assert intent.stake == 0.25
+
+
+def test_flat_size_is_still_capped_by_available_liquidity() -> None:
+    intent = size_live_order(
+        signal(),
+        config=LiveExecutionConfig(
+            enabled=True,
+            sizing_method="flat",
+            flat_order_risk=2,
+            bankroll=1000,
+            max_order_risk_pct=0.01,
+            max_order_risk=20,
+            min_order_risk=0.5,
+        ),
+        liquidity={"available_at_or_above_target": 0.75},
+        dry_run=True,
+    )
+
+    assert intent is not None
+    assert intent.stake == 0.75
+    assert intent.liability == 0.75
+
+
 def test_execute_live_signals_records_dry_run_orders_without_executor() -> None:
     table = FakeLiveOrderTable()
     result = execute_live_signals(
@@ -144,7 +211,28 @@ def test_execute_live_signals_records_dry_run_orders_without_executor() -> None:
     item = next(iter(table.items.values()))
     assert item["execution_mode"] == "dry_run"
     assert item["status"] == "dry_run"
+    assert item["sizing_method"] == "kelly"
     assert item["reference_disagreement_pct"] == Decimal("0.02")
+
+
+def test_execute_live_signals_allows_configured_venue_without_confirmed_liquidity() -> None:
+    table = FakeLiveOrderTable()
+    result = execute_live_signals(
+        table,
+        [signal(target_bookmaker="Betfair")],
+        config=LiveExecutionConfig(
+            enabled=True,
+            dry_run=True,
+            allow_unconfirmed_liquidity_bookmakers=("betfair",),
+        ),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key={},
+    )
+
+    assert result.recorded == 1
+    item = next(iter(table.items.values()))
+    assert item["target_bookmaker"] == "Betfair"
+    assert item["available_at_target"] == Decimal("0")
 
 
 def test_execute_live_signals_blocks_stacked_positive_exposure_within_batch() -> None:

@@ -20,6 +20,8 @@ class LiveExecutionConfig:
     allowed_bookmakers: tuple[str, ...] = ("matchbook", "betfair", "smarkets")
     allowed_bet_sides: tuple[str, ...] = ("back", "lay")
     max_reference_disagreement_pct: float = 0.03
+    sizing_method: str = "kelly"
+    flat_order_risk: float = 1.0
     bankroll: float = 1000.0
     kelly_fraction: float = 0.10
     max_order_risk_pct: float = 0.005
@@ -27,6 +29,7 @@ class LiveExecutionConfig:
     min_order_risk: float = 1.0
     max_order_risk: float = 10.0
     require_confirmed_liquidity: bool = True
+    allow_unconfirmed_liquidity_bookmakers: tuple[str, ...] = ("betfair",)
     prevent_stacked_event_exposure: bool = True
 
 
@@ -38,6 +41,8 @@ class LiveOrderIntent:
     limit_odds: float
     stake: float
     liability: float
+    sizing_method: str
+    flat_order_risk: float
     kelly_fraction: float
     full_kelly_fraction: float
     bankroll: float
@@ -130,7 +135,7 @@ def execute_live_signals(
             _count(skipped, "duplicate_live_signal")
             continue
         liquidity = (liquidity_by_key or {}).get(signal_key(signal), {})
-        reason = liquidity_reject_reason(liquidity, config=config)
+        reason = liquidity_reject_reason(signal, liquidity, config=config)
         if reason is not None:
             _count(skipped, reason)
             continue
@@ -228,11 +233,16 @@ def _filter_stacked_live_exposure(
 
 
 def liquidity_reject_reason(
+    signal: ValueSignal,
     liquidity: dict[str, Any],
     *,
     config: LiveExecutionConfig,
 ) -> str | None:
     if not config.require_confirmed_liquidity:
+        return None
+    if signal.target_bookmaker.casefold() in {
+        bookmaker.casefold() for bookmaker in config.allow_unconfirmed_liquidity_bookmakers
+    }:
         return None
     if str(liquidity.get("liquidity_status") or "").casefold() != "available":
         return "liquidity_unavailable"
@@ -249,26 +259,39 @@ def size_live_order(
     dry_run: bool,
     max_risk: float | None = None,
 ) -> LiveOrderIntent | None:
-    if config.bankroll <= 0 or config.kelly_fraction <= 0:
+    if config.bankroll <= 0:
         return None
     if signal.target_odds <= 1:
         return None
     liability_per_unit = signal.target_odds - 1
-    if signal.bet_side.casefold() == "lay":
-        full_kelly = signal.edge
-        raw_liability = config.bankroll * full_kelly * config.kelly_fraction
-        stake = raw_liability / liability_per_unit
-        available = _float(liquidity.get("available_at_or_above_target"))
-        if available > 0:
-            stake = min(stake, available)
-        liability = stake * liability_per_unit
+    available = _float(liquidity.get("available_at_or_above_target"))
+    sizing_method = config.sizing_method.casefold()
+
+    full_kelly = _full_kelly_fraction(signal)
+    if sizing_method == "flat":
+        if config.flat_order_risk <= 0:
+            return None
+        liability = config.flat_order_risk
+        if signal.bet_side.casefold() == "lay":
+            stake = liability / liability_per_unit
+        else:
+            stake = liability
+    elif sizing_method == "kelly":
+        if config.kelly_fraction <= 0:
+            return None
+        if signal.bet_side.casefold() == "lay":
+            raw_liability = config.bankroll * full_kelly * config.kelly_fraction
+            stake = raw_liability / liability_per_unit
+            liability = stake * liability_per_unit
+        else:
+            stake = config.bankroll * full_kelly * config.kelly_fraction
+            liability = stake
     else:
-        full_kelly = signal.edge / liability_per_unit
-        stake = config.bankroll * full_kelly * config.kelly_fraction
-        available = _float(liquidity.get("available_at_or_above_target"))
-        if available > 0:
-            stake = min(stake, available)
-        liability = stake
+        return None
+
+    if available > 0:
+        stake = min(stake, available)
+        liability = stake * liability_per_unit if signal.bet_side.casefold() == "lay" else stake
 
     risk_cap = min(config.bankroll * config.max_order_risk_pct, config.max_order_risk)
     if max_risk is not None:
@@ -289,12 +312,21 @@ def size_live_order(
         limit_odds=signal.target_odds,
         stake=stake,
         liability=liability,
+        sizing_method=sizing_method,
+        flat_order_risk=config.flat_order_risk,
         kelly_fraction=config.kelly_fraction,
         full_kelly_fraction=full_kelly,
         bankroll=config.bankroll,
         available_at_target=available if available > 0 else None,
         dry_run=dry_run,
     )
+
+
+def _full_kelly_fraction(signal: ValueSignal) -> float:
+    liability_per_unit = signal.target_odds - 1
+    if signal.bet_side.casefold() == "lay":
+        return signal.edge
+    return signal.edge / liability_per_unit
 
 
 def live_order_id(signal: ValueSignal, *, dry_run: bool) -> str:
@@ -343,6 +375,8 @@ def live_order_item(
         "limit_odds": _decimal(intent.limit_odds),
         "stake": _decimal(intent.stake),
         "liability": _decimal(intent.liability),
+        "sizing_method": intent.sizing_method,
+        "flat_order_risk": _decimal(intent.flat_order_risk),
         "bankroll_snapshot": _decimal(intent.bankroll),
         "kelly_fraction": _decimal(intent.kelly_fraction),
         "full_kelly_fraction": _decimal(intent.full_kelly_fraction),

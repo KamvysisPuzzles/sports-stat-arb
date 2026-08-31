@@ -336,12 +336,17 @@ LIVE_ALLOWED_BOOKMAKERS=matchbook,betfair,smarkets
 LIVE_ALLOWED_BET_SIDES=back,lay
 LIVE_MAX_REFERENCE_DISAGREEMENT_PCT=0.03
 LIVE_REQUIRE_CONFIRMED_LIQUIDITY=true
+LIVE_ALLOW_UNCONFIRMED_LIQUIDITY_BOOKMAKERS=betfair
 LIVE_PREVENT_STACKED_EVENT_EXPOSURE=true
+LIVE_SIZING_METHOD=flat
+LIVE_FLAT_ORDER_RISK=1
 ```
 
-Kelly and risk controls:
+Sizing and risk controls:
 
 ```text
+LIVE_SIZING_METHOD=flat
+LIVE_FLAT_ORDER_RISK=1
 LIVE_BANKROLL=1000
 LIVE_KELLY_FRACTION=0.10
 LIVE_MAX_ORDER_RISK_PCT=0.005
@@ -353,7 +358,8 @@ LIVE_MAX_ORDER_RISK=10
 Dry-run mode writes deterministic order-intent rows to the live order table with
 `execution_mode=dry_run` and `status=dry_run`. With dry-run off, the runner calls
 configured venue executors and records submitted, rejected, or failed attempts in
-the same table. Paper trades continue to be logged separately.
+the same table. Paper trades continue to be logged separately. Flat sizing treats
+`LIVE_FLAT_ORDER_RISK` as stake for backs and worst-case liability for lays.
 
 Expose it with either a Lambda Function URL or API Gateway HTTP API. Open the
 dashboard with:

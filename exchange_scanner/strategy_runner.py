@@ -110,6 +110,8 @@ class StrategyRunnerConfig:
     live_allowed_bookmakers: tuple[str, ...] = ("matchbook", "betfair", "smarkets")
     live_allowed_bet_sides: tuple[str, ...] = ("back", "lay")
     live_max_reference_disagreement_pct: float = 0.03
+    live_sizing_method: str = "kelly"
+    live_flat_order_risk: float = 1.0
     live_bankroll: float = 1000.0
     live_kelly_fraction: float = 0.10
     live_max_order_risk_pct: float = 0.005
@@ -117,6 +119,7 @@ class StrategyRunnerConfig:
     live_min_order_risk: float = 1.0
     live_max_order_risk: float = 10.0
     live_require_confirmed_liquidity: bool = True
+    live_allow_unconfirmed_liquidity_bookmakers: tuple[str, ...] = ("betfair",)
     live_prevent_stacked_event_exposure: bool = True
 
 
@@ -237,6 +240,12 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
             or env.get("LIVE_MAX_REFERENCE_DISAGREEMENT_PCT")
             or 0.03
         ),
+        live_sizing_method=str(
+            event.get("live_sizing_method") or env.get("LIVE_SIZING_METHOD") or "kelly"
+        ),
+        live_flat_order_risk=float(
+            event.get("live_flat_order_risk") or env.get("LIVE_FLAT_ORDER_RISK") or 1.0
+        ),
         live_bankroll=float(event.get("live_bankroll") or env.get("LIVE_BANKROLL") or 1000.0),
         live_kelly_fraction=float(
             event.get("live_kelly_fraction") or env.get("LIVE_KELLY_FRACTION") or 0.10
@@ -262,6 +271,11 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
                 "live_require_confirmed_liquidity",
                 env.get("LIVE_REQUIRE_CONFIRMED_LIQUIDITY", "true"),
             )
+        ),
+        live_allow_unconfirmed_liquidity_bookmakers=_csv_tuple(
+            event.get("live_allow_unconfirmed_liquidity_bookmakers")
+            or env.get("LIVE_ALLOW_UNCONFIRMED_LIQUIDITY_BOOKMAKERS")
+            or "betfair"
         ),
         live_prevent_stacked_event_exposure=_bool(
             event.get(
@@ -1401,6 +1415,8 @@ def _live_execution_config(config: StrategyRunnerConfig) -> LiveExecutionConfig:
         allowed_bookmakers=config.live_allowed_bookmakers,
         allowed_bet_sides=config.live_allowed_bet_sides,
         max_reference_disagreement_pct=config.live_max_reference_disagreement_pct,
+        sizing_method=config.live_sizing_method,
+        flat_order_risk=config.live_flat_order_risk,
         bankroll=config.live_bankroll,
         kelly_fraction=config.live_kelly_fraction,
         max_order_risk_pct=config.live_max_order_risk_pct,
@@ -1408,6 +1424,9 @@ def _live_execution_config(config: StrategyRunnerConfig) -> LiveExecutionConfig:
         min_order_risk=config.live_min_order_risk,
         max_order_risk=config.live_max_order_risk,
         require_confirmed_liquidity=config.live_require_confirmed_liquidity,
+        allow_unconfirmed_liquidity_bookmakers=(
+            config.live_allow_unconfirmed_liquidity_bookmakers
+        ),
         prevent_stacked_event_exposure=config.live_prevent_stacked_event_exposure,
     )
 
