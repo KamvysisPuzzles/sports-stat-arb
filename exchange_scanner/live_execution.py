@@ -272,8 +272,7 @@ def _filter_stacked_live_exposure(
     active_items = [
         item
         for item in existing_items
-        if str(item.get("status") or "").casefold()
-        in {"dry_run", "submitted", "matched", "partially_matched", "open"}
+        if _live_order_blocks_retry(item)
     ]
     if not config.prevent_cross_venue_event_exposure:
         return _filter_stacked_positive_exposure_signals(
@@ -285,6 +284,7 @@ def _filter_stacked_live_exposure(
     kept_scoped = _filter_stacked_positive_exposure_signals(
         scoped_signals,
         existing_items=scoped_existing,
+        allow_same_bet=False,
     )
     kept_ids = {id(signal) for signal in kept_scoped}
     return [signal for signal, scoped in zip(signals, scoped_signals) if id(scoped) in kept_ids]

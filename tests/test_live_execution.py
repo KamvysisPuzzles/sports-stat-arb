@@ -757,8 +757,91 @@ def test_execute_live_signals_dedupes_after_matched_attempt() -> None:
 
     assert first.recorded == 1
     assert second.recorded == 0
-    assert second.skipped == {"duplicate_live_signal": 1}
+    assert second.skipped == {"stacked_event_exposure": 1}
     assert len(executor.intents) == 1
+    assert len(table.items) == 1
+
+
+def test_execute_live_signals_blocks_same_bet_after_cross_venue_match() -> None:
+    class MatchedExecutor(FakeExecutor):
+        def place_limit_order(self, intent):
+            self.intents.append(intent)
+            return LiveOrderResult(
+                order_id=intent.order_id,
+                status="matched",
+                venue_order_id=f"venue-order-{len(self.intents)}",
+                matched_size=intent.stake,
+                avg_matched_odds=intent.limit_odds,
+                remaining_size=0,
+            )
+
+    table = FakeLiveOrderTable()
+    matchbook_executor = MatchedExecutor()
+    betfair_executor = MatchedExecutor()
+    liquidity_by_key = {
+        ("event-1", "h2h", "arsenal", "matchbook", "back"): {
+            "liquidity_status": "available",
+            "available_at_or_above_target": 25,
+            "matchbook_market_id": "market-1",
+            "matchbook_runner_id": "runner-1",
+        },
+        ("event-1", "h2h", "arsenal", "betfair", "back"): {
+            "liquidity_status": "available",
+            "available_at_or_above_target": 0,
+            "betfair_market_id": "market-b",
+            "betfair_selection_id": "runner-b",
+        },
+    }
+
+    first = execute_live_signals(
+        table,
+        [signal(target_bookmaker="Matchbook")],
+        config=LiveExecutionConfig(enabled=True, dry_run=False),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key=liquidity_by_key,
+        executors={"matchbook": matchbook_executor},
+    )
+    second = execute_live_signals(
+        table,
+        [signal(target_bookmaker="Betfair")],
+        config=LiveExecutionConfig(enabled=True, dry_run=False),
+        logged_at=datetime(2026, 8, 14, 12, 2, tzinfo=timezone.utc),
+        liquidity_by_key=liquidity_by_key,
+        executors={"betfair": betfair_executor},
+    )
+
+    assert first.recorded == 1
+    assert second.recorded == 0
+    assert second.skipped == {"stacked_event_exposure": 1}
+    assert len(matchbook_executor.intents) == 1
+    assert len(betfair_executor.intents) == 0
+    assert len(table.items) == 1
+
+
+def test_execute_live_signals_blocks_same_bet_across_venues_in_same_run() -> None:
+    table = FakeLiveOrderTable()
+    result = execute_live_signals(
+        table,
+        [
+            signal(target_bookmaker="Matchbook"),
+            signal(target_bookmaker="Betfair"),
+        ],
+        config=LiveExecutionConfig(enabled=True, dry_run=True),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key={
+            ("event-1", "h2h", "arsenal", "matchbook", "back"): {
+                "liquidity_status": "available",
+                "available_at_or_above_target": 25,
+            },
+            ("event-1", "h2h", "arsenal", "betfair", "back"): {
+                "liquidity_status": "available",
+                "available_at_or_above_target": 0,
+            },
+        },
+    )
+
+    assert result.recorded == 1
+    assert result.skipped == {"stacked_event_exposure": 1}
     assert len(table.items) == 1
 
 

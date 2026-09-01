@@ -362,6 +362,7 @@ def _filter_stacked_positive_exposure_signals(
     signals: list[ValueSignal],
     *,
     existing_items: list[dict[str, Any]],
+    allow_same_bet: bool = True,
 ) -> list[ValueSignal]:
     kept: list[ValueSignal] = []
     existing_by_group: dict[tuple[str, str, str], list[dict[str, Any] | ValueSignal]] = {}
@@ -381,7 +382,7 @@ def _filter_stacked_positive_exposure_signals(
         existing_positive: set[str] = set()
         blocked = False
         for item in group_items:
-            if _same_bet(item, signal):
+            if allow_same_bet and _same_bet(item, signal):
                 continue
             positive = _positive_outcomes(item, universe)
             if signal_positive & existing_positive:

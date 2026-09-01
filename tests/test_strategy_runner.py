@@ -406,7 +406,7 @@ def test_run_paper_log_lets_live_dedupe_independently_from_paper(monkeypatch) ->
     assert second["paper_log"]["duplicates"] == 1
     assert second["live_execution"]["candidates"] == 1
     assert second["live_execution"]["recorded"] == 0
-    assert second["live_execution"]["skipped"]["duplicate_live_signal"] == 1
+    assert second["live_execution"]["skipped"]["stacked_event_exposure"] == 1
     assert len(live_table.items) == 1
 
 
