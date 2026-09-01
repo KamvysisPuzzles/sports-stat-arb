@@ -149,18 +149,18 @@ def live_orders():
             "target_bookmaker": "Matchbook",
             "bet_side": "back",
             "limit_odds": Decimal("4.2"),
-            "stake": Decimal("1"),
-            "liability": Decimal("1"),
+            "stake": Decimal(1),
+            "liability": Decimal(1),
             "sizing_method": "flat",
-            "flat_order_risk": Decimal("1"),
+            "flat_order_risk": Decimal(1),
             "edge": Decimal("0.034"),
             "reference_disagreement_pct": Decimal("0.02"),
             "available_at_target": Decimal("25.5"),
             "execution_mode": "dry_run",
             "status": "dry_run",
             "venue_order_id": "",
-            "matched_size": Decimal("0"),
-            "avg_matched_odds": Decimal("0"),
+            "matched_size": Decimal(0),
+            "avg_matched_odds": Decimal(0),
             "error": "",
         },
         {
@@ -176,12 +176,12 @@ def live_orders():
             "bet_side": "lay",
             "limit_odds": Decimal("5.0"),
             "stake": Decimal("0.25"),
-            "liability": Decimal("1"),
+            "liability": Decimal(1),
             "sizing_method": "flat",
-            "flat_order_risk": Decimal("1"),
+            "flat_order_risk": Decimal(1),
             "edge": Decimal("0.05"),
             "reference_disagreement_pct": Decimal("0.01"),
-            "available_at_target": Decimal("0"),
+            "available_at_target": Decimal(0),
             "execution_mode": "live",
             "status": "submitted",
             "venue_order_id": "betfair-order-1",
@@ -341,6 +341,11 @@ def test_dashboard_payload_summarises_live_orders() -> None:
     assert payload["summary"]["live_open_orders"] == 2
     assert payload["summary"]["total_liability"] == 2
     assert payload["summary"]["matched_size"] == 0.1
+    assert payload["summary"]["active_positions"] == 1
+    assert payload["summary"]["active_position_liability"] == pytest.approx(0.4)
+    assert payload["active_positions"][0]["target_bookmaker"] == "Betfair"
+    assert payload["active_positions"][0]["event_name"] == "Liverpool v Everton"
+    assert payload["active_positions"][0]["liability"] == pytest.approx(0.4)
     assert payload["trades"][0]["target_odds"] == 5.0
 
 
@@ -365,6 +370,7 @@ def test_render_dashboard_html_contains_paper_and_live_pages() -> None:
     assert 'href="?token=secret&amp;page=live">Live</a>' in paper_html
     assert "<h1>Live Orders</h1>" in live_html
     assert 'href="?token=secret">Paper</a>' in live_html
+    assert "Active Positions" in live_html
     assert "Orders by Venue" in live_html
     assert "<th>Venue Order</th>" in live_html
     assert "betfair-order-1" in live_html

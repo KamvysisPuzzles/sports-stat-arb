@@ -36,6 +36,7 @@ def dashboard_payload(
         "venue_results": _venue_results(filtered, now=now),
         "sport_results": _group_results(filtered, group_key="sport_family", label_key="sport", now=now),
         "league_results": _group_results(filtered, group_key="sport_key", label_key="league", now=now),
+        "active_positions": _active_positions(filtered) if page == "live" else [],
         "trades": sorted(
             filtered,
             key=lambda item: item.get("logged_at", ""),
@@ -342,6 +343,7 @@ def render_dashboard_html(payload: dict[str, Any]) -> str:
     {_quick_filters_html(token, page)}
     {_multi_filter_html(token, active_filters, filter_options, page=page)}
     {_kelly_html(payload.get("kelly", {}), token, active_filters) if page == "paper" else ""}
+    {_active_positions_html(payload.get("active_positions", [])) if page == "live" else ""}
     {_venue_results_html(payload.get("venue_results", [])) if page == "paper" else _live_venue_results_html(payload.get("venue_results", []))}
     {_group_results_html("Results by Sport", payload.get("sport_results", []), "Sport")}
     {_group_results_html("Results by League", payload.get("league_results", []), "League")}
@@ -440,6 +442,8 @@ def _live_metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> 
       {_metric("Orders Last 24h", summary["trades_last_24h"])}
       {_metric("Total Risk", f"{summary['total_liability']:.2f}")}
       {_metric("Open Risk", f"{summary['live_open_liability']:.2f}")}
+      {_metric("Positions", summary["active_positions"])}
+      {_metric("Position Risk", f"{summary['active_position_liability']:.2f}")}
       {_metric("Matched Size", f"{summary['matched_size']:.2f}")}
       {_metric("Avg Limit Odds", f"{summary['average_booked_odds']:.2f}")}
       {_metric("Median Liquidity", f"{summary['median_available_risk_at_target']:.2f}", "risk")}
@@ -565,6 +569,55 @@ def _live_order_rows_html(rows: list[dict[str, Any]]) -> str:
         f"<td>{_format_number(row.get('matched_size'))}</td>"
         f"<td>{_format_number(row.get('avg_matched_odds'))}</td>"
         f"<td>{_escape(row.get('error', ''))}</td>"
+        f"<td>{_short_time(row.get('commence_time'))}</td>"
+        "</tr>"
+        for row in rows
+    )
+
+
+def _active_positions_html(rows: list[dict[str, Any]]) -> str:
+    return f"""<section class="venue-section">
+      <h2>Active Positions</h2>
+      <div class="table-wrap venue-wrap">
+        <table class="venue-table">
+          <thead>
+            <tr>
+              <th>Book</th>
+              <th>Event</th>
+              <th>Bet</th>
+              <th>Status</th>
+              <th>Matched</th>
+              <th>Avg Odds</th>
+              <th>Liability</th>
+              <th>Edge</th>
+              <th>Orders</th>
+              <th>Venue Orders</th>
+              <th>Starts</th>
+            </tr>
+          </thead>
+          <tbody>
+            {_active_position_rows_html(rows)}
+          </tbody>
+        </table>
+      </div>
+    </section>"""
+
+
+def _active_position_rows_html(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return '<tr><td colspan="11">No active matched positions for the current filters.</td></tr>'
+    return "\n".join(
+        "<tr>"
+        f"<td>{_escape(row.get('target_bookmaker', ''))}</td>"
+        f"<td>{_escape(row.get('event_name', ''))}</td>"
+        f"<td>{_escape(row.get('risk_selection', ''))}</td>"
+        f"<td>{_escape(row.get('status', ''))}</td>"
+        f"<td>{_format_number(row.get('matched_size'))}</td>"
+        f"<td>{_format_number(row.get('avg_matched_odds'))}</td>"
+        f"<td>{_format_number(row.get('liability'))}</td>"
+        f"<td class='{_class_for_number(row.get('edge'))}'>{_format_pct(row.get('edge'))}</td>"
+        f"<td>{_escape(row.get('orders', ''))}</td>"
+        f"<td>{_escape(row.get('venue_order_ids', ''))}</td>"
         f"<td>{_short_time(row.get('commence_time'))}</td>"
         "</tr>"
         for row in rows
@@ -1171,6 +1224,8 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         if str(item.get("status", "")).casefold()
         in {"dry_run", "submitted", "open", "partially_matched"}
     )
+    active_position_rows = [item for item in trades if _has_matched_position(item)]
+    active_position_liability = sum(_matched_position_liability(item) for item in active_position_rows)
     matched_size = sum(_float(item.get("matched_size")) for item in trades)
     average_closed_clv = _average(_float(item.get("target_clv")) for item in closed_clv_rows)
     median_closed_clv = _median(_float(item.get("target_clv")) for item in closed_clv_rows)
@@ -1209,6 +1264,8 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         "failed_orders": failed_orders,
         "live_open_orders": live_open_orders,
         "live_open_liability": live_open_liability,
+        "active_positions": len(active_position_rows),
+        "active_position_liability": active_position_liability,
         "matched_size": matched_size,
         "settled_won": wins,
         "settled_lost": losses,
@@ -1299,6 +1356,54 @@ def _clv_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
 
 def _venue_results(trades: list[dict[str, Any]], *, now: datetime | None = None) -> list[dict[str, Any]]:
     return _group_results(trades, group_key="target_bookmaker", label_key="venue", now=now)
+
+
+def _active_positions(trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = {}
+    for trade in trades:
+        if not _has_matched_position(trade):
+            continue
+        key = (
+            str(trade.get("event_id") or trade.get("event_name") or ""),
+            str(trade.get("market") or ""),
+            str(trade.get("outcome_name") or ""),
+            str(trade.get("target_bookmaker") or ""),
+            str(trade.get("bet_side") or ""),
+        )
+        grouped.setdefault(key, []).append(trade)
+
+    rows = [_active_position_row(items) for items in grouped.values()]
+    return sorted(rows, key=lambda item: item.get("commence_time", ""))
+
+
+def _active_position_row(items: list[dict[str, Any]]) -> dict[str, Any]:
+    first = min(items, key=lambda item: str(item.get("logged_at") or ""))
+    matched_size = sum(_float(item.get("matched_size")) for item in items)
+    liability = sum(_matched_position_liability(item) for item in items)
+    weighted_odds_total = sum(
+        _float(item.get("matched_size"))
+        * (_float(item.get("avg_matched_odds")) or _float(item.get("target_odds")))
+        for item in items
+    )
+    statuses = sorted({str(item.get("status") or "") for item in items if item.get("status")})
+    venue_order_ids = [
+        str(item.get("venue_order_id") or "")
+        for item in items
+        if str(item.get("venue_order_id") or "")
+    ]
+    return {
+        "target_bookmaker": first.get("target_bookmaker", ""),
+        "event_name": first.get("event_name", ""),
+        "risk_selection": first.get("risk_selection", ""),
+        "status": ", ".join(statuses),
+        "matched_size": matched_size,
+        "avg_matched_odds": weighted_odds_total / matched_size if matched_size else 0.0,
+        "liability": liability,
+        "edge": _average(_float(item.get("edge")) for item in items),
+        "orders": len(items),
+        "venue_order_ids": ", ".join(venue_order_ids),
+        "commence_time": first.get("commence_time", ""),
+    }
 
 
 def _group_results(
@@ -1493,6 +1598,18 @@ def _trade_liability(item: dict[str, Any]) -> float:
     if _bet_side(item) == "lay":
         return max(0.0, stake * max(0.0, odds - 1))
     return stake
+
+
+def _has_matched_position(item: dict[str, Any]) -> bool:
+    return _float(item.get("matched_size")) > 0
+
+
+def _matched_position_liability(item: dict[str, Any]) -> float:
+    matched_size = _float(item.get("matched_size"))
+    odds = _float(item.get("avg_matched_odds")) or _float(item.get("target_odds"))
+    if _bet_side(item) == "lay":
+        return max(0.0, matched_size * max(0.0, odds - 1))
+    return matched_size
 
 
 def _trade_expected_value(item: dict[str, Any]) -> float:
