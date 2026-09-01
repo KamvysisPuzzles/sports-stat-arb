@@ -12,6 +12,7 @@ from exchange_scanner.live_venues import (
     BetfairLiveExecutor,
     MatchbookLiveExecutor,
     SmarketsLiveExecutor,
+    _normalise_pem,
     executors_from_env,
     matchbook_login,
 )
@@ -434,6 +435,16 @@ def test_executors_from_env_uses_betfair_cert_secret(monkeypatch) -> None:
     assert login_calls[0]["username"] == "betfair-user"
     assert login_calls[0]["password"] == "betfair-password"
     assert login_calls[0]["app_key"] == "app-key"
+
+
+def test_normalise_pem_wraps_single_line_pem() -> None:
+    pem = "-----BEGIN CERTIFICATE----- abcdef -----END CERTIFICATE-----"
+
+    assert _normalise_pem(pem) == (
+        "-----BEGIN CERTIFICATE-----\n"
+        "abcdef\n"
+        "-----END CERTIFICATE-----\n"
+    )
 
 
 def test_executors_from_env_uses_exchange_credentials_secret(monkeypatch) -> None:

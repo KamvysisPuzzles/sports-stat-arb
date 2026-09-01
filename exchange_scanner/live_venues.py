@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import textwrap
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -540,7 +542,21 @@ def _write_betfair_cert_files(*, cert_pem: Any, key_pem: Any) -> tuple[Path, Pat
 
 
 def _normalise_pem(value: str) -> str:
-    return value.strip().replace("\\n", "\n") + "\n"
+    value = value.strip().replace("\\n", "\n")
+    if "\n" in value:
+        return value + "\n"
+
+    match = re.fullmatch(
+        r"-----BEGIN ([^-]+)-----\s+(.+?)\s+-----END \1-----",
+        value,
+    )
+    if not match:
+        return value + "\n"
+
+    label = match.group(1)
+    body = re.sub(r"\s+", "", match.group(2))
+    wrapped_body = "\n".join(textwrap.wrap(body, width=64))
+    return f"-----BEGIN {label}-----\n{wrapped_body}\n-----END {label}-----\n"
 
 
 def matchbook_login(
