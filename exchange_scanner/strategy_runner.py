@@ -122,7 +122,7 @@ class StrategyRunnerConfig:
     live_bankroll: float = 1000.0
     live_kelly_fraction: float = 0.10
     live_max_order_risk_pct: float = 0.005
-    live_max_daily_risk_pct: float = 0.02
+    live_max_daily_risk_pct: float = 0.0
     live_min_order_risk: float = 1.0
     live_max_order_risk: float = 1.0
     live_require_confirmed_liquidity: bool = True
@@ -270,7 +270,7 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
         live_max_daily_risk_pct=float(
             event.get("live_max_daily_risk_pct")
             or env.get("LIVE_MAX_DAILY_RISK_PCT")
-            or 0.02
+            or 0.0
         ),
         live_min_order_risk=float(
             event.get("live_min_order_risk") or env.get("LIVE_MIN_ORDER_RISK") or 1.0

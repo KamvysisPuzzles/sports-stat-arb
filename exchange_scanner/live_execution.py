@@ -27,7 +27,7 @@ class LiveExecutionConfig:
     bankroll: float = 1000.0
     kelly_fraction: float = 0.10
     max_order_risk_pct: float = 0.005
-    max_daily_risk_pct: float = 0.02
+    max_daily_risk_pct: float = 0.0
     min_order_risk: float = 1.0
     max_order_risk: float = 10.0
     require_confirmed_liquidity: bool = True
@@ -149,7 +149,11 @@ def execute_live_signals(
     )
     allowed_signal_keys = {signal_key(signal) for signal in candidate_signals}
     daily_risk = _open_or_today_risk(existing_items, logged_at=logged_at)
-    daily_risk_cap = config.bankroll * config.max_daily_risk_pct
+    daily_risk_cap = (
+        config.bankroll * config.max_daily_risk_pct
+        if config.max_daily_risk_pct > 0
+        else None
+    )
     executor_map = executors or {}
     fallback_executor = DryRunVenueExecutor() if config.dry_run else None
     eligible = 0
@@ -174,11 +178,15 @@ def execute_live_signals(
         if reason is not None:
             _count(skipped, reason)
             continue
-        if daily_risk >= daily_risk_cap:
+        if daily_risk_cap is not None and daily_risk >= daily_risk_cap:
             _count(skipped, "daily_risk_cap")
             continue
         eligible += 1
-        remaining_daily_risk = max(0.0, daily_risk_cap - daily_risk)
+        remaining_daily_risk = (
+            max(0.0, daily_risk_cap - daily_risk)
+            if daily_risk_cap is not None
+            else None
+        )
         intent = size_live_order(
             signal,
             config=config,

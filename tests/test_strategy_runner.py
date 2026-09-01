@@ -559,6 +559,7 @@ def test_strategy_runner_default_markets_are_h2h_only() -> None:
 
     assert config.markets == "h2h,h2h_lay"
     assert config.max_age_seconds == 180
+    assert config.live_max_daily_risk_pct == 0.0
 
 
 def test_config_from_event_reads_odds_api_key_from_exchange_credentials_secret(monkeypatch) -> None:

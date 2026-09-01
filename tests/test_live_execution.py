@@ -308,6 +308,44 @@ def test_execute_live_signals_allows_live_betfair_without_confirmed_liquidity() 
     assert item["target_bookmaker"] == "Betfair"
 
 
+def test_execute_live_signals_has_no_daily_cap_by_default() -> None:
+    table = FakeLiveOrderTable()
+    first = signal(event_id="event-1", outcome_name="Arsenal")
+    second = signal(
+        event_id="event-2",
+        event_name="Liverpool v Everton",
+        outcome_name="Liverpool",
+    )
+
+    result = execute_live_signals(
+        table,
+        [first, second],
+        config=LiveExecutionConfig(
+            enabled=True,
+            dry_run=True,
+            sizing_method="flat",
+            flat_order_risk=1,
+            bankroll=1,
+            max_order_risk_pct=1,
+            max_order_risk=1,
+        ),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key={
+            ("event-1", "h2h", "arsenal", "matchbook", "back"): {
+                "liquidity_status": "available",
+                "available_at_or_above_target": 25,
+            },
+            ("event-2", "h2h", "liverpool", "matchbook", "back"): {
+                "liquidity_status": "available",
+                "available_at_or_above_target": 25,
+            },
+        },
+    )
+
+    assert result.recorded == 2
+    assert "daily_risk_cap" not in result.skipped
+
+
 def test_execute_live_signals_blocks_stacked_positive_exposure_within_batch() -> None:
     table = FakeLiveOrderTable()
     result = execute_live_signals(
