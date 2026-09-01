@@ -66,6 +66,8 @@ def test_matchbook_executor_posts_limit_offer() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
+        if request.method == "DELETE":
+            return httpx.Response(200, json={"status": "cancelled"})
         return httpx.Response(
             200,
             json={
@@ -88,13 +90,51 @@ def test_matchbook_executor_posts_limit_offer() -> None:
 
     result = executor.place_limit_order(intent())
 
-    assert result.status == "submitted"
+    assert result.status == "cancelled"
     assert result.venue_order_id == "offer-1"
+    assert [request.method for request in requests] == ["POST", "DELETE"]
     assert requests[0].url.path == "/offers"
+    assert requests[1].url.path == "/offers/offer-1"
     payload = json.loads(requests[0].read().decode())
     assert payload["offers"][0]["runner-id"] == 123
     assert payload["offers"][0]["stake"] == 1.0
     assert payload["offers"][0]["client-reference"] == "live#abc"
+
+
+def test_matchbook_executor_cancels_partial_unmatched_remainder() -> None:
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "DELETE":
+            return httpx.Response(200, json={"status": "cancelled"})
+        return httpx.Response(
+            200,
+            json={
+                "offers": [
+                    {
+                        "id": "offer-1",
+                        "status": "open",
+                        "matched-amount": 0.4,
+                        "remaining-amount": 0.6,
+                        "average-odds": 4.2,
+                    }
+                ]
+            },
+        )
+
+    executor = MatchbookLiveExecutor(session_token="token")
+    executor.http = httpx.Client(
+        base_url="https://api.matchbook.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = executor.place_limit_order(intent())
+
+    assert result.status == "partially_matched_cancelled"
+    assert result.matched_size == 0.4
+    assert result.remaining_size == 0
+    assert [request.method for request in requests] == ["POST", "DELETE"]
 
 
 def test_smarkets_executor_posts_limit_order() -> None:
@@ -102,6 +142,8 @@ def test_smarkets_executor_posts_limit_order() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
+        if request.method == "DELETE":
+            return httpx.Response(200, json={"state": "cancelled"})
         return httpx.Response(
             200,
             json={
@@ -127,9 +169,11 @@ def test_smarkets_executor_posts_limit_order() -> None:
         )
     )
 
-    assert result.status == "submitted"
+    assert result.status == "cancelled"
     assert result.venue_order_id == "order-1"
+    assert [request.method for request in requests] == ["POST", "DELETE"]
     assert requests[0].url.path == "/orders/"
+    assert requests[1].url.path == "/orders/order-1/"
     payload = json.loads(requests[0].read().decode())
     assert payload["contract_id"] == "456"
     assert payload["side"] == "buy"
@@ -175,6 +219,7 @@ def test_betfair_executor_places_limit_order_with_customer_ref() -> None:
     assert payload["params"]["marketId"] == "1.234"
     assert instruction["selectionId"] == 789
     assert instruction["customerOrderRef"] == "live#abc"
+    assert instruction["limitOrder"]["timeInForce"] == "FILL_OR_KILL"
 
 
 def test_betfair_executor_resolves_market_runner_before_placing_limit_order() -> None:

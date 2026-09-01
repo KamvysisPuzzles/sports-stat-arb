@@ -358,17 +358,23 @@ LIVE_MAX_ORDER_RISK=1
 Dry-run mode writes deterministic order-intent rows to the live order table with
 `execution_mode=dry_run` and `status=dry_run`. With dry-run off, the runner calls
 configured Matchbook, Smarkets, and Betfair venue executors and records
-submitted, rejected, failed, matched, or partially matched attempts in the same
-table. Real Matchbook and Smarkets orders require confirmed liquidity of at
-least `LIVE_MIN_CONFIRMED_LIQUIDITY` GBP at the target price or better, plus
-resolved venue market/runner ids from the enrichment step. Betfair can be
-allowed through without delayed liquidity confirmation because the live executor
-resolves Betfair `marketId` and `selectionId` at order-placement time, then
-submits a passive limit order. Paper trades continue to be logged separately.
-Flat sizing treats `LIVE_FLAT_ORDER_RISK` as stake for backs and worst-case
-liability for lays. Live execution only receives signals that were freshly
-inserted into the paper ledger in the same run, and the live guardrail blocks
-equivalent event exposure across venues by default.
+submitted, rejected, failed, cancelled, matched, or partially matched attempts in
+the same table. Betfair orders use `timeInForce=FILL_OR_KILL`, so they either
+match immediately in full or cancel. Matchbook does not expose a fill-or-kill
+field in the submit-offers API, and the public Smarkets REST examples do not
+show a reliable fill-or-kill field, so both venues submit the limit order and
+immediately cancel any unmatched remainder returned by the placement response.
+If a small partial fill happens before that cancel, the row is recorded as
+`partially_matched_cancelled`. Real Matchbook and Smarkets orders require
+confirmed liquidity of at least `LIVE_MIN_CONFIRMED_LIQUIDITY` GBP at the target
+price or better, plus resolved venue market/runner ids from the enrichment step.
+Betfair can be allowed through without delayed liquidity confirmation because
+the live executor resolves Betfair `marketId` and `selectionId` at
+order-placement time. Paper trades continue to be logged separately. Flat sizing
+treats `LIVE_FLAT_ORDER_RISK` as stake for backs and worst-case liability for
+lays. Live execution only receives signals that were freshly inserted into the
+paper ledger in the same run, and the live guardrail blocks equivalent event
+exposure across venues by default.
 
 Live venue credentials:
 
