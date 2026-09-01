@@ -141,7 +141,11 @@ def execute_live_signals(
         )
 
     existing_items = list_live_orders(table)
-    existing_keys = {str(item.get("signal_key")) for item in existing_items}
+    existing_keys = {
+        str(item.get("signal_key"))
+        for item in existing_items
+        if _live_order_blocks_retry(item)
+    }
     candidate_signals = _filter_stacked_live_exposure(
         signals,
         existing_items=existing_items,
@@ -192,6 +196,7 @@ def execute_live_signals(
             config=config,
             liquidity=liquidity,
             dry_run=config.dry_run,
+            logged_at=logged_at,
             max_risk=remaining_daily_risk,
         )
         if intent is None:
@@ -217,7 +222,8 @@ def execute_live_signals(
         submitted += 1
         if record_live_order(table, intent, result, logged_at=logged_at):
             recorded += 1
-            existing_keys.add(key)
+            if _live_order_result_blocks_retry(result, dry_run=intent.dry_run):
+                existing_keys.add(key)
             daily_risk += intent.liability
 
     return LiveExecutionResult(
@@ -345,6 +351,7 @@ def size_live_order(
     config: LiveExecutionConfig,
     liquidity: dict[str, Any],
     dry_run: bool,
+    logged_at: datetime | None = None,
     max_risk: float | None = None,
 ) -> LiveOrderIntent | None:
     if config.bankroll <= 0:
@@ -392,7 +399,7 @@ def size_live_order(
         return None
 
     paper_trade_id = _paper_trade_id(signal)
-    order_id = live_order_id(signal, dry_run=dry_run)
+    order_id = live_order_id(signal, dry_run=dry_run, logged_at=logged_at)
     return LiveOrderIntent(
         order_id=order_id,
         paper_trade_id=paper_trade_id,
@@ -418,9 +425,17 @@ def _full_kelly_fraction(signal: ValueSignal) -> float:
     return signal.edge / liability_per_unit
 
 
-def live_order_id(signal: ValueSignal, *, dry_run: bool) -> str:
+def live_order_id(
+    signal: ValueSignal,
+    *,
+    dry_run: bool,
+    logged_at: datetime | None = None,
+) -> str:
     namespace = "dryrun" if dry_run else "live"
-    digest = hashlib.sha256("|".join(signal_key(signal)).encode("utf-8")).hexdigest()[:24]
+    seed = "|".join(signal_key(signal))
+    if not dry_run and logged_at is not None:
+        seed = f"{seed}|{logged_at.isoformat()}"
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
     return f"{namespace}#{digest}"
 
 
@@ -615,6 +630,20 @@ def _open_or_today_risk(items: list[dict[str, Any]], *, logged_at: datetime) -> 
         if status in {"submitted", "matched", "partially_matched", "dry_run"} or logged_day == day:
             risk += _float(item.get("liability"))
     return risk
+
+
+def _live_order_blocks_retry(item: dict[str, Any]) -> bool:
+    status = str(item.get("status") or "").casefold()
+    if _float(item.get("matched_size")) > 0:
+        return True
+    return status in {"dry_run", "submitted", "open", "matched", "partially_matched"}
+
+
+def _live_order_result_blocks_retry(result: LiveOrderResult, *, dry_run: bool) -> bool:
+    status = result.status.casefold()
+    if (result.matched_size or 0) > 0:
+        return True
+    return dry_run or status in {"submitted", "open", "matched", "partially_matched"}
 
 
 def _paper_trade_id(signal: ValueSignal) -> str:

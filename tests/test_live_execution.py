@@ -547,6 +547,111 @@ def test_execute_live_signals_submits_to_configured_executor_when_not_dry_run() 
     assert item["venue_order_id"] == "venue-order-1"
 
 
+def test_execute_live_signals_retries_failed_zero_match_attempts() -> None:
+    class FailedThenMatchedExecutor(FakeExecutor):
+        def place_limit_order(self, intent):
+            self.intents.append(intent)
+            if len(self.intents) == 1:
+                return LiveOrderResult(
+                    order_id=intent.order_id,
+                    status="failed",
+                    matched_size=0,
+                    remaining_size=intent.stake,
+                    error="temporary_mapping_failure",
+                )
+            return LiveOrderResult(
+                order_id=intent.order_id,
+                status="matched",
+                venue_order_id="venue-order-2",
+                matched_size=intent.stake,
+                avg_matched_odds=intent.limit_odds,
+                remaining_size=0,
+            )
+
+    table = FakeLiveOrderTable()
+    executor = FailedThenMatchedExecutor()
+    liquidity_by_key = {
+        ("event-1", "h2h", "arsenal", "matchbook", "back"): {
+            "liquidity_status": "available",
+            "available_at_or_above_target": 25,
+            "matchbook_market_id": "market-1",
+            "matchbook_runner_id": "runner-1",
+        }
+    }
+
+    first = execute_live_signals(
+        table,
+        [signal()],
+        config=LiveExecutionConfig(enabled=True, dry_run=False),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key=liquidity_by_key,
+        executors={"matchbook": executor},
+    )
+    second = execute_live_signals(
+        table,
+        [signal()],
+        config=LiveExecutionConfig(enabled=True, dry_run=False),
+        logged_at=datetime(2026, 8, 14, 12, 2, tzinfo=timezone.utc),
+        liquidity_by_key=liquidity_by_key,
+        executors={"matchbook": executor},
+    )
+
+    assert first.recorded == 1
+    assert second.recorded == 1
+    assert second.skipped == {}
+    assert len(executor.intents) == 2
+    assert len(table.items) == 2
+    assert len({item["order_id"] for item in table.items.values()}) == 2
+
+
+def test_execute_live_signals_dedupes_after_matched_attempt() -> None:
+    class MatchedExecutor(FakeExecutor):
+        def place_limit_order(self, intent):
+            self.intents.append(intent)
+            return LiveOrderResult(
+                order_id=intent.order_id,
+                status="matched",
+                venue_order_id="venue-order-1",
+                matched_size=intent.stake,
+                avg_matched_odds=intent.limit_odds,
+                remaining_size=0,
+            )
+
+    table = FakeLiveOrderTable()
+    executor = MatchedExecutor()
+    liquidity_by_key = {
+        ("event-1", "h2h", "arsenal", "matchbook", "back"): {
+            "liquidity_status": "available",
+            "available_at_or_above_target": 25,
+            "matchbook_market_id": "market-1",
+            "matchbook_runner_id": "runner-1",
+        }
+    }
+
+    first = execute_live_signals(
+        table,
+        [signal()],
+        config=LiveExecutionConfig(enabled=True, dry_run=False),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key=liquidity_by_key,
+        executors={"matchbook": executor},
+    )
+    second = execute_live_signals(
+        table,
+        [signal()],
+        config=LiveExecutionConfig(enabled=True, dry_run=False),
+        logged_at=datetime(2026, 8, 14, 12, 2, tzinfo=timezone.utc),
+        liquidity_by_key=liquidity_by_key,
+        executors={"matchbook": executor},
+    )
+
+    assert first.recorded == 1
+    assert second.recorded == 0
+    assert second.skipped == {"duplicate_live_signal": 1}
+    assert len(executor.intents) == 1
+    assert len(table.items) == 1
+
+
 def test_execute_live_signals_skips_real_order_without_execution_ids() -> None:
     table = FakeLiveOrderTable()
 
