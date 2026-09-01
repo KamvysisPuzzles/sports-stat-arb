@@ -30,6 +30,8 @@ class VenueCredentials:
     matchbook_password: str = ""
     matchbook_mfa_code: str = ""
     smarkets_session_token: str = ""
+    smarkets_username: str = ""
+    smarkets_password: str = ""
     betfair_app_key: str = ""
     betfair_session_token: str = ""
     betfair_username: str = ""
@@ -149,6 +151,21 @@ class SmarketsLiveExecutor:
                 "Authorization": f"Session-Token {session_token}",
             },
         )
+
+    @classmethod
+    def login(
+        cls,
+        *,
+        username: str,
+        password: str,
+        timeout: float = 15.0,
+    ) -> SmarketsLiveExecutor:
+        session_token = smarkets_login(
+            username=username,
+            password=password,
+            timeout=timeout,
+        )
+        return cls(session_token=session_token, timeout=timeout)
 
     def place_limit_order(self, intent: LiveOrderIntent) -> LiveOrderResult:
         contract_id = _required(intent.venue_metadata.get("runner_id"), "smarkets_contract_id")
@@ -370,6 +387,8 @@ def executors_from_env(env: dict[str, str] | None = None) -> dict[str, Any]:
         smarkets_session_token=_credential(
             env, secret_payload, "SMARKETS_SESSION_TOKEN", "smarkets_session_token"
         ),
+        smarkets_username=_credential(env, secret_payload, "SMARKETS_USERNAME", "smarkets_username"),
+        smarkets_password=_credential(env, secret_payload, "SMARKETS_PASSWORD", "smarkets_password"),
         betfair_app_key=_credential(env, secret_payload, "BETFAIR_APP_KEY", "betfair_app_key")
         or _credential(env, secret_payload, "BETFAIR_APP_KEY_DELAYED", "betfair_app_key_delayed"),
         betfair_session_token=_credential(
@@ -400,7 +419,15 @@ def executors_from_env(env: dict[str, str] | None = None) -> dict[str, Any]:
             )
         except Exception as exc:  # noqa: BLE001 - one venue auth failure should not abort all live execution.
             logger.warning("Skipping Matchbook live executor: %s", exc)
-    if credentials.smarkets_session_token:
+    if credentials.smarkets_username and credentials.smarkets_password:
+        try:
+            executors["smarkets"] = SmarketsLiveExecutor.login(
+                username=credentials.smarkets_username,
+                password=credentials.smarkets_password,
+            )
+        except Exception as exc:  # noqa: BLE001 - one venue auth failure should not abort all live execution.
+            logger.warning("Skipping Smarkets live executor: %s", exc)
+    elif credentials.smarkets_session_token:
         executors["smarkets"] = SmarketsLiveExecutor(
             session_token=credentials.smarkets_session_token
         )
@@ -588,6 +615,34 @@ def matchbook_login(
     if not session_token:
         raise RuntimeError("Matchbook login failed: missing session-token")
     return str(session_token)
+
+
+def smarkets_login(
+    *,
+    username: str,
+    password: str,
+    timeout: float = 15.0,
+) -> str:
+    response = httpx.post(
+        f"{SMARKETS_API_BASE}/sessions/",
+        json={
+            "username": username,
+            "password": password,
+            "remember": True,
+            "use_auth_v2": False,
+        },
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    data = response.json()
+    token = data.get("token")
+    if not token:
+        raise RuntimeError("Smarkets login failed: missing token")
+    return str(token)
 
 
 def _required(value: Any, field: str) -> Any:
