@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import csv
+import re
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,13 @@ class BetfairLiquidityMatch:
     best_lay_available: float
     back_lay_spread_pct: float | None
     liquidity_status: str
+
+
+@dataclass(frozen=True)
+class BetfairMarketRunnerMatch:
+    betfair_market_id: str
+    betfair_selection_id: int
+    match_score: float
 
 
 class BetfairLiquidityClient:
@@ -156,7 +164,7 @@ def enrich_opportunities_csv(
                     outcome_name=row["outcome_name"],
                     target_odds=float(row["target_odds"]),
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - mark one row failed, keep CSV enrichment running.
                 match = unavailable_liquidity(f"betfair_error:{type(exc).__name__}")
             output_row.update(_liquidity_row(match))
             writer.writerow(output_row)
@@ -171,35 +179,20 @@ def match_liquidity(
     outcome_name: str,
     target_odds: float,
 ) -> BetfairLiquidityMatch:
-    catalogues = client.fetch_market_catalogue(
+    if _betfair_market_type(market_key, outcome_name=outcome_name) is None:
+        return unavailable_liquidity("betfair_unsupported_market")
+    market_runner = resolve_market_runner(
+        client,
         event_name=event_name,
         commence_time=commence_time,
         market_key=market_key,
-    )
-    best_catalogue = _best_catalogue_match(
-        catalogues,
-        event_name=event_name,
         outcome_name=outcome_name,
     )
-    if best_catalogue is None:
-        catalogues = client.fetch_market_catalogue(
-            event_name=event_name,
-            commence_time=commence_time,
-            market_key=market_key,
-            max_results=200,
-            use_text_query=False,
-        )
-        best_catalogue = _best_catalogue_match(
-            catalogues,
-            event_name=event_name,
-            outcome_name=outcome_name,
-        )
-    if best_catalogue is None:
+    if market_runner is None:
         return unavailable_liquidity("betfair_not_matched")
 
-    match_score, catalogue, runner = best_catalogue
-    books = client.fetch_market_books([catalogue["marketId"]])
-    runner_book = _runner_book(books, selection_id=int(runner["selectionId"]))
+    books = client.fetch_market_books([market_runner.betfair_market_id])
+    runner_book = _runner_book(books, selection_id=market_runner.betfair_selection_id)
     if runner_book is None:
         return unavailable_liquidity("betfair_runner_not_found")
 
@@ -217,9 +210,9 @@ def match_liquidity(
     )
     status = "available" if available_at_target > 0 else "price_not_available"
     return BetfairLiquidityMatch(
-        betfair_market_id=catalogue["marketId"],
-        betfair_selection_id=int(runner["selectionId"]),
-        match_score=match_score,
+        betfair_market_id=market_runner.betfair_market_id,
+        betfair_selection_id=market_runner.betfair_selection_id,
+        match_score=market_runner.match_score,
         best_back_odds=best_back["price"] if best_back else None,
         best_back_available=best_back["size"] if best_back else 0,
         available_at_or_above_target=available_at_target,
@@ -227,6 +220,50 @@ def match_liquidity(
         best_lay_available=best_lay["size"] if best_lay else 0,
         back_lay_spread_pct=spread,
         liquidity_status=status,
+    )
+
+
+def resolve_market_runner(
+    client: BetfairLiquidityClient,
+    *,
+    event_name: str,
+    commence_time: datetime,
+    market_key: str,
+    outcome_name: str,
+) -> BetfairMarketRunnerMatch | None:
+    market_type = _betfair_market_type(market_key, outcome_name=outcome_name)
+    if market_type is None:
+        return None
+    catalogues = client.fetch_market_catalogue(
+        event_name=event_name,
+        commence_time=commence_time,
+        market_key=market_type,
+    )
+    best_catalogue = _best_catalogue_match(
+        catalogues,
+        event_name=event_name,
+        outcome_name=outcome_name,
+    )
+    if best_catalogue is None:
+        catalogues = client.fetch_market_catalogue(
+            event_name=event_name,
+            commence_time=commence_time,
+            market_key=market_type,
+            max_results=200,
+            use_text_query=False,
+        )
+        best_catalogue = _best_catalogue_match(
+            catalogues,
+            event_name=event_name,
+            outcome_name=outcome_name,
+        )
+    if best_catalogue is None:
+        return None
+    match_score, catalogue, runner = best_catalogue
+    return BetfairMarketRunnerMatch(
+        betfair_market_id=str(catalogue["marketId"]),
+        betfair_selection_id=int(runner["selectionId"]),
+        match_score=match_score,
     )
 
 
@@ -304,10 +341,26 @@ def _prices(values: list[dict[str, Any]]) -> list[dict[str, float]]:
     return prices
 
 
-def _betfair_market_type(market_key: str) -> str | None:
-    if market_key == "h2h":
+def _betfair_market_type(market_key: str, *, outcome_name: str | None = None) -> str | None:
+    if market_key == "MATCH_ODDS" or market_key == "h2h":
         return "MATCH_ODDS"
+    if market_key.startswith("OVER_UNDER_"):
+        return market_key
+    if market_key == "totals" and outcome_name:
+        line = _total_line_from_outcome(outcome_name)
+        if line is not None:
+            return f"OVER_UNDER_{line}"
     return None
+
+
+def _total_line_from_outcome(outcome_name: str) -> str | None:
+    match = re.search(r"\b(?:over|under)\s+([0-9]+(?:\.[0-9]+)?)\b", outcome_name, re.IGNORECASE)
+    if not match:
+        return None
+    line = float(match.group(1))
+    if line <= 0 or line % 0.5 != 0 or line.is_integer():
+        return None
+    return str(int(line * 10))
 
 
 def _runner_score(outcome_name: str, runner_name: str) -> float:

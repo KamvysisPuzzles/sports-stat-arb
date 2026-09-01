@@ -29,6 +29,7 @@ class LiveExecutionConfig:
     min_order_risk: float = 1.0
     max_order_risk: float = 10.0
     require_confirmed_liquidity: bool = True
+    min_confirmed_liquidity: float = 5.0
     allow_unconfirmed_liquidity_bookmakers: tuple[str, ...] = ("betfair",)
     prevent_stacked_event_exposure: bool = True
     prevent_cross_venue_event_exposure: bool = True
@@ -49,6 +50,7 @@ class LiveOrderIntent:
     bankroll: float
     available_at_target: float | None
     dry_run: bool
+    venue_metadata: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,18 @@ class LiveOrderResult:
     venue_order_id: str | None = None
     matched_size: float | None = None
     avg_matched_odds: float | None = None
+    remaining_size: float | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class LiveOrderStatus:
+    order_id: str
+    status: str
+    venue_order_id: str | None = None
+    matched_size: float | None = None
+    avg_matched_odds: float | None = None
+    remaining_size: float | None = None
     error: str | None = None
 
 
@@ -77,10 +91,28 @@ class LiveVenueExecutor(Protocol):
     def place_limit_order(self, intent: LiveOrderIntent) -> LiveOrderResult:
         ...
 
+    def fetch_order_status(self, order: dict[str, Any]) -> LiveOrderStatus:
+        ...
+
 
 class DryRunVenueExecutor:
     def place_limit_order(self, intent: LiveOrderIntent) -> LiveOrderResult:
-        return LiveOrderResult(order_id=intent.order_id, status="dry_run")
+        return LiveOrderResult(
+            order_id=intent.order_id,
+            status="dry_run",
+            matched_size=0,
+            remaining_size=intent.stake,
+        )
+
+    def fetch_order_status(self, order: dict[str, Any]) -> LiveOrderStatus:
+        return LiveOrderStatus(
+            order_id=str(order["order_id"]),
+            status=str(order.get("status") or "dry_run"),
+            venue_order_id=str(order.get("venue_order_id") or "") or None,
+            matched_size=_float(order.get("matched_size")),
+            avg_matched_odds=_float(order.get("avg_matched_odds")) or None,
+            remaining_size=_float(order.get("remaining_size")),
+        )
 
 
 def execute_live_signals(
@@ -283,7 +315,7 @@ def liquidity_reject_reason(
     config: LiveExecutionConfig,
 ) -> str | None:
     if not config.require_confirmed_liquidity:
-        return None
+        return _execution_identifier_reject_reason(liquidity, config=config)
     if signal.target_bookmaker.casefold() in {
         bookmaker.casefold() for bookmaker in config.allow_unconfirmed_liquidity_bookmakers
     }:
@@ -292,7 +324,9 @@ def liquidity_reject_reason(
         return "liquidity_unavailable"
     if _float(liquidity.get("available_at_or_above_target")) <= 0:
         return "liquidity_unavailable"
-    return None
+    if _float(liquidity.get("available_at_or_above_target")) < config.min_confirmed_liquidity:
+        return "confirmed_liquidity_below_minimum"
+    return _execution_identifier_reject_reason(liquidity, config=config)
 
 
 def size_live_order(
@@ -363,6 +397,7 @@ def size_live_order(
         bankroll=config.bankroll,
         available_at_target=available if available > 0 else None,
         dry_run=dry_run,
+        venue_metadata=_venue_metadata_from_liquidity(liquidity),
     )
 
 
@@ -396,6 +431,83 @@ def record_live_order(
     return True
 
 
+@dataclass(frozen=True)
+class LiveOrderMonitorResult:
+    monitored: int
+    updated: int
+    skipped: dict[str, int]
+
+
+def reconcile_live_orders(
+    table: Any,
+    *,
+    executors: dict[str, LiveVenueExecutor],
+    checked_at: datetime | None = None,
+    statuses: tuple[str, ...] = ("submitted", "matched", "partially_matched", "open"),
+) -> LiveOrderMonitorResult:
+    checked_at = checked_at or datetime.now(timezone.utc)
+    monitored = 0
+    updated = 0
+    skipped: dict[str, int] = {}
+    active_statuses = {status.casefold() for status in statuses}
+    for order in list_live_orders(table):
+        status = str(order.get("status") or "").casefold()
+        if status not in active_statuses:
+            continue
+        monitored += 1
+        bookmaker = str(order.get("target_bookmaker") or "").casefold()
+        executor = executors.get(bookmaker)
+        if executor is None:
+            _count(skipped, "missing_executor")
+            continue
+        try:
+            order_status = executor.fetch_order_status(order)
+        except Exception as exc:  # noqa: BLE001 - persist reconciliation failures.
+            order_status = LiveOrderStatus(
+                order_id=str(order["order_id"]),
+                status="status_check_failed",
+                venue_order_id=str(order.get("venue_order_id") or "") or None,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        if update_live_order_status(table, order_status, checked_at=checked_at):
+            updated += 1
+    return LiveOrderMonitorResult(monitored=monitored, updated=updated, skipped=skipped)
+
+
+def update_live_order_status(
+    table: Any,
+    status: LiveOrderStatus,
+    *,
+    checked_at: datetime,
+) -> bool:
+    response = table.update_item(
+        Key={"order_id": status.order_id},
+        UpdateExpression=(
+            "SET #status = :status, "
+            "venue_order_id = :venue_order_id, "
+            "matched_size = :matched_size, "
+            "avg_matched_odds = :avg_matched_odds, "
+            "remaining_size = :remaining_size, "
+            "last_status_checked_at = :checked_at, "
+            "#error = :error"
+        ),
+        ExpressionAttributeNames={
+            "#status": "status",
+            "#error": "error",
+        },
+        ExpressionAttributeValues={
+            ":status": status.status,
+            ":venue_order_id": status.venue_order_id or "",
+            ":matched_size": _decimal(status.matched_size or 0),
+            ":avg_matched_odds": _decimal(status.avg_matched_odds or 0),
+            ":remaining_size": _decimal(status.remaining_size or 0),
+            ":checked_at": checked_at.isoformat(),
+            ":error": status.error or "",
+        },
+    )
+    return response.get("ResponseMetadata", {}).get("HTTPStatusCode", 200) < 300
+
+
 def live_order_item(
     intent: LiveOrderIntent,
     result: LiveOrderResult,
@@ -427,6 +539,11 @@ def live_order_item(
         "edge": _decimal(signal.edge),
         "reference_disagreement_pct": _decimal(signal.reference_disagreement_pct or 0),
         "available_at_target": _decimal(intent.available_at_target or 0),
+        "remaining_size": _decimal(result.remaining_size if result.remaining_size is not None else intent.stake),
+        "exchange_event_id": str(intent.venue_metadata.get("event_id") or ""),
+        "exchange_market_id": str(intent.venue_metadata.get("market_id") or ""),
+        "exchange_runner_id": str(intent.venue_metadata.get("runner_id") or ""),
+        "exchange_side": str(intent.venue_metadata.get("side") or signal.bet_side),
         "execution_mode": "dry_run" if intent.dry_run else "live",
         "status": result.status,
         "venue_order_id": result.venue_order_id or "",
@@ -462,6 +579,14 @@ def result_dict(result: LiveExecutionResult) -> dict[str, Any]:
     }
 
 
+def monitor_result_dict(result: LiveOrderMonitorResult) -> dict[str, Any]:
+    return {
+        "monitored": result.monitored,
+        "updated": result.updated,
+        "skipped": dict(result.skipped),
+    }
+
+
 def _open_or_today_risk(items: list[dict[str, Any]], *, logged_at: datetime) -> float:
     day = logged_at.date().isoformat()
     risk = 0.0
@@ -478,7 +603,7 @@ def _paper_trade_id(signal: ValueSignal) -> str:
         from exchange_scanner.dynamodb_paper import trade_id
 
         return trade_id(signal)
-    except Exception:
+    except Exception:  # noqa: BLE001 - fallback keeps this helper usable in isolation.
         digest = hashlib.sha256("|".join(signal_key(signal)).encode("utf-8")).hexdigest()[:24]
         return f"paper#{digest}"
 
@@ -494,6 +619,28 @@ def _float(value: Any) -> float:
 
 def _decimal(value: float) -> Decimal:
     return Decimal(str(value))
+
+
+def _venue_metadata_from_liquidity(liquidity: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "event_id": liquidity.get("matchbook_event_id") or "",
+        "market_id": liquidity.get("matchbook_market_id") or "",
+        "runner_id": liquidity.get("matchbook_runner_id") or "",
+    }
+
+
+def _execution_identifier_reject_reason(
+    liquidity: dict[str, Any],
+    *,
+    config: LiveExecutionConfig,
+) -> str | None:
+    if config.dry_run:
+        return None
+    if liquidity.get("matchbook_market_id") in {None, ""}:
+        return "missing_execution_market_id"
+    if liquidity.get("matchbook_runner_id") in {None, ""}:
+        return "missing_execution_runner_id"
+    return None
 
 
 def _count(values: dict[str, int], key: str) -> None:

@@ -332,11 +332,9 @@ Initial production filter:
 LIVE_EXECUTION_ENABLED=false
 LIVE_EXECUTION_DRY_RUN=true
 LIVE_ORDER_TABLE=sports-stat-arb-live-orders
-LIVE_ALLOWED_SPORT_PREFIXES=soccer_
-LIVE_ALLOWED_BOOKMAKERS=matchbook,betfair,smarkets
-LIVE_ALLOWED_BET_SIDES=back,lay
 LIVE_MAX_REFERENCE_DISAGREEMENT_PCT=0.03
 LIVE_REQUIRE_CONFIRMED_LIQUIDITY=true
+LIVE_MIN_CONFIRMED_LIQUIDITY=5
 LIVE_ALLOW_UNCONFIRMED_LIQUIDITY_BOOKMAKERS=betfair
 LIVE_PREVENT_STACKED_EVENT_EXPOSURE=true
 LIVE_PREVENT_CROSS_VENUE_EVENT_EXPOSURE=true
@@ -354,17 +352,58 @@ LIVE_KELLY_FRACTION=0.10
 LIVE_MAX_ORDER_RISK_PCT=0.005
 LIVE_MAX_DAILY_RISK_PCT=0.02
 LIVE_MIN_ORDER_RISK=1
-LIVE_MAX_ORDER_RISK=10
+LIVE_MAX_ORDER_RISK=1
 ```
 
 Dry-run mode writes deterministic order-intent rows to the live order table with
 `execution_mode=dry_run` and `status=dry_run`. With dry-run off, the runner calls
-configured venue executors and records submitted, rejected, or failed attempts in
-the same table. Paper trades continue to be logged separately. Flat sizing treats
-`LIVE_FLAT_ORDER_RISK` as stake for backs and worst-case liability for lays.
-Live execution only receives signals that were freshly inserted into the paper
-ledger in the same run, and the live guardrail blocks equivalent event exposure
-across venues by default.
+configured Matchbook, Smarkets, and Betfair venue executors and records
+submitted, rejected, failed, matched, or partially matched attempts in the same
+table. Real Matchbook and Smarkets orders require confirmed liquidity of at
+least `LIVE_MIN_CONFIRMED_LIQUIDITY` GBP at the target price or better, plus
+resolved venue market/runner ids from the enrichment step. Betfair can be
+allowed through without delayed liquidity confirmation because the live executor
+resolves Betfair `marketId` and `selectionId` at order-placement time, then
+submits a passive limit order. Paper trades continue to be logged separately.
+Flat sizing treats `LIVE_FLAT_ORDER_RISK` as stake for backs and worst-case
+liability for lays. Live execution only receives signals that were freshly
+inserted into the paper ledger in the same run, and the live guardrail blocks
+equivalent event exposure across venues by default.
+
+Live venue credentials:
+
+```text
+EXCHANGE_CREDENTIALS_SECRET_ID=sports-stat-arb/live-exchange-credentials
+EXCHANGE_CREDENTIALS_SECRET_REGION=eu-west-2
+```
+
+The secret can hold all live venue credentials:
+
+```json
+{
+  "odds_api_key": "...",
+  "matchbook_username": "...",
+  "matchbook_password": "...",
+  "matchbook_mfa_code": "",
+  "smarkets_session_token": "...",
+  "betfair_app_key": "...",
+  "betfair_username": "...",
+  "betfair_password": "...",
+  "cert_pem": "-----BEGIN CERTIFICATE-----\\n...\\n-----END CERTIFICATE-----",
+  "key_pem": "-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----"
+}
+```
+
+Env-style keys such as `MATCHBOOK_USERNAME` and `BETFAIR_APP_KEY` are also
+accepted. Individual env vars still override secret values when present.
+
+Refresh live fill state:
+
+```json
+{
+  "mode": "monitor-live-orders"
+}
+```
 
 Expose it with either a Lambda Function URL or API Gateway HTTP API. Open the
 dashboard with:

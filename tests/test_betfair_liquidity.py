@@ -66,6 +66,73 @@ def test_match_liquidity_finds_betfair_runner_and_sums_available_at_target() -> 
     assert match.liquidity_status == "available"
 
 
+def test_match_liquidity_maps_half_goal_total_to_betfair_market_type() -> None:
+    class RecordingTotalsClient(FakeBetfairClient):
+        def __init__(self) -> None:
+            self.market_keys = []
+
+        def fetch_market_catalogue(self, **kwargs):
+            self.market_keys.append(kwargs["market_key"])
+            return [
+                {
+                    "marketId": "1.999",
+                    "event": {"name": "Arsenal v Chelsea"},
+                    "runners": [
+                        {"selectionId": 201, "runnerName": "Over 2.5 Goals"},
+                        {"selectionId": 202, "runnerName": "Under 2.5 Goals"},
+                    ],
+                }
+            ]
+
+        def fetch_market_books(self, market_ids):
+            return [
+                {
+                    "marketId": market_ids[0],
+                    "runners": [
+                        {
+                            "selectionId": 201,
+                            "ex": {
+                                "availableToBack": [{"price": 2.1, "size": 50.0}],
+                                "availableToLay": [{"price": 2.14, "size": 20.0}],
+                            },
+                        }
+                    ],
+                }
+            ]
+
+    client = RecordingTotalsClient()
+    match = match_liquidity(
+        client,
+        event_name="Arsenal v Chelsea",
+        commence_time="unused",
+        market_key="totals",
+        outcome_name="Over 2.5",
+        target_odds=2.0,
+    )
+
+    assert client.market_keys == ["OVER_UNDER_25"]
+    assert match.betfair_market_id == "1.999"
+    assert match.betfair_selection_id == 201
+    assert match.available_at_or_above_target == 50.0
+
+
+def test_match_liquidity_rejects_total_lines_without_direct_betfair_market_type() -> None:
+    class BlockedClient(FakeBetfairClient):
+        def fetch_market_catalogue(self, **kwargs):
+            raise AssertionError("unsupported markets should not call Betfair")
+
+    match = match_liquidity(
+        BlockedClient(),
+        event_name="Arsenal v Chelsea",
+        commence_time="unused",
+        market_key="totals",
+        outcome_name="Over 2.25",
+        target_odds=2.0,
+    )
+
+    assert match.liquidity_status == "betfair_unsupported_market"
+
+
 def test_enrich_opportunities_csv_marks_betfair_not_configured(tmp_path) -> None:
     input_csv = tmp_path / "opportunities.csv"
     output_csv = tmp_path / "with_liquidity.csv"

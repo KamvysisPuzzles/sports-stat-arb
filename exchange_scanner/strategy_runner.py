@@ -45,13 +45,20 @@ from exchange_scanner.dynamodb_paper import (
 from exchange_scanner.live_execution import (
     LiveExecutionConfig,
     execute_live_signals,
+    monitor_result_dict,
+    reconcile_live_orders,
+)
+from exchange_scanner.live_execution import (
     result_dict as live_execution_result_dict,
 )
+from exchange_scanner.live_venues import executors_from_env
 from exchange_scanner.matchbook_liquidity import (
     MatchbookLiquidityClient,
-    unavailable_liquidity as unavailable_matchbook_liquidity,
 )
 from exchange_scanner.matchbook_liquidity import match_liquidity as match_matchbook_liquidity
+from exchange_scanner.matchbook_liquidity import (
+    unavailable_liquidity as unavailable_matchbook_liquidity,
+)
 from exchange_scanner.odds_parquet import export_latest_snapshot_parquet
 from exchange_scanner.sharpness import store_odds_snapshot
 from exchange_scanner.smarkets_liquidity import (
@@ -110,15 +117,16 @@ class StrategyRunnerConfig:
     live_allowed_bookmakers: tuple[str, ...] = ("matchbook", "betfair", "smarkets")
     live_allowed_bet_sides: tuple[str, ...] = ("back", "lay")
     live_max_reference_disagreement_pct: float = 0.03
-    live_sizing_method: str = "kelly"
+    live_sizing_method: str = "flat"
     live_flat_order_risk: float = 1.0
     live_bankroll: float = 1000.0
     live_kelly_fraction: float = 0.10
     live_max_order_risk_pct: float = 0.005
     live_max_daily_risk_pct: float = 0.02
     live_min_order_risk: float = 1.0
-    live_max_order_risk: float = 10.0
+    live_max_order_risk: float = 1.0
     live_require_confirmed_liquidity: bool = True
+    live_min_confirmed_liquidity: float = 5.0
     live_allow_unconfirmed_liquidity_bookmakers: tuple[str, ...] = ("betfair",)
     live_prevent_stacked_event_exposure: bool = True
     live_prevent_cross_venue_event_exposure: bool = True
@@ -127,10 +135,21 @@ class StrategyRunnerConfig:
 def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
     event = event or {}
     env = os.environ
+    secret_payload = _exchange_credentials_secret_from_env(env)
     strategy_name = str(event.get("strategy") or env.get("STRATEGY") or "exchange-clv")
     return StrategyRunnerConfig(
         mode=str(event.get("mode") or env.get("STRATEGY_RUNNER_MODE") or "paper-log"),
-        odds_api_key=str(event.get("odds_api_key") or env.get("THE_ODDS_API_KEY") or ""),
+        odds_api_key=str(
+            event.get("odds_api_key")
+            or env.get("THE_ODDS_API_KEY")
+            or _secret_value(
+                secret_payload,
+                "odds_api_key",
+                "the_odds_api_key",
+                "THE_ODDS_API_KEY",
+            )
+            or ""
+        ),
         dynamodb_table_name=str(
             event.get("dynamodb_table_name")
             or env.get("PAPER_TRADES_TABLE")
@@ -222,27 +241,19 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
             or "sports-stat-arb-live-orders"
         ),
         live_allowed_sport_prefixes=_csv_tuple(
-            event.get("live_allowed_sport_prefixes")
-            or env.get("LIVE_ALLOWED_SPORT_PREFIXES")
-            or "soccer_"
+            event.get("live_allowed_sport_prefixes") or "soccer_"
         ),
         live_allowed_bookmakers=_csv_tuple(
-            event.get("live_allowed_bookmakers")
-            or env.get("LIVE_ALLOWED_BOOKMAKERS")
-            or "matchbook,betfair,smarkets"
+            event.get("live_allowed_bookmakers") or "matchbook,betfair,smarkets"
         ),
-        live_allowed_bet_sides=_csv_tuple(
-            event.get("live_allowed_bet_sides")
-            or env.get("LIVE_ALLOWED_BET_SIDES")
-            or "back,lay"
-        ),
+        live_allowed_bet_sides=_csv_tuple(event.get("live_allowed_bet_sides") or "back,lay"),
         live_max_reference_disagreement_pct=float(
             event.get("live_max_reference_disagreement_pct")
             or env.get("LIVE_MAX_REFERENCE_DISAGREEMENT_PCT")
             or 0.03
         ),
         live_sizing_method=str(
-            event.get("live_sizing_method") or env.get("LIVE_SIZING_METHOD") or "kelly"
+            event.get("live_sizing_method") or env.get("LIVE_SIZING_METHOD") or "flat"
         ),
         live_flat_order_risk=float(
             event.get("live_flat_order_risk") or env.get("LIVE_FLAT_ORDER_RISK") or 1.0
@@ -265,13 +276,18 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
             event.get("live_min_order_risk") or env.get("LIVE_MIN_ORDER_RISK") or 1.0
         ),
         live_max_order_risk=float(
-            event.get("live_max_order_risk") or env.get("LIVE_MAX_ORDER_RISK") or 10.0
+            event.get("live_max_order_risk") or env.get("LIVE_MAX_ORDER_RISK") or 1.0
         ),
         live_require_confirmed_liquidity=_bool(
             event.get(
                 "live_require_confirmed_liquidity",
                 env.get("LIVE_REQUIRE_CONFIRMED_LIQUIDITY", "true"),
             )
+        ),
+        live_min_confirmed_liquidity=float(
+            event.get("live_min_confirmed_liquidity")
+            or env.get("LIVE_MIN_CONFIRMED_LIQUIDITY")
+            or 5.0
         ),
         live_allow_unconfirmed_liquidity_bookmakers=_csv_tuple(
             event.get("live_allow_unconfirmed_liquidity_bookmakers")
@@ -291,6 +307,34 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
             )
         ),
     )
+
+
+def _exchange_credentials_secret_from_env(env: dict[str, str]) -> dict[str, Any]:
+    secret_id = env.get("EXCHANGE_CREDENTIALS_SECRET_ID", "")
+    if not secret_id:
+        return {}
+    import boto3
+
+    region_name = env.get("EXCHANGE_CREDENTIALS_SECRET_REGION") or env.get("AWS_REGION") or None
+    client_kwargs = {"region_name": region_name} if region_name else {}
+    response = boto3.client("secretsmanager", **client_kwargs).get_secret_value(
+        SecretId=secret_id
+    )
+    secret_string = response.get("SecretString")
+    if not secret_string:
+        raise RuntimeError(f"Secret {secret_id} has no SecretString")
+    payload = json.loads(secret_string)
+    if not isinstance(payload, dict):
+        raise TypeError(f"Secret {secret_id} must contain a JSON object")
+    return payload
+
+
+def _secret_value(payload: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = payload.get(key)
+        if value:
+            return str(value)
+    return ""
 
 
 def run_strategy_mode(
@@ -327,6 +371,22 @@ def run_strategy_mode(
             live_executors=live_executors,
             now=now,
         )
+    if config.mode == "monitor-live-orders":
+        table = live_order_table or _dynamodb_named_table(
+            config.live_order_table_name,
+            config.aws_region,
+        )
+        executors = live_executors or executors_from_env()
+        monitor = reconcile_live_orders(
+            table,
+            executors=executors,
+            checked_at=now or datetime.now(timezone.utc),
+        )
+        return {
+            "mode": config.mode,
+            "table": config.live_order_table_name,
+            "live_order_monitor": monitor_result_dict(monitor),
+        }
     if config.mode != "paper-log":
         raise ValueError(f"Unsupported strategy runner mode: {config.mode}")
     return run_paper_log(
@@ -844,11 +904,13 @@ def _combined_summary_text(result: dict[str, Any]) -> str:
         lines.extend(
             [
                 f"- {label}:",
-                f"  sports={branch['sports']}, odds_rows={branch['odds_rows']}, "
-                f"candidates={branch['candidate_signals']}, "
-                f"paper_eligible={branch['paper_eligible_signals']}, "
-                f"liquidity_confirmed={branch['liquidity_confirmed_signals']}, "
-                f"inserted={branch_log['inserted']}, duplicates={branch_log['duplicates']}",
+                (
+                    f"  sports={branch['sports']}, odds_rows={branch['odds_rows']}, "
+                    f"candidates={branch['candidate_signals']}, "
+                    f"paper_eligible={branch['paper_eligible_signals']}, "
+                    f"liquidity_confirmed={branch['liquidity_confirmed_signals']}, "
+                    f"inserted={branch_log['inserted']}, duplicates={branch_log['duplicates']}"
+                ),
             ]
         )
     lines.extend(
@@ -1406,6 +1468,8 @@ def _execute_live_signals(
     if not live_config.enabled:
         return _disabled_live_execution_result(len(signals), dry_run=live_config.dry_run)
     table = live_order_table or _dynamodb_named_table(config.live_order_table_name, config.aws_region)
+    if live_executors is None and not live_config.dry_run:
+        live_executors = executors_from_env()
     result = execute_live_signals(
         table,
         signals,
@@ -1435,6 +1499,7 @@ def _live_execution_config(config: StrategyRunnerConfig) -> LiveExecutionConfig:
         min_order_risk=config.live_min_order_risk,
         max_order_risk=config.live_max_order_risk,
         require_confirmed_liquidity=config.live_require_confirmed_liquidity,
+        min_confirmed_liquidity=config.live_min_confirmed_liquidity,
         allow_unconfirmed_liquidity_bookmakers=(
             config.live_allow_unconfirmed_liquidity_bookmakers
         ),
@@ -1527,7 +1592,7 @@ def _sports_for_profile(
         return sports
     try:
         active_sports = set(active_h2h_sports(odds_client.fetch_sports()))
-    except Exception:
+    except Exception:  # noqa: BLE001 - if sports discovery fails, keep the configured profile.
         return sports
     return [sport for sport in sports if sport in active_sports]
 

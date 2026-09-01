@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from exchange_scanner import strategy_runner
 from exchange_scanner.strategy_runner import StrategyRunnerConfig, run_paper_log
@@ -557,6 +559,39 @@ def test_strategy_runner_default_markets_are_h2h_only() -> None:
 
     assert config.markets == "h2h,h2h_lay"
     assert config.max_age_seconds == 180
+
+
+def test_config_from_event_reads_odds_api_key_from_exchange_credentials_secret(monkeypatch) -> None:
+    secret_calls = []
+
+    class FakeSecretsManager:
+        def get_secret_value(self, **kwargs):
+            secret_calls.append(kwargs)
+            return {
+                "SecretString": json.dumps(
+                    {
+                        "odds_api_key": "secret-odds-key",
+                    }
+                )
+            }
+
+    def fake_client(service_name, **kwargs):
+        assert service_name == "secretsmanager"
+        assert kwargs == {"region_name": "eu-west-2"}
+        return FakeSecretsManager()
+
+    monkeypatch.delenv("THE_ODDS_API_KEY", raising=False)
+    monkeypatch.setenv(
+        "EXCHANGE_CREDENTIALS_SECRET_ID",
+        "sports-stat-arb/live-exchange-credentials",
+    )
+    monkeypatch.setenv("EXCHANGE_CREDENTIALS_SECRET_REGION", "eu-west-2")
+    monkeypatch.setitem(sys.modules, "boto3", SimpleNamespace(client=fake_client))
+
+    config = strategy_runner.config_from_event({})
+
+    assert config.odds_api_key == "secret-odds-key"
+    assert secret_calls == [{"SecretId": "sports-stat-arb/live-exchange-credentials"}]
 
 
 def test_run_strategy_mode_combined_defaults_to_active_exchange_clv_scope(monkeypatch) -> None:

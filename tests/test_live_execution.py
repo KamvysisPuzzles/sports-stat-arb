@@ -6,8 +6,10 @@ from decimal import Decimal
 from exchange_scanner.live_execution import (
     LiveExecutionConfig,
     LiveOrderResult,
+    LiveOrderStatus,
     execute_live_signals,
     live_filter_reject_reason,
+    reconcile_live_orders,
     size_live_order,
 )
 from exchange_scanner.the_odds_api import ValueSignal
@@ -32,6 +34,22 @@ class FakeLiveOrderTable:
     def scan(self, **kwargs):
         return {"Items": list(self.items.values())}
 
+    def update_item(
+        self,
+        *,
+        Key,
+        UpdateExpression,
+        ExpressionAttributeValues,
+        ExpressionAttributeNames=None,
+    ):
+        item = self.items[Key["order_id"]]
+        names = ExpressionAttributeNames or {}
+        for assignment in UpdateExpression.replace("SET ", "").split(", "):
+            field, value_key = [part.strip() for part in assignment.split(" = ")]
+            field = names.get(field, field)
+            item[field] = ExpressionAttributeValues[value_key]
+        return {"ResponseMetadata": {"HTTPStatusCode": 200}}
+
 
 class FakeExecutor:
     def __init__(self) -> None:
@@ -43,6 +61,16 @@ class FakeExecutor:
             order_id=intent.order_id,
             status="submitted",
             venue_order_id="venue-order-1",
+        )
+
+    def fetch_order_status(self, order):
+        return LiveOrderStatus(
+            order_id=order["order_id"],
+            status="partially_matched",
+            venue_order_id=order["venue_order_id"],
+            matched_size=0.4,
+            avg_matched_odds=4.2,
+            remaining_size=0.6,
         )
 
 
@@ -215,6 +243,29 @@ def test_execute_live_signals_records_dry_run_orders_without_executor() -> None:
     assert item["reference_disagreement_pct"] == Decimal("0.02")
 
 
+def test_execute_live_signals_requires_minimum_confirmed_liquidity() -> None:
+    table = FakeLiveOrderTable()
+    result = execute_live_signals(
+        table,
+        [signal()],
+        config=LiveExecutionConfig(
+            enabled=True,
+            dry_run=True,
+            min_confirmed_liquidity=5,
+        ),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key={
+            ("event-1", "h2h", "arsenal", "matchbook", "back"): {
+                "liquidity_status": "available",
+                "available_at_or_above_target": 4.99,
+            }
+        },
+    )
+
+    assert result.recorded == 0
+    assert result.skipped == {"confirmed_liquidity_below_minimum": 1}
+
+
 def test_execute_live_signals_allows_configured_venue_without_confirmed_liquidity() -> None:
     table = FakeLiveOrderTable()
     result = execute_live_signals(
@@ -232,7 +283,29 @@ def test_execute_live_signals_allows_configured_venue_without_confirmed_liquidit
     assert result.recorded == 1
     item = next(iter(table.items.values()))
     assert item["target_bookmaker"] == "Betfair"
-    assert item["available_at_target"] == Decimal("0")
+    assert item["available_at_target"] == Decimal(0)
+
+
+def test_execute_live_signals_allows_live_betfair_without_confirmed_liquidity() -> None:
+    table = FakeLiveOrderTable()
+
+    result = execute_live_signals(
+        table,
+        [signal(target_bookmaker="Betfair")],
+        config=LiveExecutionConfig(
+            enabled=True,
+            dry_run=False,
+            allow_unconfirmed_liquidity_bookmakers=("betfair",),
+        ),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key={},
+        executors={"betfair": FakeExecutor()},
+    )
+
+    assert result.recorded == 1
+    item = next(iter(table.items.values()))
+    assert item["execution_mode"] == "live"
+    assert item["target_bookmaker"] == "Betfair"
 
 
 def test_execute_live_signals_blocks_stacked_positive_exposure_within_batch() -> None:
@@ -389,6 +462,8 @@ def test_execute_live_signals_submits_to_configured_executor_when_not_dry_run() 
             ("event-1", "h2h", "arsenal", "matchbook", "back"): {
                 "liquidity_status": "available",
                 "available_at_or_above_target": 25,
+                "matchbook_market_id": "market-1",
+                "matchbook_runner_id": "runner-1",
             }
         },
         executors={"matchbook": executor},
@@ -401,3 +476,58 @@ def test_execute_live_signals_submits_to_configured_executor_when_not_dry_run() 
     assert item["execution_mode"] == "live"
     assert item["status"] == "submitted"
     assert item["venue_order_id"] == "venue-order-1"
+
+
+def test_execute_live_signals_skips_real_order_without_execution_ids() -> None:
+    table = FakeLiveOrderTable()
+
+    result = execute_live_signals(
+        table,
+        [signal()],
+        config=LiveExecutionConfig(enabled=True, dry_run=False),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key={
+            ("event-1", "h2h", "arsenal", "matchbook", "back"): {
+                "liquidity_status": "available",
+                "available_at_or_above_target": 25,
+            }
+        },
+        executors={"matchbook": FakeExecutor()},
+    )
+
+    assert result.recorded == 0
+    assert result.skipped == {"missing_execution_market_id": 1}
+
+
+def test_reconcile_live_orders_updates_partial_fill_status() -> None:
+    table = FakeLiveOrderTable()
+    executor = FakeExecutor()
+    result = execute_live_signals(
+        table,
+        [signal()],
+        config=LiveExecutionConfig(enabled=True, dry_run=False, sizing_method="flat"),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key={
+            ("event-1", "h2h", "arsenal", "matchbook", "back"): {
+                "liquidity_status": "available",
+                "available_at_or_above_target": 25,
+                "matchbook_market_id": "market-1",
+                "matchbook_runner_id": "runner-1",
+            }
+        },
+        executors={"matchbook": executor},
+    )
+
+    monitor = reconcile_live_orders(
+        table,
+        executors={"matchbook": executor},
+        checked_at=datetime(2026, 8, 14, 12, 1, tzinfo=timezone.utc),
+    )
+
+    assert result.recorded == 1
+    assert monitor.monitored == 1
+    assert monitor.updated == 1
+    item = next(iter(table.items.values()))
+    assert item["status"] == "partially_matched"
+    assert item["matched_size"] == Decimal("0.4")
+    assert item["remaining_size"] == Decimal("0.6")

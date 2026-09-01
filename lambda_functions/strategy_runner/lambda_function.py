@@ -16,6 +16,7 @@ def lambda_handler(event, context):
                     "mode": result.get("mode"),
                     "settlement": result.get("settlement"),
                     "paper_log": result.get("paper_log"),
+                    "live_order_monitor": result.get("live_order_monitor"),
                     "portfolio_summary": {
                         key: result.get("portfolio_summary", {}).get(key)
                         for key in (
