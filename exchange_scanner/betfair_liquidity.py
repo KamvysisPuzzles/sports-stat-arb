@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 BETFAIR_BETTING_API_URL = "https://api.betfair.com/exchange/betting/json-rpc/v1"
+BETFAIR_SOCCER_EVENT_TYPE_ID = "1"
 LIQUIDITY_FIELDS = [
     "matchbook_market_id",
     "matchbook_runner_id",
@@ -77,6 +78,7 @@ class BetfairLiquidityClient:
         if market_type is None:
             return []
         market_filter: dict[str, Any] = {
+            "eventTypeIds": [BETFAIR_SOCCER_EVENT_TYPE_ID],
             "marketTypeCodes": [market_type],
             "marketStartTime": {
                 "from": (commence_time - timedelta(hours=12)).isoformat(),
@@ -380,9 +382,14 @@ def _normalise_name(value: str) -> str:
         value.casefold()
         .replace("&", "and")
         .replace("manchester city", "man city")
+        .replace("west ham united", "west ham")
+        .replace("paris saint germain", "paris st g")
+        .replace("paris st-g", "paris st g")
+        .replace("as monaco", "monaco")
         .replace(" fc", "")
         .replace(" cf", "")
         .replace(" bk", "")
+        .replace(" county", "")
         .replace(".", "")
         .replace("-", " ")
         .strip()

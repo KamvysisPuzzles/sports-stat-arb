@@ -15,7 +15,11 @@ from typing import Any
 import httpx
 
 from exchange_scanner.betfair_auth import certificate_login
-from exchange_scanner.betfair_liquidity import BETFAIR_BETTING_API_URL, resolve_market_runner
+from exchange_scanner.betfair_liquidity import (
+    BETFAIR_BETTING_API_URL,
+    BETFAIR_SOCCER_EVENT_TYPE_ID,
+    resolve_market_runner,
+)
 from exchange_scanner.live_execution import LiveOrderIntent, LiveOrderResult, LiveOrderStatus
 from exchange_scanner.matchbook_liquidity import MATCHBOOK_API_BASE
 from exchange_scanner.smarkets_liquidity import SMARKETS_API_BASE
@@ -324,6 +328,7 @@ class BetfairLiveExecutor:
         use_text_query: bool = True,
     ) -> list[dict[str, Any]]:
         market_filter: dict[str, Any] = {
+            "eventTypeIds": [BETFAIR_SOCCER_EVENT_TYPE_ID],
             "marketTypeCodes": [market_key],
             "marketStartTime": {
                 "from": (commence_time - timedelta(hours=12)).isoformat(),

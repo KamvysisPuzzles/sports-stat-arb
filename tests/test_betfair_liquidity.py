@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timezone
 
 from exchange_scanner.betfair_liquidity import (
+    BETFAIR_SOCCER_EVENT_TYPE_ID,
+    BetfairLiquidityClient,
     enrich_opportunities_csv,
     match_liquidity,
 )
@@ -109,6 +112,83 @@ def test_match_liquidity_handles_common_betfair_team_abbreviations() -> None:
     assert match.betfair_market_id == "1.261450247"
     assert match.betfair_selection_id == 301
     assert match.liquidity_status == "available"
+
+
+def test_match_liquidity_handles_west_ham_and_psg_aliases() -> None:
+    class AliasClient(FakeBetfairClient):
+        def __init__(self, event_name: str, runner_name: str) -> None:
+            self.event_name = event_name
+            self.runner_name = runner_name
+
+        def fetch_market_catalogue(self, **kwargs):
+            return [
+                {
+                    "marketId": "1.261",
+                    "event": {"name": self.event_name},
+                    "runners": [
+                        {"selectionId": 401, "runnerName": self.runner_name},
+                        {"selectionId": 402, "runnerName": "The Draw"},
+                    ],
+                }
+            ]
+
+        def fetch_market_books(self, market_ids):
+            return [
+                {
+                    "marketId": market_ids[0],
+                    "runners": [
+                        {
+                            "selectionId": 401,
+                            "ex": {
+                                "availableToBack": [{"price": 1.4, "size": 50.0}],
+                                "availableToLay": [{"price": 1.42, "size": 40.0}],
+                            },
+                        }
+                    ],
+                }
+            ]
+
+    west_ham = match_liquidity(
+        AliasClient("West Ham v Derby", "West Ham"),
+        event_name="West Ham United v Derby County",
+        commence_time="unused",
+        market_key="h2h",
+        outcome_name="West Ham United",
+        target_odds=1.4,
+    )
+    psg = match_liquidity(
+        AliasClient("Paris St-G v Monaco", "Paris St-G"),
+        event_name="Paris Saint Germain v AS Monaco",
+        commence_time="unused",
+        market_key="h2h",
+        outcome_name="Paris Saint Germain",
+        target_odds=1.4,
+    )
+
+    assert west_ham.betfair_market_id == "1.261"
+    assert west_ham.betfair_selection_id == 401
+    assert psg.betfair_market_id == "1.261"
+    assert psg.betfair_selection_id == 401
+
+
+def test_betfair_catalogue_lookup_is_restricted_to_soccer() -> None:
+    class RecordingClient(BetfairLiquidityClient):
+        def __init__(self) -> None:
+            self.params = None
+
+        def _rpc(self, method, params):
+            self.params = params
+            return []
+
+    client = RecordingClient()
+
+    client.fetch_market_catalogue(
+        event_name="West Ham United v Derby County",
+        commence_time=datetime(2026, 9, 5, 14, tzinfo=timezone.utc),
+        market_key="h2h",
+    )
+
+    assert client.params["filter"]["eventTypeIds"] == [BETFAIR_SOCCER_EVENT_TYPE_ID]
 
 
 def test_match_liquidity_maps_half_goal_total_to_betfair_market_type() -> None:
