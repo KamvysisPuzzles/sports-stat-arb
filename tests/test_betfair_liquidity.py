@@ -66,6 +66,51 @@ def test_match_liquidity_finds_betfair_runner_and_sums_available_at_target() -> 
     assert match.liquidity_status == "available"
 
 
+def test_match_liquidity_handles_common_betfair_team_abbreviations() -> None:
+    class AbbreviatedTeamClient(FakeBetfairClient):
+        def fetch_market_catalogue(self, **kwargs):
+            return [
+                {
+                    "marketId": "1.261450247",
+                    "event": {"name": "Man City v Coventry"},
+                    "runners": [
+                        {"selectionId": 301, "runnerName": "Man City"},
+                        {"selectionId": 302, "runnerName": "Coventry"},
+                        {"selectionId": 303, "runnerName": "The Draw"},
+                    ],
+                }
+            ]
+
+        def fetch_market_books(self, market_ids):
+            return [
+                {
+                    "marketId": market_ids[0],
+                    "runners": [
+                        {
+                            "selectionId": 301,
+                            "ex": {
+                                "availableToBack": [{"price": 1.2, "size": 50.0}],
+                                "availableToLay": [{"price": 1.21, "size": 40.0}],
+                            },
+                        }
+                    ],
+                }
+            ]
+
+    match = match_liquidity(
+        AbbreviatedTeamClient(),
+        event_name="Manchester City v Coventry City",
+        commence_time="unused",
+        market_key="h2h",
+        outcome_name="Manchester City",
+        target_odds=1.2,
+    )
+
+    assert match.betfair_market_id == "1.261450247"
+    assert match.betfair_selection_id == 301
+    assert match.liquidity_status == "available"
+
+
 def test_match_liquidity_maps_half_goal_total_to_betfair_market_type() -> None:
     class RecordingTotalsClient(FakeBetfairClient):
         def __init__(self) -> None:

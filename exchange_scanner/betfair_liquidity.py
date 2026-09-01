@@ -376,9 +376,10 @@ def _name_score(left: str, right: str) -> float:
 def _normalise_name(value: str) -> str:
     value = unicodedata.normalize("NFKD", value)
     value = "".join(char for char in value if not unicodedata.combining(char))
-    return (
+    normalised = (
         value.casefold()
         .replace("&", "and")
+        .replace("manchester city", "man city")
         .replace(" fc", "")
         .replace(" cf", "")
         .replace(" bk", "")
@@ -386,6 +387,7 @@ def _normalise_name(value: str) -> str:
         .replace("-", " ")
         .strip()
     )
+    return re.sub(r"\s+city\b", "", normalised).strip()
 
 
 def _spread_pct(back_odds: float | None, lay_odds: float | None) -> float | None:
