@@ -547,6 +547,59 @@ def test_execute_live_signals_submits_to_configured_executor_when_not_dry_run() 
     assert item["venue_order_id"] == "venue-order-1"
 
 
+def test_execute_live_signals_uses_smarkets_execution_ids() -> None:
+    table = FakeLiveOrderTable()
+    executor = FakeExecutor()
+
+    result = execute_live_signals(
+        table,
+        [signal(target_bookmaker="Smarkets")],
+        config=LiveExecutionConfig(enabled=True, dry_run=False),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key={
+            ("event-1", "h2h", "arsenal", "smarkets", "back"): {
+                "liquidity_status": "available",
+                "available_at_or_above_target": 25,
+                "smarkets_event_id": "event-s",
+                "smarkets_market_id": "market-s",
+                "smarkets_contract_id": "contract-s",
+            }
+        },
+        executors={"smarkets": executor},
+    )
+
+    assert result.submitted == 1
+    assert result.recorded == 1
+    assert executor.intents[0].venue_metadata == {
+        "event_id": "event-s",
+        "market_id": "market-s",
+        "runner_id": "contract-s",
+    }
+
+
+def test_execute_live_signals_requires_smarkets_execution_ids() -> None:
+    table = FakeLiveOrderTable()
+
+    result = execute_live_signals(
+        table,
+        [signal(target_bookmaker="Smarkets")],
+        config=LiveExecutionConfig(enabled=True, dry_run=False),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key={
+            ("event-1", "h2h", "arsenal", "smarkets", "back"): {
+                "liquidity_status": "available",
+                "available_at_or_above_target": 25,
+                "matchbook_market_id": "wrong-market",
+                "matchbook_runner_id": "wrong-runner",
+            }
+        },
+        executors={"smarkets": FakeExecutor()},
+    )
+
+    assert result.submitted == 0
+    assert result.skipped == {"missing_execution_market_id": 1}
+
+
 def test_execute_live_signals_retries_failed_zero_match_attempts() -> None:
     class FailedThenMatchedExecutor(FakeExecutor):
         def place_limit_order(self, intent):

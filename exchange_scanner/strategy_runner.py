@@ -205,13 +205,22 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
             or 2.0
         ),
         smarkets_session_token=str(
-            event.get("smarkets_session_token") or env.get("SMARKETS_SESSION_TOKEN") or ""
+            event.get("smarkets_session_token")
+            or env.get("SMARKETS_SESSION_TOKEN")
+            or _secret_value(secret_payload, "smarkets_session_token", "SMARKETS_SESSION_TOKEN")
+            or ""
         ),
         smarkets_username=str(
-            event.get("smarkets_username") or env.get("SMARKETS_USERNAME") or ""
+            event.get("smarkets_username")
+            or env.get("SMARKETS_USERNAME")
+            or _secret_value(secret_payload, "smarkets_username", "SMARKETS_USERNAME")
+            or ""
         ),
         smarkets_password=str(
-            event.get("smarkets_password") or env.get("SMARKETS_PASSWORD") or ""
+            event.get("smarkets_password")
+            or env.get("SMARKETS_PASSWORD")
+            or _secret_value(secret_payload, "smarkets_password", "SMARKETS_PASSWORD")
+            or ""
         ),
         settle_finished_trades=_bool(
             event.get("settle_finished_trades", env.get("SETTLE_FINISHED_TRADES", "true"))
@@ -1313,9 +1322,9 @@ def _with_smarkets_liquidity(row: dict[str, str], match) -> dict[str, str]:
     output = dict(row)
     output.update(
         {
-            "matchbook_event_id": str(match.smarkets_event_id or ""),
-            "matchbook_market_id": str(match.smarkets_market_id or ""),
-            "matchbook_runner_id": str(match.smarkets_contract_id or ""),
+            "smarkets_event_id": str(match.smarkets_event_id or ""),
+            "smarkets_market_id": str(match.smarkets_market_id or ""),
+            "smarkets_contract_id": str(match.smarkets_contract_id or ""),
             "match_score": f"{match.match_score:.4f}",
             "best_back_odds": _format_optional(match.best_back_odds),
             "best_back_available": f"{match.best_back_available:.2f}",

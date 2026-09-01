@@ -628,6 +628,9 @@ def test_config_from_event_reads_odds_api_key_from_exchange_credentials_secret(m
                 "SecretString": json.dumps(
                     {
                         "odds_api_key": "secret-odds-key",
+                        "SMARKETS_SESSION_TOKEN": "secret-smarkets-token",
+                        "SMARKETS_USERNAME": "secret-smarkets-user",
+                        "SMARKETS_PASSWORD": "secret-smarkets-password",
                     }
                 )
             }
@@ -648,6 +651,9 @@ def test_config_from_event_reads_odds_api_key_from_exchange_credentials_secret(m
     config = strategy_runner.config_from_event({})
 
     assert config.odds_api_key == "secret-odds-key"
+    assert config.smarkets_session_token == "secret-smarkets-token"
+    assert config.smarkets_username == "secret-smarkets-user"
+    assert config.smarkets_password == "secret-smarkets-password"
     assert secret_calls == [{"SecretId": "sports-stat-arb/live-exchange-credentials"}]
 
 
@@ -931,3 +937,27 @@ def test_run_paper_log_skips_new_trades_when_trading_is_paused(monkeypatch) -> N
     assert result["paper_log"]["inserted"] == 0
     assert result["portfolio_summary"]["total_trades"] == 0
     assert list(table.items) == ["control#trading"]
+
+
+def test_smarkets_liquidity_writes_smarkets_execution_ids() -> None:
+    row = strategy_runner._with_smarkets_liquidity(
+        {"target_bookmaker": "Smarkets"},
+        SimpleNamespace(
+            smarkets_event_id="event-s",
+            smarkets_market_id="market-s",
+            smarkets_contract_id="contract-s",
+            match_score=0.99,
+            best_back_odds=2.0,
+            best_back_available=10,
+            available_at_or_above_target=8,
+            best_lay_odds=2.1,
+            best_lay_available=7,
+            back_lay_spread_pct=0.02,
+            liquidity_status="available",
+        ),
+    )
+
+    assert row["smarkets_event_id"] == "event-s"
+    assert row["smarkets_market_id"] == "market-s"
+    assert row["smarkets_contract_id"] == "contract-s"
+    assert "matchbook_market_id" not in row

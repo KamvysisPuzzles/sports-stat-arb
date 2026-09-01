@@ -414,7 +414,10 @@ def size_live_order(
         bankroll=config.bankroll,
         available_at_target=available if available > 0 else None,
         dry_run=dry_run,
-        venue_metadata=_venue_metadata_from_liquidity(liquidity),
+        venue_metadata=_venue_metadata_from_liquidity(
+            liquidity,
+            bookmaker=signal.target_bookmaker,
+        ),
     )
 
 
@@ -669,7 +672,17 @@ def _decimal(value: float) -> Decimal:
     return Decimal(str(value))
 
 
-def _venue_metadata_from_liquidity(liquidity: dict[str, Any]) -> dict[str, Any]:
+def _venue_metadata_from_liquidity(
+    liquidity: dict[str, Any],
+    *,
+    bookmaker: str = "",
+) -> dict[str, Any]:
+    if bookmaker.casefold() == "smarkets":
+        return {
+            "event_id": liquidity.get("smarkets_event_id") or "",
+            "market_id": liquidity.get("smarkets_market_id") or "",
+            "runner_id": liquidity.get("smarkets_contract_id") or "",
+        }
     return {
         "event_id": liquidity.get("matchbook_event_id") or "",
         "market_id": liquidity.get("matchbook_market_id") or "",
@@ -687,9 +700,13 @@ def _execution_identifier_reject_reason(
         return None
     if signal.target_bookmaker.casefold() in {"betfair", "betfair_ex_uk", "betfair_ex_eu"}:
         return None
-    if liquidity.get("matchbook_market_id") in {None, ""}:
+    metadata = _venue_metadata_from_liquidity(
+        liquidity,
+        bookmaker=signal.target_bookmaker,
+    )
+    if metadata["market_id"] in {None, ""}:
         return "missing_execution_market_id"
-    if liquidity.get("matchbook_runner_id") in {None, ""}:
+    if metadata["runner_id"] in {None, ""}:
         return "missing_execution_runner_id"
     return None
 
