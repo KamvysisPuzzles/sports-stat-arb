@@ -298,7 +298,14 @@ def test_execute_live_signals_allows_live_betfair_without_confirmed_liquidity() 
             allow_unconfirmed_liquidity_bookmakers=("betfair",),
         ),
         logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
-        liquidity_by_key={},
+        liquidity_by_key={
+            ("event-1", "h2h", "arsenal", "betfair", "back"): {
+                "liquidity_status": "unavailable",
+                "available_at_or_above_target": 0,
+                "matchbook_market_id": "1.234",
+                "matchbook_runner_id": "789",
+            }
+        },
         executors={"betfair": FakeExecutor()},
     )
 
@@ -306,6 +313,26 @@ def test_execute_live_signals_allows_live_betfair_without_confirmed_liquidity() 
     item = next(iter(table.items.values()))
     assert item["execution_mode"] == "live"
     assert item["target_bookmaker"] == "Betfair"
+
+
+def test_execute_live_signals_skips_live_betfair_without_execution_ids() -> None:
+    table = FakeLiveOrderTable()
+
+    result = execute_live_signals(
+        table,
+        [signal(target_bookmaker="Betfair")],
+        config=LiveExecutionConfig(
+            enabled=True,
+            dry_run=False,
+            allow_unconfirmed_liquidity_bookmakers=("betfair",),
+        ),
+        logged_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+        liquidity_by_key={},
+        executors={"betfair": FakeExecutor()},
+    )
+
+    assert result.recorded == 0
+    assert result.skipped == {"missing_execution_market_id": 1}
 
 
 def test_execute_live_signals_has_no_daily_cap_by_default() -> None:

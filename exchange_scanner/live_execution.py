@@ -329,7 +329,7 @@ def liquidity_reject_reason(
     if signal.target_bookmaker.casefold() in {
         bookmaker.casefold() for bookmaker in config.allow_unconfirmed_liquidity_bookmakers
     }:
-        return None
+        return _execution_identifier_reject_reason(liquidity, config=config)
     if str(liquidity.get("liquidity_status") or "").casefold() != "available":
         return "liquidity_unavailable"
     if _float(liquidity.get("available_at_or_above_target")) <= 0:
