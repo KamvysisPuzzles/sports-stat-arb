@@ -220,7 +220,10 @@ def test_betfair_executor_places_limit_order_with_customer_ref() -> None:
     instruction = payload["params"]["instructions"][0]
     assert payload["params"]["marketId"] == "1.234"
     assert instruction["selectionId"] == 789
-    assert instruction["customerOrderRef"] == "live#abc"
+    assert payload["params"]["customerRef"] == instruction["customerOrderRef"]
+    assert payload["params"]["customerRef"].startswith("bf")
+    assert payload["params"]["customerRef"].isalnum()
+    assert len(payload["params"]["customerRef"]) <= 32
     assert instruction["limitOrder"]["timeInForce"] == "FILL_OR_KILL"
 
 

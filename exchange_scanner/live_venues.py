@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -247,6 +248,7 @@ class BetfairLiveExecutor:
         venue_metadata = self._betfair_venue_metadata(intent)
         market_id = _required(venue_metadata.get("market_id"), "betfair_market_id")
         selection_id = _required(venue_metadata.get("runner_id"), "betfair_selection_id")
+        customer_ref = _betfair_customer_ref(intent.order_id)
         payload = self._rpc(
             "SportsAPING/v1.0/placeOrders",
             {
@@ -262,10 +264,10 @@ class BetfairLiveExecutor:
                             "persistenceType": "LAPSE",
                             "timeInForce": "FILL_OR_KILL",
                         },
-                        "customerOrderRef": intent.order_id,
+                        "customerOrderRef": customer_ref,
                     }
                 ],
-                "customerRef": intent.order_id,
+                "customerRef": customer_ref,
             },
         )
         report = _first(payload.get("instructionReports")) or {}
@@ -778,3 +780,7 @@ def _betfair_error(report: dict[str, Any]) -> str | None:
     if str(report.get("status") or "").casefold() != "failure":
         return None
     return str(report.get("errorCode") or "betfair_order_failed")
+
+
+def _betfair_customer_ref(order_id: str) -> str:
+    return f"bf{hashlib.sha1(order_id.encode('utf-8')).hexdigest()[:24]}"
