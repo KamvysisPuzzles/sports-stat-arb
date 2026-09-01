@@ -440,13 +440,11 @@ def _live_metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> 
       {_metric("Matched", summary["matched_orders"])}
       {_metric("Failed", summary["failed_orders"], tone="bad" if summary["failed_orders"] else "")}
       {_metric("Orders Last 24h", summary["trades_last_24h"])}
-      {_metric("Total Risk", f"{summary['total_liability']:.2f}")}
-      {_metric("Open Risk", f"{summary['live_open_liability']:.2f}")}
+      {_metric("Open Order Risk", f"{summary['live_open_order_liability']:.2f}")}
       {_metric("Positions", summary["active_positions"])}
       {_metric("Position Risk", f"{summary['active_position_liability']:.2f}")}
       {_metric("Matched Size", f"{summary['matched_size']:.2f}")}
       {_metric("Avg Limit Odds", f"{summary['average_booked_odds']:.2f}")}
-      {_metric("Median Liquidity", f"{summary['median_available_risk_at_target']:.2f}", "risk")}
       {_metric("Entry EV", f"{summary['entry_expected_value']:.2f}", tone=_class_for_number(summary["entry_expected_value"]))}
       {_metric("Avg Edge", f"{summary['average_edge']:.2%}", tone=_class_for_number(summary["average_edge"]))}
     </section>"""
@@ -534,10 +532,10 @@ def _live_orders_table_html(rows: list[dict[str, Any]]) -> str:
             <th>Sizing</th>
             <th>Edge</th>
             <th>Ref Disagree</th>
-            <th>Available</th>
             <th>Venue Order</th>
             <th>Matched</th>
             <th>Avg Matched</th>
+            <th>Remaining</th>
             <th>Error</th>
             <th>Starts</th>
           </tr>
@@ -564,10 +562,10 @@ def _live_order_rows_html(rows: list[dict[str, Any]]) -> str:
         f"<td>{_escape(row.get('sizing_method', ''))}</td>"
         f"<td>{_format_pct(row.get('edge'))}</td>"
         f"<td>{_format_pct(row.get('reference_disagreement_pct'))}</td>"
-        f"<td>{_format_number(row.get('available_risk_at_target'))}</td>"
         f"<td>{_escape(row.get('venue_order_id', ''))}</td>"
         f"<td>{_format_number(row.get('matched_size'))}</td>"
         f"<td>{_format_number(row.get('avg_matched_odds'))}</td>"
+        f"<td>{_format_number(row.get('remaining_size'))}</td>"
         f"<td>{_escape(row.get('error', ''))}</td>"
         f"<td>{_short_time(row.get('commence_time'))}</td>"
         "</tr>"
@@ -674,10 +672,10 @@ def _live_venue_results_html(venues: list[dict[str, Any]]) -> str:
               <th>Open</th>
               <th>Matched</th>
               <th>Failed</th>
-              <th>Total Risk</th>
+              <th>Open Order Risk</th>
+              <th>Position Risk</th>
               <th>Matched Size</th>
               <th>Avg Edge</th>
-              <th>Median Liquidity</th>
             </tr>
           </thead>
           <tbody>
@@ -700,10 +698,10 @@ def _live_group_rows_html(rows: list[dict[str, Any]], *, label_key: str) -> str:
         f"<td>{_escape(row['live_open_orders'])}</td>"
         f"<td>{_escape(row['matched_orders'])}</td>"
         f"<td class='bad'>{_escape(row['failed_orders'])}</td>"
-        f"<td>{row['total_liability']:.2f}</td>"
+        f"<td>{row['live_open_order_liability']:.2f}</td>"
+        f"<td>{row['active_position_liability']:.2f}</td>"
         f"<td>{row['matched_size']:.2f}</td>"
         f"<td class='{_class_for_number(row['average_edge'])}'>{row['average_edge']:.2%}</td>"
-        f"<td>{row['median_available_risk_at_target']:.2f}</td>"
         "</tr>"
         for row in rows
     )
@@ -1218,12 +1216,7 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         if str(item.get("status", "")).casefold()
         in {"dry_run", "submitted", "open", "partially_matched"}
     )
-    live_open_liability = sum(
-        _trade_liability(item)
-        for item in trades
-        if str(item.get("status", "")).casefold()
-        in {"dry_run", "submitted", "open", "partially_matched"}
-    )
+    live_open_order_liability = sum(_live_open_order_liability(item) for item in trades)
     active_position_rows = [item for item in trades if _has_matched_position(item)]
     active_position_liability = sum(_matched_position_liability(item) for item in active_position_rows)
     matched_size = sum(_float(item.get("matched_size")) for item in trades)
@@ -1263,7 +1256,8 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         "matched_orders": matched_orders,
         "failed_orders": failed_orders,
         "live_open_orders": live_open_orders,
-        "live_open_liability": live_open_liability,
+        "live_open_liability": live_open_order_liability,
+        "live_open_order_liability": live_open_order_liability,
         "active_positions": len(active_position_rows),
         "active_position_liability": active_position_liability,
         "matched_size": matched_size,
@@ -1593,11 +1587,38 @@ def _format_money(value: object) -> str:
 
 
 def _trade_liability(item: dict[str, Any]) -> float:
+    if _is_live_order(item):
+        return _live_order_liability(item)
     stake = _float(item.get("stake"))
     odds = _float(item.get("target_odds"))
     if _bet_side(item) == "lay":
         return max(0.0, stake * max(0.0, odds - 1))
     return stake
+
+
+def _is_live_order(item: dict[str, Any]) -> bool:
+    return str(item.get("execution_mode") or "").casefold() in {"live", "dry_run"} or str(
+        item.get("order_id") or ""
+    ).startswith(("live#", "dryrun#"))
+
+
+def _live_order_liability(item: dict[str, Any]) -> float:
+    if _has_matched_position(item):
+        return _matched_position_liability(item)
+    return _live_open_order_liability(item)
+
+
+def _live_open_order_liability(item: dict[str, Any]) -> float:
+    status = str(item.get("status") or "").casefold()
+    if status not in {"submitted", "open", "partially_matched"}:
+        return 0.0
+    remaining_size = _float(item.get("remaining_size"))
+    if remaining_size <= 0:
+        remaining_size = _float(item.get("stake")) if not _has_matched_position(item) else 0.0
+    odds = _float(item.get("target_odds"))
+    if _bet_side(item) == "lay":
+        return max(0.0, remaining_size * max(0.0, odds - 1))
+    return remaining_size
 
 
 def _has_matched_position(item: dict[str, Any]) -> bool:

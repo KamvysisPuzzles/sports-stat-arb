@@ -189,6 +189,33 @@ def live_orders():
             "avg_matched_odds": Decimal("5.0"),
             "error": "",
         },
+        {
+            "order_id": "live#3",
+            "paper_trade_id": "paper#3",
+            "signal_key": "event-3|h2h|chelsea|betfair|lay",
+            "logged_at": "2026-08-18T11:30:00+00:00",
+            "sport_key": "soccer_epl",
+            "event_name": "Chelsea v Spurs",
+            "commence_time": "2026-08-18T22:00:00+00:00",
+            "outcome_name": "Chelsea",
+            "target_bookmaker": "Betfair",
+            "bet_side": "lay",
+            "limit_odds": Decimal("2.0"),
+            "stake": Decimal(99),
+            "liability": Decimal(99),
+            "sizing_method": "flat",
+            "flat_order_risk": Decimal(1),
+            "edge": Decimal("0.02"),
+            "reference_disagreement_pct": Decimal("0.01"),
+            "available_at_target": Decimal(0),
+            "execution_mode": "live",
+            "status": "failed",
+            "venue_order_id": "",
+            "matched_size": Decimal(0),
+            "avg_matched_odds": Decimal(0),
+            "remaining_size": Decimal(99),
+            "error": "temporary_failure",
+        },
     ]
 
 
@@ -335,18 +362,20 @@ def test_dashboard_payload_summarises_live_orders() -> None:
     )
 
     assert payload["page"] == "live"
-    assert payload["summary"]["total_trades"] == 2
+    assert payload["summary"]["total_trades"] == 3
     assert payload["summary"]["dry_run_orders"] == 1
     assert payload["summary"]["submitted_orders"] == 1
+    assert payload["summary"]["failed_orders"] == 1
     assert payload["summary"]["live_open_orders"] == 2
-    assert payload["summary"]["total_liability"] == 2
+    assert payload["summary"]["total_liability"] == pytest.approx(0.4)
+    assert payload["summary"]["live_open_order_liability"] == 0
     assert payload["summary"]["matched_size"] == 0.1
     assert payload["summary"]["active_positions"] == 1
     assert payload["summary"]["active_position_liability"] == pytest.approx(0.4)
     assert payload["active_positions"][0]["target_bookmaker"] == "Betfair"
     assert payload["active_positions"][0]["event_name"] == "Liverpool v Everton"
     assert payload["active_positions"][0]["liability"] == pytest.approx(0.4)
-    assert payload["trades"][0]["target_odds"] == 5.0
+    assert payload["active_positions"][0]["avg_matched_odds"] == 5.0
 
 
 def test_render_dashboard_html_contains_paper_and_live_pages() -> None:
@@ -622,8 +651,8 @@ def test_lambda_handler_routes_live_page_to_live_order_table(monkeypatch) -> Non
     assert response["statusCode"] == 200
     body = json.loads(response["body"])
     assert body["page"] == "live"
-    assert body["summary"]["total_trades"] == 2
-    assert body["trades"][0]["order_id"] == "live#2"
+    assert body["summary"]["total_trades"] == 3
+    assert body["active_positions"][0]["venue_order_ids"] == "betfair-order-1"
     assert seen_tables == ["paper", "live-orders"]
 
 
