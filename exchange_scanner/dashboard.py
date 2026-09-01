@@ -442,8 +442,7 @@ def _live_metrics_html(summary: dict[str, Any], all_summary: dict[str, Any]) -> 
       {_metric("Orders Last 24h", summary["trades_last_24h"])}
       {_metric("Open Order Risk", f"{summary['live_open_order_liability']:.2f}")}
       {_metric("Positions", summary["active_positions"])}
-      {_metric("Position Risk", f"{summary['active_position_liability']:.2f}")}
-      {_metric("Matched Size", f"{summary['matched_size']:.2f}")}
+      {_metric("Matched Risk", f"{summary['matched_risk']:.2f}")}
       {_metric("Avg Limit Odds", f"{summary['average_booked_odds']:.2f}")}
       {_metric("Entry EV", f"{summary['entry_expected_value']:.2f}", tone=_class_for_number(summary["entry_expected_value"]))}
       {_metric("Avg Edge", f"{summary['average_edge']:.2%}", tone=_class_for_number(summary["average_edge"]))}
@@ -584,9 +583,9 @@ def _active_positions_html(rows: list[dict[str, Any]]) -> str:
               <th>Event</th>
               <th>Bet</th>
               <th>Status</th>
-              <th>Matched</th>
+              <th>Matched Risk</th>
+              <th>Matched Size</th>
               <th>Avg Odds</th>
-              <th>Liability</th>
               <th>Edge</th>
               <th>Orders</th>
               <th>Venue Orders</th>
@@ -610,9 +609,9 @@ def _active_position_rows_html(rows: list[dict[str, Any]]) -> str:
         f"<td>{_escape(row.get('event_name', ''))}</td>"
         f"<td>{_escape(row.get('risk_selection', ''))}</td>"
         f"<td>{_escape(row.get('status', ''))}</td>"
+        f"<td>{_format_number(row.get('matched_risk'))}</td>"
         f"<td>{_format_number(row.get('matched_size'))}</td>"
         f"<td>{_format_number(row.get('avg_matched_odds'))}</td>"
-        f"<td>{_format_number(row.get('liability'))}</td>"
         f"<td class='{_class_for_number(row.get('edge'))}'>{_format_pct(row.get('edge'))}</td>"
         f"<td>{_escape(row.get('orders', ''))}</td>"
         f"<td>{_escape(row.get('venue_order_ids', ''))}</td>"
@@ -673,8 +672,7 @@ def _live_venue_results_html(venues: list[dict[str, Any]]) -> str:
               <th>Matched</th>
               <th>Failed</th>
               <th>Open Order Risk</th>
-              <th>Position Risk</th>
-              <th>Matched Size</th>
+              <th>Matched Risk</th>
               <th>Avg Edge</th>
             </tr>
           </thead>
@@ -699,8 +697,7 @@ def _live_group_rows_html(rows: list[dict[str, Any]], *, label_key: str) -> str:
         f"<td>{_escape(row['matched_orders'])}</td>"
         f"<td class='bad'>{_escape(row['failed_orders'])}</td>"
         f"<td>{row['live_open_order_liability']:.2f}</td>"
-        f"<td>{row['active_position_liability']:.2f}</td>"
-        f"<td>{row['matched_size']:.2f}</td>"
+        f"<td>{row['matched_risk']:.2f}</td>"
         f"<td class='{_class_for_number(row['average_edge'])}'>{row['average_edge']:.2%}</td>"
         "</tr>"
         for row in rows
@@ -1218,7 +1215,7 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
     )
     live_open_order_liability = sum(_live_open_order_liability(item) for item in trades)
     active_position_rows = [item for item in trades if _has_matched_position(item)]
-    active_position_liability = sum(_matched_position_liability(item) for item in active_position_rows)
+    matched_risk = sum(_matched_position_liability(item) for item in active_position_rows)
     matched_size = sum(_float(item.get("matched_size")) for item in trades)
     average_closed_clv = _average(_float(item.get("target_clv")) for item in closed_clv_rows)
     median_closed_clv = _median(_float(item.get("target_clv")) for item in closed_clv_rows)
@@ -1259,7 +1256,8 @@ def _summary(trades: list[dict[str, Any]], *, now: datetime | None = None) -> di
         "live_open_liability": live_open_order_liability,
         "live_open_order_liability": live_open_order_liability,
         "active_positions": len(active_position_rows),
-        "active_position_liability": active_position_liability,
+        "active_position_liability": matched_risk,
+        "matched_risk": matched_risk,
         "matched_size": matched_size,
         "settled_won": wins,
         "settled_lost": losses,
@@ -1373,7 +1371,7 @@ def _active_positions(trades: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _active_position_row(items: list[dict[str, Any]]) -> dict[str, Any]:
     first = min(items, key=lambda item: str(item.get("logged_at") or ""))
     matched_size = sum(_float(item.get("matched_size")) for item in items)
-    liability = sum(_matched_position_liability(item) for item in items)
+    matched_risk = sum(_matched_position_liability(item) for item in items)
     weighted_odds_total = sum(
         _float(item.get("matched_size"))
         * (_float(item.get("avg_matched_odds")) or _float(item.get("target_odds")))
@@ -1392,7 +1390,8 @@ def _active_position_row(items: list[dict[str, Any]]) -> dict[str, Any]:
         "status": ", ".join(statuses),
         "matched_size": matched_size,
         "avg_matched_odds": weighted_odds_total / matched_size if matched_size else 0.0,
-        "liability": liability,
+        "liability": matched_risk,
+        "matched_risk": matched_risk,
         "edge": _average(_float(item.get("edge")) for item in items),
         "orders": len(items),
         "venue_order_ids": ", ".join(venue_order_ids),
