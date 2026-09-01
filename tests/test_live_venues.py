@@ -299,6 +299,7 @@ def test_smarkets_executor_posts_limit_order() -> None:
     assert requests[0].url.path == "/orders/"
     assert requests[1].url.path == "/orders/order-1/"
     payload = json.loads(requests[0].read().decode())
+    assert payload["market_id"] == "market-x"
     assert payload["contract_id"] == "456"
     assert payload["side"] == "buy"
     assert payload["quantity"] == 10000

@@ -175,8 +175,10 @@ class SmarketsLiveExecutor:
         return response.json()
 
     def place_limit_order(self, intent: LiveOrderIntent) -> LiveOrderResult:
+        market_id = _required(intent.venue_metadata.get("market_id"), "smarkets_market_id")
         contract_id = _required(intent.venue_metadata.get("runner_id"), "smarkets_contract_id")
         payload = {
+            "market_id": str(market_id),
             "contract_id": str(contract_id),
             "side": _smarkets_side(intent.signal.bet_side),
             "price": _smarkets_price(intent.limit_odds),
