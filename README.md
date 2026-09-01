@@ -404,6 +404,11 @@ The secret can hold all live venue credentials:
 
 Env-style keys such as `MATCHBOOK_USERNAME` and `BETFAIR_APP_KEY` are also
 accepted. Individual env vars still override secret values when present.
+When Smarkets credentials are present, the live runner reuses the stored
+`smarkets_session_token`/`SMARKETS_SESSION_TOKEN`; if it has expired, it logs in
+once and writes the fresh token back to the same secret. The Lambda role needs
+`secretsmanager:PutSecretValue` on the exchange credentials secret for that
+refresh to work.
 
 Refresh live fill state:
 

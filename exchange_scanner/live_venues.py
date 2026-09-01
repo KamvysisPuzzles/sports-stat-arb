@@ -169,6 +169,11 @@ class SmarketsLiveExecutor:
         )
         return cls(session_token=session_token, timeout=timeout)
 
+    def keep_alive(self) -> dict[str, Any]:
+        response = self.http.get("/accounts/")
+        response.raise_for_status()
+        return response.json()
+
     def place_limit_order(self, intent: LiveOrderIntent) -> LiveOrderResult:
         contract_id = _required(intent.venue_metadata.get("runner_id"), "smarkets_contract_id")
         payload = {
@@ -373,6 +378,12 @@ class BetfairLiveExecutor:
 
 def executors_from_env(env: dict[str, str] | None = None) -> dict[str, Any]:
     env = env or os.environ
+    exchange_secret_id = env.get("EXCHANGE_CREDENTIALS_SECRET_ID", "")
+    exchange_secret_region = (
+        env.get("EXCHANGE_CREDENTIALS_SECRET_REGION")
+        or env.get("AWS_REGION")
+        or None
+    )
     secret_payload = _exchange_credentials_secret_from_env(env)
     credentials = VenueCredentials(
         matchbook_session_token=_credential(
@@ -422,23 +433,39 @@ def executors_from_env(env: dict[str, str] | None = None) -> dict[str, Any]:
             )
         except Exception as exc:  # noqa: BLE001 - one venue auth failure should not abort all live execution.
             logger.warning("Skipping Matchbook live executor: %s", exc)
-    if credentials.smarkets_username and credentials.smarkets_password:
+    if credentials.smarkets_session_token:
+        smarkets = SmarketsLiveExecutor(
+            session_token=credentials.smarkets_session_token
+        )
         try:
-            executors["smarkets"] = SmarketsLiveExecutor.login(
+            smarkets.keep_alive()
+            executors["smarkets"] = smarkets
+        except Exception as exc:  # noqa: BLE001 - expired tokens are refreshed below when credentials exist.
+            logger.warning("Smarkets session token is not reusable: %s", exc)
+    if "smarkets" not in executors and credentials.smarkets_username and credentials.smarkets_password:
+        try:
+            smarkets_token = smarkets_login(
                 username=credentials.smarkets_username,
                 password=credentials.smarkets_password,
             )
+            executors["smarkets"] = SmarketsLiveExecutor(session_token=smarkets_token)
+            if exchange_secret_id and secret_payload:
+                _update_smarkets_session_token_secret(
+                    secret_id=exchange_secret_id,
+                    region_name=exchange_secret_region,
+                    payload=secret_payload,
+                    session_token=smarkets_token,
+                )
         except Exception as exc:  # noqa: BLE001 - one venue auth failure should not abort all live execution.
             logger.warning("Skipping Smarkets live executor: %s", exc)
-    elif credentials.smarkets_session_token:
-        executors["smarkets"] = SmarketsLiveExecutor(
-            session_token=credentials.smarkets_session_token
-        )
     betfair_session_token = credentials.betfair_session_token
     if (
         not betfair_session_token
         and not credentials.betfair_cert_file
         and not credentials.betfair_key_file
+        and credentials.betfair_app_key
+        and credentials.betfair_username
+        and credentials.betfair_password
         and (secret_payload or credentials.betfair_cert_secret_id)
     ):
         cert_file, key_file = _betfair_cert_files(
@@ -528,6 +555,27 @@ def _load_json_secret(*, secret_id: str, region_name: str | None = None) -> dict
     if not isinstance(payload, dict):
         raise TypeError(f"Secret {secret_id} must contain a JSON object")
     return payload
+
+
+def _update_smarkets_session_token_secret(
+    *,
+    secret_id: str,
+    region_name: str | None,
+    payload: dict[str, Any],
+    session_token: str,
+) -> None:
+    import boto3
+
+    updated = dict(payload)
+    if "SMARKETS_SESSION_TOKEN" in updated:
+        updated["SMARKETS_SESSION_TOKEN"] = session_token
+    if "smarkets_session_token" in updated or "SMARKETS_SESSION_TOKEN" not in updated:
+        updated["smarkets_session_token"] = session_token
+    client_kwargs = {"region_name": region_name} if region_name else {}
+    boto3.client("secretsmanager", **client_kwargs).put_secret_value(
+        SecretId=secret_id,
+        SecretString=json.dumps(updated),
+    )
 
 
 def _betfair_cert_files(

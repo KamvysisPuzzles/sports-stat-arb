@@ -319,7 +319,9 @@ def test_betfair_executor_resolves_market_runner_before_placing_limit_order() ->
     ]
 
 
-def test_executors_from_env_builds_configured_venues() -> None:
+def test_executors_from_env_builds_configured_venues(monkeypatch) -> None:
+    monkeypatch.setattr(SmarketsLiveExecutor, "keep_alive", lambda self: {})
+
     executors = executors_from_env(
         {
             "MATCHBOOK_SESSION_TOKEN": "matchbook-token",
@@ -408,6 +410,7 @@ def test_executors_from_env_skips_failed_matchbook_login(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(MatchbookLiveExecutor, "login", staticmethod(fake_login))
+    monkeypatch.setattr(SmarketsLiveExecutor, "keep_alive", lambda self: {})
 
     executors = executors_from_env(
         {
@@ -466,9 +469,9 @@ def test_executors_from_env_logs_into_smarkets_with_credentials(monkeypatch) -> 
 
     def fake_login(**kwargs):
         calls.append(kwargs)
-        return SmarketsLiveExecutor(session_token="logged-in-token")
+        return "logged-in-token"
 
-    monkeypatch.setattr(SmarketsLiveExecutor, "login", staticmethod(fake_login))
+    monkeypatch.setattr("exchange_scanner.live_venues.smarkets_login", fake_login)
 
     executors = executors_from_env(
         {
@@ -486,30 +489,88 @@ def test_executors_from_env_logs_into_smarkets_with_credentials(monkeypatch) -> 
     ]
 
 
-def test_executors_from_env_prefers_smarkets_credentials_over_token(monkeypatch) -> None:
-    calls = []
+def test_executors_from_env_reuses_valid_smarkets_token(monkeypatch) -> None:
+    keep_alive_calls = []
+
+    def fake_keep_alive(self):
+        keep_alive_calls.append(self)
+        return {"account": {"id": "account-1"}}
 
     def fake_login(**kwargs):
-        calls.append(kwargs)
-        return SmarketsLiveExecutor(session_token="fresh-token")
+        raise AssertionError("Smarkets login should not run with a valid token")
 
-    monkeypatch.setattr(SmarketsLiveExecutor, "login", staticmethod(fake_login))
+    monkeypatch.setattr(SmarketsLiveExecutor, "keep_alive", fake_keep_alive)
+    monkeypatch.setattr("exchange_scanner.live_venues.smarkets_login", fake_login)
 
     executors = executors_from_env(
         {
             "SMARKETS_USERNAME": "user@example.com",
             "SMARKETS_PASSWORD": "secret",
-            "SMARKETS_SESSION_TOKEN": "expired-token",
+            "SMARKETS_SESSION_TOKEN": "valid-token",
         }
     )
 
     assert list(executors) == ["smarkets"]
-    assert calls == [
+    assert len(keep_alive_calls) == 1
+
+
+def test_executors_from_env_refreshes_expired_smarkets_token_in_secret(monkeypatch) -> None:
+    login_calls = []
+    secret_updates = []
+
+    class FakeSecretsManager:
+        def get_secret_value(self, **kwargs):
+            return {
+                "SecretString": json.dumps(
+                    {
+                        "SMARKETS_USERNAME": "user@example.com",
+                        "SMARKETS_PASSWORD": "secret",
+                        "SMARKETS_SESSION_TOKEN": "expired-token",
+                    }
+                )
+            }
+
+        def put_secret_value(self, **kwargs):
+            secret_updates.append(kwargs)
+            return {}
+
+    def fake_client(service_name, **kwargs):
+        assert service_name == "secretsmanager"
+        assert kwargs == {"region_name": "eu-west-2"}
+        return FakeSecretsManager()
+
+    def fake_keep_alive(self):
+        raise httpx.HTTPStatusError(
+            "expired",
+            request=httpx.Request("GET", "https://api.smarkets.test/accounts/"),
+            response=httpx.Response(401),
+        )
+
+    def fake_login(**kwargs):
+        login_calls.append(kwargs)
+        return "fresh-token"
+
+    monkeypatch.setitem(sys.modules, "boto3", SimpleNamespace(client=fake_client))
+    monkeypatch.setattr(SmarketsLiveExecutor, "keep_alive", fake_keep_alive)
+    monkeypatch.setattr("exchange_scanner.live_venues.smarkets_login", fake_login)
+
+    executors = executors_from_env(
+        {
+            "EXCHANGE_CREDENTIALS_SECRET_ID": "sports-stat-arb/live-exchange-credentials",
+            "EXCHANGE_CREDENTIALS_SECRET_REGION": "eu-west-2",
+        }
+    )
+
+    assert list(executors) == ["smarkets"]
+    assert login_calls == [
         {
             "username": "user@example.com",
             "password": "secret",
         }
     ]
+    assert secret_updates[0]["SecretId"] == "sports-stat-arb/live-exchange-credentials"
+    updated_secret = json.loads(secret_updates[0]["SecretString"])
+    assert updated_secret["SMARKETS_SESSION_TOKEN"] == "fresh-token"
 
 
 def test_executors_from_env_uses_betfair_cert_secret(monkeypatch) -> None:
@@ -575,6 +636,7 @@ def test_executors_from_env_uses_exchange_credentials_secret(monkeypatch) -> Non
     cert_pem = "-----BEGIN CERTIFICATE-----\\nabc\\n-----END CERTIFICATE-----"
     key_pem = "-----BEGIN PRIVATE KEY-----\\ndef\\n-----END PRIVATE KEY-----"
     secret_calls = []
+    secret_updates = []
     matchbook_calls = []
     smarkets_calls = []
     betfair_calls = []
@@ -598,6 +660,10 @@ def test_executors_from_env_uses_exchange_credentials_secret(monkeypatch) -> Non
                 )
             }
 
+        def put_secret_value(self, **kwargs):
+            secret_updates.append(kwargs)
+            return {}
+
     def fake_client(service_name, **kwargs):
         assert service_name == "secretsmanager"
         assert kwargs == {"region_name": "eu-west-2"}
@@ -609,7 +675,7 @@ def test_executors_from_env_uses_exchange_credentials_secret(monkeypatch) -> Non
 
     def fake_smarkets_login(**kwargs):
         smarkets_calls.append(kwargs)
-        return SmarketsLiveExecutor(session_token="smarkets-token")
+        return "smarkets-token"
 
     def fake_certificate_login(**kwargs):
         betfair_calls.append(kwargs)
@@ -619,7 +685,7 @@ def test_executors_from_env_uses_exchange_credentials_secret(monkeypatch) -> Non
 
     monkeypatch.setitem(sys.modules, "boto3", SimpleNamespace(client=fake_client))
     monkeypatch.setattr(MatchbookLiveExecutor, "login", staticmethod(fake_matchbook_login))
-    monkeypatch.setattr(SmarketsLiveExecutor, "login", staticmethod(fake_smarkets_login))
+    monkeypatch.setattr("exchange_scanner.live_venues.smarkets_login", fake_smarkets_login)
     monkeypatch.setattr("exchange_scanner.live_venues.certificate_login", fake_certificate_login)
 
     executors = executors_from_env(
@@ -637,6 +703,7 @@ def test_executors_from_env_uses_exchange_credentials_secret(monkeypatch) -> Non
         "smarkets",
     ]
     assert secret_calls == [{"SecretId": "sports-stat-arb/live-exchange-credentials"}]
+    assert secret_updates[0]["SecretId"] == "sports-stat-arb/live-exchange-credentials"
     assert matchbook_calls == [
         {
             "username": "matchbook-user",
