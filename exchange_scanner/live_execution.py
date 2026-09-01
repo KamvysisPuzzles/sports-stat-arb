@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Protocol
 
+import httpx
+
 from exchange_scanner.dynamodb_paper import _filter_stacked_positive_exposure_signals, signal_key
 from exchange_scanner.the_odds_api import ValueSignal
 from exchange_scanner.trading_control import is_control_item
@@ -202,7 +204,7 @@ def execute_live_signals(
                 result = LiveOrderResult(
                     order_id=intent.order_id,
                     status="failed",
-                    error=f"{type(exc).__name__}: {exc}",
+                    error=_format_live_order_error(exc),
                 )
         submitted += 1
         if record_live_order(table, intent, result, logged_at=logged_at):
@@ -467,7 +469,7 @@ def reconcile_live_orders(
                 order_id=str(order["order_id"]),
                 status="status_check_failed",
                 venue_order_id=str(order.get("venue_order_id") or "") or None,
-                error=f"{type(exc).__name__}: {exc}",
+                error=_format_live_order_error(exc),
             )
         if update_live_order_status(table, order_status, checked_at=checked_at):
             updated += 1
@@ -551,6 +553,15 @@ def live_order_item(
         "avg_matched_odds": _decimal(result.avg_matched_odds or 0),
         "error": result.error or "",
     }
+
+
+def _format_live_order_error(exc: Exception) -> str:
+    message = f"{type(exc).__name__}: {exc}"
+    if isinstance(exc, httpx.HTTPStatusError):
+        response_text = exc.response.text.strip()
+        if response_text:
+            message = f"{message} | response={response_text[:1000]}"
+    return message
 
 
 def list_live_orders(table: Any) -> list[dict[str, Any]]:

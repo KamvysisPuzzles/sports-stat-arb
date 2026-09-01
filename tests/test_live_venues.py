@@ -95,8 +95,8 @@ def test_matchbook_executor_posts_limit_offer() -> None:
     assert result.status == "cancelled"
     assert result.venue_order_id == "offer-1"
     assert [request.method for request in requests] == ["POST", "DELETE"]
-    assert requests[0].url.path == "/offers"
-    assert requests[1].url.path == "/offers/offer-1"
+    assert requests[0].url.path == "/v2/offers"
+    assert requests[1].url.path == "/v2/offers/offer-1"
     payload = json.loads(requests[0].read().decode())
     assert payload["offers"][0]["runner-id"] == 123
     assert payload["offers"][0]["stake"] == 1.0

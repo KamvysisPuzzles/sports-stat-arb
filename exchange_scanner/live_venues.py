@@ -20,6 +20,7 @@ from exchange_scanner.matchbook_liquidity import MATCHBOOK_API_BASE
 from exchange_scanner.smarkets_liquidity import SMARKETS_API_BASE
 
 MATCHBOOK_LOGIN_URL = "https://api.matchbook.com/bpapi/rest/security/session"
+MATCHBOOK_OFFERS_PATH = "/v2/offers"
 logger = logging.getLogger(__name__)
 
 
@@ -87,7 +88,7 @@ class MatchbookLiveExecutor:
                 }
             ],
         }
-        response = self.http.post("/offers", json=payload)
+        response = self.http.post(MATCHBOOK_OFFERS_PATH, json=payload)
         response.raise_for_status()
         data = response.json()
         offer = _first(data.get("offers")) or data
@@ -111,7 +112,7 @@ class MatchbookLiveExecutor:
         venue_order_id = str(order.get("venue_order_id") or "")
         if not venue_order_id:
             return LiveOrderStatus(order_id=str(order["order_id"]), status="unknown", error="missing_venue_order_id")
-        response = self.http.get(f"/offers/{venue_order_id}")
+        response = self.http.get(f"{MATCHBOOK_OFFERS_PATH}/{venue_order_id}")
         response.raise_for_status()
         data = response.json()
         offer = _first(data.get("offers")) or data
@@ -130,7 +131,7 @@ class MatchbookLiveExecutor:
         if not result.venue_order_id or not _has_unmatched_remainder(result):
             return result
         try:
-            response = self.http.delete(f"/offers/{result.venue_order_id}")
+            response = self.http.delete(f"{MATCHBOOK_OFFERS_PATH}/{result.venue_order_id}")
             response.raise_for_status()
         except Exception as exc:  # noqa: BLE001 - preserve order result with cancel failure.
             return _result_with_error(
