@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from exchange_scanner.betfair_liquidity import (
     BETFAIR_SOCCER_EVENT_TYPE_ID,
     BetfairLiquidityClient,
+    _name_score,
     enrich_opportunities_csv,
     match_liquidity,
 )
@@ -189,6 +190,12 @@ def test_betfair_catalogue_lookup_is_restricted_to_soccer() -> None:
     )
 
     assert client.params["filter"]["eventTypeIds"] == [BETFAIR_SOCCER_EVENT_TYPE_ID]
+
+
+def test_name_score_handles_token_subset_variants_without_overmatching() -> None:
+    assert _name_score("FC Schalke 04", "Schalke") >= 0.95
+    assert _name_score("Real Madrid CF", "Real Madrid") >= 0.95
+    assert _name_score("Manchester United", "Manchester City") < 0.70
 
 
 def test_match_liquidity_maps_half_goal_total_to_betfair_market_type() -> None:

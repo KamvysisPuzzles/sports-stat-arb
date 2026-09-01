@@ -372,7 +372,23 @@ def _runner_score(outcome_name: str, runner_name: str) -> float:
 
 
 def _name_score(left: str, right: str) -> float:
-    return SequenceMatcher(None, _normalise_name(left), _normalise_name(right)).ratio()
+    left_normalised = _normalise_name(left)
+    right_normalised = _normalise_name(right)
+    if not left_normalised or not right_normalised:
+        return 0
+    if left_normalised == right_normalised:
+        return 1.0
+
+    left_tokens = _name_tokens(left_normalised)
+    right_tokens = _name_tokens(right_normalised)
+    scores = [
+        SequenceMatcher(None, left_normalised, right_normalised).ratio(),
+        SequenceMatcher(None, " ".join(sorted(left_tokens)), " ".join(sorted(right_tokens))).ratio(),
+        _token_overlap_score(left_tokens, right_tokens),
+    ]
+    if _is_token_subset_match(left_tokens, right_tokens):
+        scores.append(0.95)
+    return max(scores)
 
 
 def _normalise_name(value: str) -> str:
@@ -395,6 +411,28 @@ def _normalise_name(value: str) -> str:
         .strip()
     )
     return re.sub(r"\s+city\b", "", normalised).strip()
+
+
+def _name_tokens(value: str) -> set[str]:
+    return {token for token in value.split() if token}
+
+
+def _token_overlap_score(left_tokens: set[str], right_tokens: set[str]) -> float:
+    if not left_tokens or not right_tokens:
+        return 0
+    overlap = len(left_tokens & right_tokens)
+    if overlap == 0:
+        return 0
+    return (2 * overlap) / (len(left_tokens) + len(right_tokens))
+
+
+def _is_token_subset_match(left_tokens: set[str], right_tokens: set[str]) -> bool:
+    shorter, longer = (
+        (left_tokens, right_tokens)
+        if len(left_tokens) <= len(right_tokens)
+        else (right_tokens, left_tokens)
+    )
+    return bool(shorter) and shorter.issubset(longer)
 
 
 def _spread_pct(back_odds: float | None, lay_odds: float | None) -> float | None:
