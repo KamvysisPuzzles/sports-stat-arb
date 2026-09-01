@@ -585,7 +585,7 @@ def _active_positions_html(rows: list[dict[str, Any]]) -> str:
               <th>Status</th>
               <th>Matched Risk</th>
               <th>Matched Size</th>
-              <th>Avg Odds</th>
+              <th>Risk Odds</th>
               <th>Edge</th>
               <th>Orders</th>
               <th>Venue Orders</th>
@@ -611,7 +611,7 @@ def _active_position_rows_html(rows: list[dict[str, Any]]) -> str:
         f"<td>{_escape(row.get('status', ''))}</td>"
         f"<td>{_format_number(row.get('matched_risk'))}</td>"
         f"<td>{_format_number(row.get('matched_size'))}</td>"
-        f"<td>{_format_number(row.get('avg_matched_odds'))}</td>"
+        f"<td>{_format_number(row.get('risk_odds'))}</td>"
         f"<td class='{_class_for_number(row.get('edge'))}'>{_format_pct(row.get('edge'))}</td>"
         f"<td>{_escape(row.get('orders', ''))}</td>"
         f"<td>{_escape(row.get('venue_order_ids', ''))}</td>"
@@ -1377,6 +1377,9 @@ def _active_position_row(items: list[dict[str, Any]]) -> dict[str, Any]:
         * (_float(item.get("avg_matched_odds")) or _float(item.get("target_odds")))
         for item in items
     )
+    weighted_risk_odds_total = sum(
+        _matched_position_liability(item) * _matched_risk_odds(item) for item in items
+    )
     statuses = sorted({str(item.get("status") or "") for item in items if item.get("status")})
     venue_order_ids = [
         str(item.get("venue_order_id") or "")
@@ -1390,6 +1393,7 @@ def _active_position_row(items: list[dict[str, Any]]) -> dict[str, Any]:
         "status": ", ".join(statuses),
         "matched_size": matched_size,
         "avg_matched_odds": weighted_odds_total / matched_size if matched_size else 0.0,
+        "risk_odds": weighted_risk_odds_total / matched_risk if matched_risk else 0.0,
         "liability": matched_risk,
         "matched_risk": matched_risk,
         "edge": _average(_float(item.get("edge")) for item in items),
@@ -1630,6 +1634,17 @@ def _matched_position_liability(item: dict[str, Any]) -> float:
     if _bet_side(item) == "lay":
         return max(0.0, matched_size * max(0.0, odds - 1))
     return matched_size
+
+
+def _matched_risk_odds(item: dict[str, Any]) -> float:
+    odds = _float(item.get("avg_matched_odds")) or _float(item.get("target_odds"))
+    if odds <= 1:
+        return 0.0
+    commission_rate = _commission_rate(item)
+    if _bet_side(item) == "lay":
+        liability_per_unit = odds - 1
+        return 1 + ((1 - commission_rate) / liability_per_unit)
+    return 1 + ((odds - 1) * (1 - commission_rate))
 
 
 def _trade_expected_value(item: dict[str, Any]) -> float:

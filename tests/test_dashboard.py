@@ -378,6 +378,7 @@ def test_dashboard_payload_summarises_live_orders() -> None:
     assert payload["active_positions"][0]["liability"] == pytest.approx(0.4)
     assert payload["active_positions"][0]["matched_risk"] == pytest.approx(0.4)
     assert payload["active_positions"][0]["avg_matched_odds"] == 5.0
+    assert payload["active_positions"][0]["risk_odds"] == pytest.approx(1.245)
 
 
 def test_render_dashboard_html_contains_paper_and_live_pages() -> None:
@@ -403,6 +404,7 @@ def test_render_dashboard_html_contains_paper_and_live_pages() -> None:
     assert 'href="?token=secret">Paper</a>' in live_html
     assert "Active Positions" in live_html
     assert "Matched Risk" in live_html
+    assert "<th>Risk Odds</th>" in live_html
     assert "Orders by Venue" in live_html
     assert "<th>Venue Order</th>" in live_html
     assert "betfair-order-1" in live_html
