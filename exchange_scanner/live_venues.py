@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, replace
 from datetime import timedelta
@@ -15,6 +16,8 @@ from exchange_scanner.betfair_liquidity import BETFAIR_BETTING_API_URL, resolve_
 from exchange_scanner.live_execution import LiveOrderIntent, LiveOrderResult, LiveOrderStatus
 from exchange_scanner.matchbook_liquidity import MATCHBOOK_API_BASE
 from exchange_scanner.smarkets_liquidity import SMARKETS_API_BASE
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -386,11 +389,14 @@ def executors_from_env(env: dict[str, str] | None = None) -> dict[str, Any]:
             session_token=credentials.matchbook_session_token
         )
     elif credentials.matchbook_username and credentials.matchbook_password:
-        executors["matchbook"] = MatchbookLiveExecutor.login(
-            username=credentials.matchbook_username,
-            password=credentials.matchbook_password,
-            mfa_code=credentials.matchbook_mfa_code,
-        )
+        try:
+            executors["matchbook"] = MatchbookLiveExecutor.login(
+                username=credentials.matchbook_username,
+                password=credentials.matchbook_password,
+                mfa_code=credentials.matchbook_mfa_code,
+            )
+        except Exception as exc:  # noqa: BLE001 - one venue auth failure should not abort all live execution.
+            logger.warning("Skipping Matchbook live executor: %s", exc)
     if credentials.smarkets_session_token:
         executors["smarkets"] = SmarketsLiveExecutor(
             session_token=credentials.smarkets_session_token
@@ -413,13 +419,17 @@ def executors_from_env(env: dict[str, str] | None = None) -> dict[str, Any]:
             betfair_key_file=str(key_file),
         )
     if not betfair_session_token and _can_cert_login(credentials):
-        betfair_session_token = certificate_login(
-            username=credentials.betfair_username,
-            password=credentials.betfair_password,
-            app_key=credentials.betfair_app_key,
-            cert_file=Path(credentials.betfair_cert_file),
-            key_file=Path(credentials.betfair_key_file),
-        )
+        try:
+            betfair_session_token = certificate_login(
+                username=credentials.betfair_username,
+                password=credentials.betfair_password,
+                app_key=credentials.betfair_app_key,
+                cert_file=Path(credentials.betfair_cert_file),
+                key_file=Path(credentials.betfair_key_file),
+            )
+        except Exception as exc:  # noqa: BLE001 - one venue auth failure should not abort all live execution.
+            logger.warning("Skipping Betfair live executor: %s", exc)
+            betfair_session_token = ""
     if credentials.betfair_app_key and betfair_session_token:
         betfair = BetfairLiveExecutor(
             app_key=credentials.betfair_app_key,

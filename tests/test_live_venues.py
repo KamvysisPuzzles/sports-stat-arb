@@ -359,6 +359,34 @@ def test_executors_from_env_logs_into_matchbook_with_credentials(monkeypatch) ->
     ]
 
 
+def test_executors_from_env_skips_failed_matchbook_login(monkeypatch) -> None:
+    def fake_login(**kwargs):
+        raise httpx.HTTPStatusError(
+            "forbidden",
+            request=httpx.Request("POST", "https://api.matchbook.test/session"),
+            response=httpx.Response(403),
+        )
+
+    monkeypatch.setattr(MatchbookLiveExecutor, "login", staticmethod(fake_login))
+
+    executors = executors_from_env(
+        {
+            "MATCHBOOK_USERNAME": "user@example.com",
+            "MATCHBOOK_PASSWORD": "secret",
+            "SMARKETS_SESSION_TOKEN": "smarkets-token",
+            "BETFAIR_APP_KEY": "betfair-app",
+            "BETFAIR_SESSION_TOKEN": "betfair-token",
+        }
+    )
+
+    assert sorted(executors) == [
+        "betfair",
+        "betfair_ex_eu",
+        "betfair_ex_uk",
+        "smarkets",
+    ]
+
+
 def test_executors_from_env_uses_betfair_cert_secret(monkeypatch) -> None:
     cert_pem = "-----BEGIN CERTIFICATE-----\\nabc\\n-----END CERTIFICATE-----"
     key_pem = "-----BEGIN PRIVATE KEY-----\\ndef\\n-----END PRIVATE KEY-----"
