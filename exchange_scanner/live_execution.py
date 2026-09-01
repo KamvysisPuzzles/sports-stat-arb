@@ -325,18 +325,18 @@ def liquidity_reject_reason(
     config: LiveExecutionConfig,
 ) -> str | None:
     if not config.require_confirmed_liquidity:
-        return _execution_identifier_reject_reason(liquidity, config=config)
+        return _execution_identifier_reject_reason(signal, liquidity, config=config)
     if signal.target_bookmaker.casefold() in {
         bookmaker.casefold() for bookmaker in config.allow_unconfirmed_liquidity_bookmakers
     }:
-        return _execution_identifier_reject_reason(liquidity, config=config)
+        return _execution_identifier_reject_reason(signal, liquidity, config=config)
     if str(liquidity.get("liquidity_status") or "").casefold() != "available":
         return "liquidity_unavailable"
     if _float(liquidity.get("available_at_or_above_target")) <= 0:
         return "liquidity_unavailable"
     if _float(liquidity.get("available_at_or_above_target")) < config.min_confirmed_liquidity:
         return "confirmed_liquidity_below_minimum"
-    return _execution_identifier_reject_reason(liquidity, config=config)
+    return _execution_identifier_reject_reason(signal, liquidity, config=config)
 
 
 def size_live_order(
@@ -649,11 +649,14 @@ def _venue_metadata_from_liquidity(liquidity: dict[str, Any]) -> dict[str, Any]:
 
 
 def _execution_identifier_reject_reason(
+    signal: ValueSignal,
     liquidity: dict[str, Any],
     *,
     config: LiveExecutionConfig,
 ) -> str | None:
     if config.dry_run:
+        return None
+    if signal.target_bookmaker.casefold() in {"betfair", "betfair_ex_uk", "betfair_ex_eu"}:
         return None
     if liquidity.get("matchbook_market_id") in {None, ""}:
         return "missing_execution_market_id"

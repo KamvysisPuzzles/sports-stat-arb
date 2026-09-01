@@ -315,7 +315,7 @@ def test_execute_live_signals_allows_live_betfair_without_confirmed_liquidity() 
     assert item["target_bookmaker"] == "Betfair"
 
 
-def test_execute_live_signals_skips_live_betfair_without_execution_ids() -> None:
+def test_execute_live_signals_allows_live_betfair_without_pre_enriched_execution_ids() -> None:
     table = FakeLiveOrderTable()
 
     result = execute_live_signals(
@@ -331,8 +331,12 @@ def test_execute_live_signals_skips_live_betfair_without_execution_ids() -> None
         executors={"betfair": FakeExecutor()},
     )
 
-    assert result.recorded == 0
-    assert result.skipped == {"missing_execution_market_id": 1}
+    assert result.recorded == 1
+    assert result.submitted == 1
+    assert result.skipped == {}
+    item = next(iter(table.items.values()))
+    assert item["target_bookmaker"] == "Betfair"
+    assert item["exchange_market_id"] == ""
 
 
 def test_execute_live_signals_has_no_daily_cap_by_default() -> None:
