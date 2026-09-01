@@ -525,13 +525,9 @@ def run_paper_log(
         logged_at=now,
         liquidity_by_key=liquidity_by_key,
     )
-    live_signals = _signals_for_inserted_signal_keys(
-        executable_signals,
-        inserted_signal_keys=log_result.inserted_signal_keys,
-    )
     live_result = _execute_live_signals(
         config,
-        live_signals,
+        executable_signals,
         logged_at=now,
         liquidity_by_key=live_liquidity_by_key,
         live_order_table=live_order_table,

@@ -360,7 +360,7 @@ def test_run_paper_log_can_dry_run_live_execution_alongside_paper(monkeypatch) -
     assert order["sport_key"] == "soccer_epl"
 
 
-def test_run_paper_log_only_executes_live_for_fresh_paper_inserts(monkeypatch) -> None:
+def test_run_paper_log_lets_live_dedupe_independently_from_paper(monkeypatch) -> None:
     monkeypatch.setitem(strategy_runner.SPORT_PROFILES, "test-profile", ["soccer_epl"])
     paper_table = FakeTable()
     live_table = FakeLiveOrderTable()
@@ -404,8 +404,9 @@ def test_run_paper_log_only_executes_live_for_fresh_paper_inserts(monkeypatch) -
     assert first["live_execution"]["recorded"] == 1
     assert second["paper_log"]["inserted"] == 0
     assert second["paper_log"]["duplicates"] == 1
-    assert second["live_execution"]["candidates"] == 0
+    assert second["live_execution"]["candidates"] == 1
     assert second["live_execution"]["recorded"] == 0
+    assert second["live_execution"]["skipped"]["duplicate_live_signal"] == 1
     assert len(live_table.items) == 1
 
 
