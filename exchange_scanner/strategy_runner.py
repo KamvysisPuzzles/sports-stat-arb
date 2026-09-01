@@ -11,6 +11,10 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from exchange_scanner.betfair_liquidity import match_liquidity as match_betfair_liquidity
+from exchange_scanner.betfair_liquidity import (
+    unavailable_liquidity as unavailable_betfair_liquidity,
+)
 from exchange_scanner.cli import (
     ACTIVE_H2H_PROFILE,
     BETFAIR_TARGET_BOOKMAKERS,
@@ -108,7 +112,7 @@ class StrategyRunnerConfig:
     settle_finished_trades: bool = True
     enable_matchbook_discovery: bool = False
     betfair_lambda_function_name: str = ""
-    use_betfair_lambda: bool = True
+    use_betfair_lambda: bool = False
     max_betfair_spread_pct: float | None = None
     live_execution_enabled: bool = False
     live_execution_dry_run: bool = True
@@ -224,7 +228,7 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
             or ""
         ),
         use_betfair_lambda=_bool(
-            event.get("use_betfair_lambda", env.get("USE_BETFAIR_LAMBDA", "true"))
+            event.get("use_betfair_lambda", env.get("USE_BETFAIR_LAMBDA", "false"))
         ),
         max_betfair_spread_pct=_optional_float(
             event.get("max_betfair_spread_pct") or env.get("MAX_BETFAIR_SPREAD_PCT")
@@ -1331,11 +1335,25 @@ def _enrich_betfair_rows(
     *,
     lambda_client: Any | None,
 ) -> list[dict[str, str]]:
-    if not rows or not config.use_betfair_lambda or not config.betfair_lambda_function_name:
+    if not rows:
         return rows
     if not any(row.get("target_bookmaker", "").casefold() == "betfair" for row in rows):
         return rows
+    if config.use_betfair_lambda and config.betfair_lambda_function_name:
+        return _enrich_betfair_rows_with_lambda(
+            config,
+            rows,
+            lambda_client=lambda_client,
+        )
+    return _enrich_betfair_rows_locally(rows)
 
+
+def _enrich_betfair_rows_with_lambda(
+    config: StrategyRunnerConfig,
+    rows: list[dict[str, str]],
+    *,
+    lambda_client: Any | None,
+) -> list[dict[str, str]]:
     lambda_client = lambda_client or _boto3_client("lambda", config.aws_region)
     response = lambda_client.invoke(
         FunctionName=config.betfair_lambda_function_name,
@@ -1348,6 +1366,59 @@ def _enrich_betfair_rows(
     if status_code >= 400:
         raise RuntimeError(f"Betfair enrichment Lambda returned {status_code}: {body}")
     return _read_rows_csv(str(body["csv"]))
+
+
+def _enrich_betfair_rows_locally(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    client = executors_from_env().get("betfair")
+    if client is None:
+        return [
+            _with_betfair_liquidity(row, unavailable_betfair_liquidity("betfair_not_configured"))
+            if row.get("target_bookmaker", "").casefold() == "betfair"
+            else row
+            for row in rows
+        ]
+    enriched = []
+    for row in rows:
+        if row.get("target_bookmaker", "").casefold() != "betfair":
+            enriched.append(row)
+            continue
+        try:
+            match = match_betfair_liquidity(
+                client,
+                event_name=row["event_name"],
+                commence_time=_parse_row_time(row.get("commence_time")),
+                market_key=row.get("market", "h2h"),
+                outcome_name=row["outcome_name"],
+                target_odds=float(row["target_odds"]),
+            )
+        except Exception:  # noqa: BLE001 - keep one Betfair mapping failure from aborting the run.
+            match = unavailable_betfair_liquidity("betfair_error")
+        enriched.append(_with_betfair_liquidity(row, match))
+    return enriched
+
+
+def _with_betfair_liquidity(row: dict[str, str], match) -> dict[str, str]:
+    output = dict(row)
+    output.update(
+        {
+            "matchbook_event_id": "",
+            "matchbook_market_id": match.betfair_market_id or "",
+            "matchbook_runner_id": str(match.betfair_selection_id or ""),
+            "match_score": f"{match.match_score:.4f}",
+            "best_back_odds": _format_optional(match.best_back_odds),
+            "best_back_available": f"{match.best_back_available:.2f}",
+            "available_at_or_above_target": f"{match.available_at_or_above_target:.2f}",
+            "best_lay_odds": _format_optional(match.best_lay_odds),
+            "best_lay_available": f"{match.best_lay_available:.2f}",
+            "back_lay_spread_pct": (
+                f"{match.back_lay_spread_pct:.4f}"
+                if match.back_lay_spread_pct is not None
+                else ""
+            ),
+            "liquidity_status": match.liquidity_status,
+        }
+    )
+    return output
 
 
 def _mark_betfair_target_liquidity_unavailable(rows: list[dict[str, str]]) -> list[dict[str, str]]:

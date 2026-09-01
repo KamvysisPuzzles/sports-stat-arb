@@ -437,6 +437,61 @@ def test_betfair_target_rows_log_with_unavailable_liquidity_only() -> None:
     )
 
 
+def test_betfair_rows_can_be_enriched_locally_without_lambda(monkeypatch) -> None:
+    calls = []
+
+    def fake_executors_from_env():
+        return {"betfair": object()}
+
+    def fake_match_betfair_liquidity(client, **kwargs):
+        calls.append((client, kwargs))
+        return SimpleNamespace(
+            betfair_market_id="1.234",
+            betfair_selection_id=789,
+            match_score=0.95,
+            best_back_odds=2.4,
+            best_back_available=10,
+            available_at_or_above_target=0,
+            best_lay_odds=2.42,
+            best_lay_available=8,
+            back_lay_spread_pct=0.0083,
+            liquidity_status="price_not_available",
+        )
+
+    monkeypatch.setattr(strategy_runner, "executors_from_env", fake_executors_from_env)
+    monkeypatch.setattr(
+        strategy_runner,
+        "match_betfair_liquidity",
+        fake_match_betfair_liquidity,
+    )
+
+    rows = strategy_runner._enrich_betfair_rows(
+        StrategyRunnerConfig(
+            mode="paper-log",
+            odds_api_key="test-key",
+            dynamodb_table_name="paper-trades",
+            odds_s3_bucket="odds-bucket",
+            use_betfair_lambda=False,
+        ),
+        [
+            {
+                "target_bookmaker": "Betfair",
+                "event_name": "Arsenal v Chelsea",
+                "commence_time": "2026-08-15T15:00:00+00:00",
+                "market": "h2h",
+                "outcome_name": "Arsenal",
+                "target_odds": "2.4000",
+            }
+        ],
+        lambda_client=None,
+    )
+
+    assert rows[0]["matchbook_market_id"] == "1.234"
+    assert rows[0]["matchbook_runner_id"] == "789"
+    assert rows[0]["liquidity_status"] == "price_not_available"
+    assert calls[0][1]["event_name"] == "Arsenal v Chelsea"
+
+
 def test_betfair_target_requires_two_percent_edge() -> None:
     weak_betfair = strategy_runner.ValueSignal(
         sport_key="soccer_epl",
