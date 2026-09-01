@@ -636,14 +636,14 @@ def _live_order_blocks_retry(item: dict[str, Any]) -> bool:
     status = str(item.get("status") or "").casefold()
     if _float(item.get("matched_size")) > 0:
         return True
-    return status in {"dry_run", "submitted", "open", "matched", "partially_matched"}
+    return status in {"dry_run", "submitted", "open", "partially_matched"}
 
 
 def _live_order_result_blocks_retry(result: LiveOrderResult, *, dry_run: bool) -> bool:
     status = result.status.casefold()
     if (result.matched_size or 0) > 0:
         return True
-    return dry_run or status in {"submitted", "open", "matched", "partially_matched"}
+    return dry_run or status in {"submitted", "open", "partially_matched"}
 
 
 def _paper_trade_id(signal: ValueSignal) -> str:

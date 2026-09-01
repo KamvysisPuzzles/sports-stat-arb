@@ -103,6 +103,93 @@ def test_matchbook_executor_posts_limit_offer() -> None:
     assert payload["offers"][0]["client-reference"] == "live#abc"
 
 
+def test_matchbook_executor_does_not_mark_zero_fill_execution_complete_as_matched() -> None:
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "DELETE":
+            return httpx.Response(200, json={"status": "cancelled"})
+        return httpx.Response(
+            200,
+            json={
+                "offers": [
+                    {
+                        "id": "offer-1",
+                        "status": "execution-complete",
+                        "matched-amount": 0,
+                        "remaining-amount": 1,
+                    }
+                ]
+            },
+        )
+
+    executor = MatchbookLiveExecutor(session_token="token")
+    executor.http = httpx.Client(
+        base_url="https://api.matchbook.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = executor.place_limit_order(intent())
+
+    assert result.status == "cancelled"
+    assert result.matched_size == 0
+    assert result.remaining_size == 0
+    assert [request.method for request in requests] == ["POST", "DELETE"]
+
+
+def test_matchbook_executor_reads_v2_matched_offer_fields() -> None:
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "offers": [
+                    {
+                        "id": "offer-1",
+                        "status": "matched",
+                        "odds": 3.1,
+                        "stake": 0.48,
+                        "remaining": 0.00001,
+                        "potential-liability": 1.008,
+                        "matched-bets": [
+                            {
+                                "id": "bet-1",
+                                "offer-id": "offer-1",
+                                "odds": 3.1,
+                                "stake": 0.47999,
+                                "potential-liability": 1.00798,
+                            }
+                        ],
+                    }
+                ]
+            },
+        )
+
+    executor = MatchbookLiveExecutor(session_token="token")
+    executor.http = httpx.Client(
+        base_url="https://api.matchbook.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = executor.place_limit_order(
+        intent(
+            limit_odds=3.1,
+            stake=0.47619047619047616,
+            signal=signal(target_odds=3.1),
+        )
+    )
+
+    assert result.status == "matched"
+    assert result.venue_order_id == "offer-1"
+    assert result.matched_size == 0.47999
+    assert result.avg_matched_odds == 3.1
+    assert result.remaining_size == 0.00001
+    assert [request.method for request in requests] == ["POST"]
+
+
 def test_matchbook_executor_preserves_large_runner_ids() -> None:
     requests = []
 

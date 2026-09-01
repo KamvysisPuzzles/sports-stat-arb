@@ -22,6 +22,7 @@ from exchange_scanner.smarkets_liquidity import SMARKETS_API_BASE
 
 MATCHBOOK_LOGIN_URL = "https://api.matchbook.com/bpapi/rest/security/session"
 MATCHBOOK_OFFERS_PATH = "/v2/offers"
+MIN_REMAINDER_TO_CANCEL = 0.01
 logger = logging.getLogger(__name__)
 
 
@@ -94,18 +95,18 @@ class MatchbookLiveExecutor:
         data = response.json()
         offer = _first(data.get("offers")) or data
         venue_order_id = str(offer.get("id") or offer.get("offer-id") or "")
+        matched, remaining, avg_odds = _matchbook_offer_fill(offer, fallback_stake=intent.stake)
         result = LiveOrderResult(
             order_id=intent.order_id,
-            status=_normal_status(offer.get("status") or data.get("status") or "submitted"),
-            venue_order_id=venue_order_id or None,
-            matched_size=_float(offer.get("matched-amount") or offer.get("matched_amount")),
-            avg_matched_odds=_float(offer.get("average-odds") or offer.get("average_odds")),
-            remaining_size=_float(
-                offer.get("remaining-amount")
-                or offer.get("remaining_amount")
-                or offer.get("open-amount")
-                or intent.stake
+            status=_status_from_sizes(
+                offer.get("status") or data.get("status") or "submitted",
+                matched,
+                remaining,
             ),
+            venue_order_id=venue_order_id or None,
+            matched_size=matched,
+            avg_matched_odds=avg_odds,
+            remaining_size=remaining,
         )
         return self._cancel_unmatched_remainder(result)
 
@@ -117,14 +118,13 @@ class MatchbookLiveExecutor:
         response.raise_for_status()
         data = response.json()
         offer = _first(data.get("offers")) or data
-        matched = _float(offer.get("matched-amount") or offer.get("matched_amount"))
-        remaining = _float(offer.get("remaining-amount") or offer.get("remaining_amount") or offer.get("open-amount"))
+        matched, remaining, avg_odds = _matchbook_offer_fill(offer)
         return LiveOrderStatus(
             order_id=str(order["order_id"]),
             status=_status_from_sizes(offer.get("status"), matched, remaining),
             venue_order_id=venue_order_id,
             matched_size=matched,
-            avg_matched_odds=_float(offer.get("average-odds") or offer.get("average_odds")),
+            avg_matched_odds=avg_odds,
             remaining_size=remaining,
         )
 
@@ -748,21 +748,56 @@ def _normal_status(value: Any) -> str:
     return raw or "submitted"
 
 
+def _matchbook_offer_fill(offer: dict[str, Any], *, fallback_stake: float = 0.0) -> tuple[float, float, float]:
+    remaining_value = _first_present(
+        offer,
+        ("remaining", "remaining-amount", "remaining_amount", "open-amount", "open_amount"),
+    )
+    remaining = _float(remaining_value) if remaining_value is not None else fallback_stake
+    matched = _float(offer.get("matched-amount") or offer.get("matched_amount"))
+    matched_bets = offer.get("matched-bets") or offer.get("matched_bets") or []
+    matched_bet_stake = sum(_float(bet.get("stake")) for bet in matched_bets if isinstance(bet, dict))
+    if matched <= 0 and matched_bet_stake > 0:
+        matched = matched_bet_stake
+    stake = _float(offer.get("stake")) or fallback_stake
+    if matched <= 0 and stake > 0 and remaining_value is not None:
+        matched = max(0.0, stake - remaining)
+    avg_odds = _float(offer.get("average-odds") or offer.get("average_odds"))
+    if avg_odds <= 0 and matched_bet_stake > 0:
+        weighted_odds = sum(
+            _float(bet.get("stake")) * _float(bet.get("odds") or bet.get("decimal-odds"))
+            for bet in matched_bets
+            if isinstance(bet, dict)
+        )
+        avg_odds = weighted_odds / matched_bet_stake
+    if avg_odds <= 0:
+        avg_odds = _float(offer.get("decimal-odds") or offer.get("odds"))
+    return matched, remaining, avg_odds
+
+
+def _first_present(data: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if key in data and data[key] is not None:
+            return data[key]
+    return None
+
+
 def _status_from_sizes(value: Any, matched: float, remaining: float) -> str:
     status = _normal_status(value)
+    remaining = 0.0 if remaining <= MIN_REMAINDER_TO_CANCEL else remaining
     if status in {"cancelled", "canceled", "failed", "rejected", "unknown", "status_check_failed"}:
-        return status
-    if status == "matched":
         return status
     if matched > 0 and remaining > 0:
         return "partially_matched"
     if matched > 0 and remaining <= 0:
         return "matched"
+    if status == "matched":
+        return "submitted" if remaining > 0 else "cancelled"
     return "submitted"
 
 
 def _has_unmatched_remainder(result: LiveOrderResult) -> bool:
-    return (result.remaining_size or 0) > 0 and result.status not in {
+    return (result.remaining_size or 0) > MIN_REMAINDER_TO_CANCEL and result.status not in {
         "cancelled",
         "failed",
         "rejected",
