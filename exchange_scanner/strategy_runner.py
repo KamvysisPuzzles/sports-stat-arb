@@ -245,12 +245,20 @@ def config_from_event(event: dict[str, Any] | None) -> StrategyRunnerConfig:
             or "sports-stat-arb-live-orders"
         ),
         live_allowed_sport_prefixes=_csv_tuple(
-            event.get("live_allowed_sport_prefixes") or "soccer_"
+            event.get("live_allowed_sport_prefixes")
+            or env.get("LIVE_ALLOWED_SPORT_PREFIXES")
+            or "soccer_"
         ),
         live_allowed_bookmakers=_csv_tuple(
-            event.get("live_allowed_bookmakers") or "matchbook,betfair,smarkets"
+            event.get("live_allowed_bookmakers")
+            or env.get("LIVE_ALLOWED_BOOKMAKERS")
+            or "matchbook,betfair,smarkets"
         ),
-        live_allowed_bet_sides=_csv_tuple(event.get("live_allowed_bet_sides") or "back,lay"),
+        live_allowed_bet_sides=_csv_tuple(
+            event.get("live_allowed_bet_sides")
+            or env.get("LIVE_ALLOWED_BET_SIDES")
+            or "back,lay"
+        ),
         live_max_reference_disagreement_pct=float(
             event.get("live_max_reference_disagreement_pct")
             or env.get("LIVE_MAX_REFERENCE_DISAGREEMENT_PCT")
@@ -579,7 +587,7 @@ def run_combined_paper_log(
     soccer_config = _combined_branch_config(
         config,
         label="soccer",
-        sports_profile=ACTIVE_H2H_PROFILE,
+        sports_profile=config.sports_profile,
         strategy="exchange-clv",
         min_edge=0.005,
     )
