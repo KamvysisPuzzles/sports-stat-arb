@@ -19,6 +19,7 @@ from exchange_scanner.live_execution import LiveOrderIntent, LiveOrderResult, Li
 from exchange_scanner.matchbook_liquidity import MATCHBOOK_API_BASE
 from exchange_scanner.smarkets_liquidity import SMARKETS_API_BASE
 
+MATCHBOOK_LOGIN_URL = "https://api.matchbook.com/bpapi/rest/security/session"
 logger = logging.getLogger(__name__)
 
 
@@ -573,7 +574,7 @@ def matchbook_login(
     if mfa_code:
         payload["mfa-code"] = mfa_code
     response = httpx.post(
-        f"{MATCHBOOK_API_BASE}/security/session",
+        MATCHBOOK_LOGIN_URL,
         json=payload,
         headers={
             "Accept": "application/json",

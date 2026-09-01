@@ -323,7 +323,7 @@ def test_matchbook_login_returns_session_token(monkeypatch) -> None:
     )
 
     assert token == "session-1"
-    assert captured["url"].endswith("/security/session")
+    assert captured["url"] == "https://api.matchbook.com/bpapi/rest/security/session"
     assert captured["json"] == {
         "username": "user@example.com",
         "password": "secret",
