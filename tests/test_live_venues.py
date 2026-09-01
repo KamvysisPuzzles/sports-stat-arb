@@ -103,6 +103,41 @@ def test_matchbook_executor_posts_limit_offer() -> None:
     assert payload["offers"][0]["client-reference"] == "live#abc"
 
 
+def test_matchbook_executor_preserves_large_runner_ids() -> None:
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "DELETE":
+            return httpx.Response(200, json={"status": "cancelled"})
+        return httpx.Response(
+            200,
+            json={
+                "offers": [
+                    {
+                        "id": "offer-1",
+                        "status": "open",
+                        "matched-amount": 0,
+                        "remaining-amount": 1,
+                    }
+                ]
+            },
+        )
+
+    executor = MatchbookLiveExecutor(session_token="token")
+    executor.http = httpx.Client(
+        base_url="https://api.matchbook.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    executor.place_limit_order(
+        intent(venue_metadata={"runner_id": "34206486631200081"})
+    )
+
+    payload = json.loads(requests[0].read().decode())
+    assert payload["offers"][0]["runner-id"] == 34206486631200081
+
+
 def test_matchbook_executor_cancels_partial_unmatched_remainder() -> None:
     requests = []
 

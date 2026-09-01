@@ -660,10 +660,15 @@ def _money(value: float, *, places: int = 2) -> float:
 
 
 def _intish(value: Any) -> int | str:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else str(value)
+    text = str(value)
     try:
-        return int(float(value))
+        return int(text)
     except (TypeError, ValueError):
-        return str(value)
+        return text
 
 
 def _first(values: Any) -> dict[str, Any] | None:
