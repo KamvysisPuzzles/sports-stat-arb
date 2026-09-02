@@ -354,6 +354,67 @@ def test_smarkets_executor_parses_filled_order_response() -> None:
     assert payload["quantity"] == 25387
 
 
+def test_smarkets_executor_refreshes_filled_order_after_cancel_too_late() -> None:
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "DELETE":
+            return httpx.Response(
+                400,
+                json={"data": None, "error_type": "ORDER_CANCEL_REJECTED_TOO_LATE"},
+            )
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "order-1",
+                    "state": "filled",
+                    "price": 3788,
+                    "quantity": 26399,
+                    "quantity_filled": 26399,
+                    "quantity_unfilled": 0,
+                    "average_price_matched": 3788,
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "order": {
+                    "id": "order-1",
+                    "state": "open",
+                    "price": 3788,
+                    "quantity": 26399,
+                    "quantity_filled": 0,
+                    "quantity_unfilled": 26399,
+                }
+            },
+        )
+
+    executor = SmarketsLiveExecutor(session_token="token")
+    executor.http = httpx.Client(
+        base_url="https://api.smarkets.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = executor.place_limit_order(
+        intent(
+            signal=signal(target_bookmaker="Smarkets", bet_side="back", target_odds=2.64),
+            venue_metadata={"event_id": "event-x", "market_id": "market-x", "runner_id": "456"},
+            limit_odds=2.64,
+            stake=1,
+            liability=1,
+        )
+    )
+
+    assert result.status == "matched"
+    assert result.error is None
+    assert result.matched_size == pytest.approx(0.99999412)
+    assert result.remaining_size == 0
+    assert [request.method for request in requests] == ["POST", "DELETE", "GET"]
+    assert requests[2].url.path == "/orders/order-1/"
+
+
 def test_betfair_executor_places_limit_order_with_customer_ref() -> None:
     requests = []
 

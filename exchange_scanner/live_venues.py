@@ -208,7 +208,7 @@ class SmarketsLiveExecutor:
             avg_matched_odds=_smarkets_avg_odds(order),
             remaining_size=remaining,
         )
-        return self._cancel_unmatched_remainder(result)
+        return self._cancel_unmatched_remainder(result, bet_side=intent.signal.bet_side)
 
     def fetch_order_status(self, order: dict[str, Any]) -> LiveOrderStatus:
         venue_order_id = str(order.get("venue_order_id") or "")
@@ -231,18 +231,56 @@ class SmarketsLiveExecutor:
             remaining_size=remaining,
         )
 
-    def _cancel_unmatched_remainder(self, result: LiveOrderResult) -> LiveOrderResult:
+    def _cancel_unmatched_remainder(
+        self,
+        result: LiveOrderResult,
+        *,
+        bet_side: str,
+    ) -> LiveOrderResult:
         if not result.venue_order_id or not _has_unmatched_remainder(result):
             return result
         try:
             response = self.http.delete(f"/orders/{result.venue_order_id}/")
             response.raise_for_status()
         except Exception as exc:  # noqa: BLE001 - preserve order result with cancel failure.
+            refreshed = self._refreshed_order_after_cancel_failure(
+                result,
+                bet_side=bet_side,
+            )
+            if refreshed is not None and not _has_unmatched_remainder(refreshed):
+                return refreshed
             return _result_with_error(
                 result,
                 f"cancel_after_place_failed:{type(exc).__name__}: {exc}",
             )
         return _cancelled_remainder_result(result)
+
+    def _refreshed_order_after_cancel_failure(
+        self,
+        result: LiveOrderResult,
+        *,
+        bet_side: str,
+    ) -> LiveOrderResult | None:
+        try:
+            response = self.http.get(f"/orders/{result.venue_order_id}/")
+            response.raise_for_status()
+        except (httpx.HTTPError, ValueError, TypeError):
+            return None
+        data = response.json()
+        order = data.get("order") or data
+        matched, remaining = _smarkets_order_fill(
+            order,
+            bet_side=bet_side,
+            fallback_stake=result.remaining_size or 0,
+        )
+        return LiveOrderResult(
+            order_id=result.order_id,
+            status=_status_from_sizes(order.get("state"), matched, remaining),
+            venue_order_id=result.venue_order_id,
+            matched_size=matched,
+            avg_matched_odds=_smarkets_avg_odds(order),
+            remaining_size=remaining,
+        )
 
 
 class BetfairLiveExecutor:
