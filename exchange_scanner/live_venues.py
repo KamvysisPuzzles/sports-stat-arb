@@ -181,12 +181,13 @@ class SmarketsLiveExecutor:
     def place_limit_order(self, intent: LiveOrderIntent) -> LiveOrderResult:
         market_id = _required(intent.venue_metadata.get("market_id"), "smarkets_market_id")
         contract_id = _required(intent.venue_metadata.get("runner_id"), "smarkets_contract_id")
+        price = _smarkets_price(intent.limit_odds)
         payload = {
             "market_id": str(market_id),
             "contract_id": str(contract_id),
             "side": _smarkets_side(intent.signal.bet_side),
-            "price": _smarkets_price(intent.limit_odds),
-            "quantity": _smarkets_quantity(intent.stake),
+            "price": price,
+            "quantity": _smarkets_order_quantity(intent, price=price),
             "reference": intent.order_id,
         }
         response = self.http.post("/orders/", json=payload)
@@ -194,7 +195,11 @@ class SmarketsLiveExecutor:
         data = response.json()
         order = _first(data.get("orders")) or data.get("order") or data
         venue_order_id = str(order.get("id") or order.get("order_id") or "")
-        matched, remaining = _smarkets_order_fill(order, fallback_stake=intent.stake)
+        matched, remaining = _smarkets_order_fill(
+            order,
+            bet_side=intent.signal.bet_side,
+            fallback_stake=intent.stake,
+        )
         result = LiveOrderResult(
             order_id=intent.order_id,
             status=_status_from_sizes(order.get("state"), matched, remaining),
@@ -213,7 +218,10 @@ class SmarketsLiveExecutor:
         response.raise_for_status()
         data = response.json()
         payload = data.get("order") or data
-        matched, remaining = _smarkets_order_fill(payload)
+        matched, remaining = _smarkets_order_fill(
+            payload,
+            bet_side=str(order.get("bet_side") or "back"),
+        )
         return LiveOrderStatus(
             order_id=str(order["order_id"]),
             status=_status_from_sizes(payload.get("state"), matched, remaining),
@@ -846,7 +854,22 @@ def _smarkets_quantity_to_gbp(value: Any) -> float:
     return _float(value) / 10000
 
 
-def _smarkets_order_fill(order: dict[str, Any], *, fallback_stake: float = 0.0) -> tuple[float, float]:
+def _smarkets_order_quantity(intent: LiveOrderIntent, *, price: int) -> int:
+    if price <= 0 or price >= 10000:
+        return _smarkets_quantity(intent.stake)
+    if intent.signal.bet_side.casefold() == "lay":
+        payout_quantity = intent.liability / (1 - (price / 10000))
+    else:
+        payout_quantity = intent.stake / (price / 10000)
+    return _smarkets_quantity(payout_quantity)
+
+
+def _smarkets_order_fill(
+    order: dict[str, Any],
+    *,
+    bet_side: str,
+    fallback_stake: float = 0.0,
+) -> tuple[float, float]:
     matched_value = _first_present(
         order,
         (
@@ -863,14 +886,54 @@ def _smarkets_order_fill(order: dict[str, Any], *, fallback_stake: float = 0.0) 
             "remaining_quantity",
         ),
     )
-    matched = _smarkets_quantity_to_gbp(matched_value)
+    price = _float(
+        _first_present(
+            order,
+            (
+                "average_price_matched",
+                "average_price_matched_precise",
+                "price",
+            ),
+        )
+    )
+    matched_payout_quantity = _smarkets_quantity_to_gbp(matched_value)
+    matched = _smarkets_stake_from_payout_quantity(
+        matched_payout_quantity,
+        price=price,
+        bet_side=bet_side,
+        fallback_stake=fallback_stake,
+    )
     if remaining_value is not None:
-        remaining = _smarkets_quantity_to_gbp(remaining_value)
+        remaining_payout_quantity = _smarkets_quantity_to_gbp(remaining_value)
+        remaining = _smarkets_stake_from_payout_quantity(
+            remaining_payout_quantity,
+            price=_float(order.get("price")) or price,
+            bet_side=bet_side,
+            fallback_stake=0,
+        )
     elif matched > 0:
         remaining = max(0.0, fallback_stake - matched)
     else:
         remaining = fallback_stake
     return matched, remaining
+
+
+def _smarkets_stake_from_payout_quantity(
+    payout_quantity: float,
+    *,
+    price: float,
+    bet_side: str,
+    fallback_stake: float,
+) -> float:
+    if payout_quantity <= 0:
+        return 0
+    if price <= 0 or price >= 10000:
+        return fallback_stake if fallback_stake > 0 else payout_quantity
+    if bet_side.casefold() == "lay":
+        liability = payout_quantity * (1 - (price / 10000))
+        odds = 10000 / price
+        return liability / max(odds - 1, 1e-9)
+    return payout_quantity * (price / 10000)
 
 
 def _smarkets_avg_odds(order: dict[str, Any]) -> float | None:

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import httpx
+import pytest
 
 from exchange_scanner.live_execution import LiveOrderIntent
 from exchange_scanner.live_venues import (
@@ -302,7 +303,8 @@ def test_smarkets_executor_posts_limit_order() -> None:
     assert payload["market_id"] == "market-x"
     assert payload["contract_id"] == "456"
     assert payload["side"] == "buy"
-    assert payload["quantity"] == 10000
+    assert payload["price"] == 2381
+    assert payload["quantity"] == 41999
 
 
 def test_smarkets_executor_parses_filled_order_response() -> None:
@@ -317,8 +319,8 @@ def test_smarkets_executor_parses_filled_order_response() -> None:
                     "id": "order-1",
                     "state": "filled",
                     "price": 6061,
-                    "quantity": 15385,
-                    "quantity_filled": 15385,
+                    "quantity": 25387,
+                    "quantity_filled": 25387,
                     "quantity_unfilled": 0,
                     "average_price_matched": 6061,
                 }
@@ -335,6 +337,7 @@ def test_smarkets_executor_parses_filled_order_response() -> None:
         intent(
             signal=signal(target_bookmaker="Smarkets", bet_side="lay", target_odds=1.65),
             venue_metadata={"event_id": "event-x", "market_id": "market-x", "runner_id": "456"},
+            limit_odds=1.65,
             stake=1.5385,
             liability=1,
         )
@@ -342,10 +345,13 @@ def test_smarkets_executor_parses_filled_order_response() -> None:
 
     assert result.status == "matched"
     assert result.venue_order_id == "order-1"
-    assert result.matched_size == 1.5385
+    assert result.matched_size == pytest.approx(2.5387 * 0.6061)
     assert result.remaining_size == 0
     assert result.avg_matched_odds == 10000 / 6061
     assert [request.method for request in requests] == ["POST"]
+    payload = json.loads(requests[0].read().decode())
+    assert payload["price"] == 6061
+    assert payload["quantity"] == 25387
 
 
 def test_betfair_executor_places_limit_order_with_customer_ref() -> None:
