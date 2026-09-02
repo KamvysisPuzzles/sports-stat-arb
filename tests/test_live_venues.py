@@ -274,8 +274,8 @@ def test_smarkets_executor_posts_limit_order() -> None:
                 "order": {
                     "id": "order-1",
                     "state": "open",
-                    "matched_quantity": 0,
-                    "remaining_quantity": 10000,
+                    "quantity_filled": 0,
+                    "quantity_unfilled": 10000,
                 }
             },
         )
@@ -303,6 +303,49 @@ def test_smarkets_executor_posts_limit_order() -> None:
     assert payload["contract_id"] == "456"
     assert payload["side"] == "buy"
     assert payload["quantity"] == 10000
+
+
+def test_smarkets_executor_parses_filled_order_response() -> None:
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "order": {
+                    "id": "order-1",
+                    "state": "filled",
+                    "price": 6061,
+                    "quantity": 15385,
+                    "quantity_filled": 15385,
+                    "quantity_unfilled": 0,
+                    "average_price_matched": 6061,
+                }
+            },
+        )
+
+    executor = SmarketsLiveExecutor(session_token="token")
+    executor.http = httpx.Client(
+        base_url="https://api.smarkets.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = executor.place_limit_order(
+        intent(
+            signal=signal(target_bookmaker="Smarkets", bet_side="lay", target_odds=1.65),
+            venue_metadata={"event_id": "event-x", "market_id": "market-x", "runner_id": "456"},
+            stake=1.5385,
+            liability=1,
+        )
+    )
+
+    assert result.status == "matched"
+    assert result.venue_order_id == "order-1"
+    assert result.matched_size == 1.5385
+    assert result.remaining_size == 0
+    assert result.avg_matched_odds == 10000 / 6061
+    assert [request.method for request in requests] == ["POST"]
 
 
 def test_betfair_executor_places_limit_order_with_customer_ref() -> None:

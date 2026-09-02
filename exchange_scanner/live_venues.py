@@ -194,12 +194,7 @@ class SmarketsLiveExecutor:
         data = response.json()
         order = _first(data.get("orders")) or data.get("order") or data
         venue_order_id = str(order.get("id") or order.get("order_id") or "")
-        matched = _smarkets_quantity_to_gbp(order.get("matched_quantity"))
-        remaining = (
-            _smarkets_quantity_to_gbp(order["remaining_quantity"])
-            if "remaining_quantity" in order
-            else intent.stake
-        )
+        matched, remaining = _smarkets_order_fill(order, fallback_stake=intent.stake)
         result = LiveOrderResult(
             order_id=intent.order_id,
             status=_status_from_sizes(order.get("state"), matched, remaining),
@@ -218,8 +213,7 @@ class SmarketsLiveExecutor:
         response.raise_for_status()
         data = response.json()
         payload = data.get("order") or data
-        matched = _smarkets_quantity_to_gbp(payload.get("matched_quantity"))
-        remaining = _smarkets_quantity_to_gbp(payload.get("remaining_quantity"))
+        matched, remaining = _smarkets_order_fill(payload)
         return LiveOrderStatus(
             order_id=str(order["order_id"]),
             status=_status_from_sizes(payload.get("state"), matched, remaining),
@@ -852,8 +846,41 @@ def _smarkets_quantity_to_gbp(value: Any) -> float:
     return _float(value) / 10000
 
 
+def _smarkets_order_fill(order: dict[str, Any], *, fallback_stake: float = 0.0) -> tuple[float, float]:
+    matched_value = _first_present(
+        order,
+        (
+            "quantity_filled_user_currency",
+            "quantity_filled",
+            "matched_quantity",
+        ),
+    )
+    remaining_value = _first_present(
+        order,
+        (
+            "quantity_unfilled_user_currency",
+            "quantity_unfilled",
+            "remaining_quantity",
+        ),
+    )
+    matched = _smarkets_quantity_to_gbp(matched_value)
+    if remaining_value is not None:
+        remaining = _smarkets_quantity_to_gbp(remaining_value)
+    elif matched > 0:
+        remaining = max(0.0, fallback_stake - matched)
+    else:
+        remaining = fallback_stake
+    return matched, remaining
+
+
 def _smarkets_avg_odds(order: dict[str, Any]) -> float | None:
-    for key in ("average_price", "avg_price", "matched_price"):
+    for key in (
+        "average_price_matched",
+        "average_price_matched_precise",
+        "average_price",
+        "avg_price",
+        "matched_price",
+    ):
         value = _float(order.get(key))
         if value > 0:
             return 10000 / value
