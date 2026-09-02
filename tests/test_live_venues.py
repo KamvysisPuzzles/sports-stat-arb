@@ -160,6 +160,155 @@ def test_betfair_executor_fetches_account_snapshot() -> None:
     assert snapshot["exposure"] == -1.0
 
 
+def test_matchbook_executor_fetches_offer_level_settlement() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/reports/v2/bets/settled"
+        return httpx.Response(
+            200,
+            json={
+                "offset": 0,
+                "per-page": 100,
+                "total": 1,
+                "markets": [
+                    {
+                        "commission": 0.021239788,
+                        "selections": [
+                            {
+                                "bets": [
+                                    {
+                                        "offer-id": 34232966392200057,
+                                        "result": "WIN",
+                                        "profit-and-loss": 1.0619894,
+                                        "commission": 0,
+                                        "net-profit-and-loss": 1.0619894,
+                                        "settled-time": "2026-09-01T20:40:00.000Z",
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+            },
+        )
+
+    executor = MatchbookLiveExecutor(session_token="token")
+    executor.http = httpx.Client(
+        base_url="https://api.matchbook.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    settlement = executor.fetch_order_settlement(
+        {
+            "venue_order_id": "34232966392200057",
+            "commence_time": "2026-09-01T18:45:00+00:00",
+        }
+    )
+
+    assert settlement == {
+        "settlement_source": "matchbook_settled_bets",
+        "gross_profit": pytest.approx(1.0619894),
+        "commission": pytest.approx(0.021239788),
+        "net_profit": pytest.approx(1.040749612),
+        "venue_result": "WIN",
+        "venue_settled_at": "2026-09-01T20:40:00.000Z",
+    }
+
+
+def test_smarkets_executor_confirms_settlement_from_account_activity() -> None:
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/orders/order-1/":
+            return httpx.Response(
+                200,
+                json={
+                    "id": "order-1",
+                    "state": "settled",
+                    "outcome": "winner",
+                    "last_modified_datetime": "2026-09-02T20:00:00Z",
+                },
+            )
+        assert request.url.path == "/accounts/activity/"
+        return httpx.Response(
+            200,
+            json={
+                "account_activity": [
+                    {
+                        "order_id": "order-1",
+                        "source": "order.settle",
+                        "money_change": "1.58",
+                        "commission": "0.04",
+                        "timestamp": "2026-09-02T20:00:01Z",
+                    },
+                    {
+                        "order_id": "order-1",
+                        "source": "order.execute",
+                        "money_change": None,
+                    },
+                ]
+            },
+        )
+
+    executor = SmarketsLiveExecutor(session_token="token")
+    executor.http = httpx.Client(
+        base_url="https://api.smarkets.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    settlement = executor.fetch_order_settlement({"venue_order_id": "order-1"})
+
+    assert settlement == {
+        "settlement_source": "smarkets_account_activity",
+        "gross_profit": pytest.approx(1.62),
+        "commission": pytest.approx(0.04),
+        "net_profit": pytest.approx(1.58),
+        "venue_result": "WINNER",
+        "venue_settled_at": "2026-09-02T20:00:01Z",
+    }
+    assert requests[1].url.params["order_id"] == "order-1"
+    assert requests[1].url.params["sort"] == "-seq,-subseq"
+
+
+def test_betfair_executor_fetches_cleared_order_settlement() -> None:
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.read().decode()))
+        return httpx.Response(
+            200,
+            json={
+                "result": {
+                    "clearedOrders": [
+                        {
+                            "betId": "440833343461",
+                            "marketId": "1.261706472",
+                            "betOutcome": "LOST",
+                            "settledDate": "2026-09-01T20:39:02.000Z",
+                            "profit": -1.0,
+                        }
+                    ]
+                }
+            },
+        )
+
+    executor = BetfairLiveExecutor(app_key="app", session_token="token")
+    executor.http = httpx.Client(transport=httpx.MockTransport(handler))
+
+    settlement = executor.fetch_order_settlement({"venue_order_id": "440833343461"})
+
+    assert requests[0]["method"] == "SportsAPING/v1.0/listClearedOrders"
+    assert requests[0]["params"]["groupBy"] == "BET"
+    assert settlement == {
+        "settlement_source": "betfair_cleared_orders",
+        "gross_profit": -1.0,
+        "commission": 0.0,
+        "net_profit": -1.0,
+        "venue_result": "LOST",
+        "venue_settled_at": "2026-09-01T20:39:02.000Z",
+    }
+
+
 def test_matchbook_executor_posts_limit_offer() -> None:
     requests = []
 

@@ -187,6 +187,7 @@ def test_payload_separates_orders_positions_and_closed_trades() -> None:
     assert payload["summary"]["open_orders"] == 1
     assert payload["summary"]["open_order_risk"] == 0.6
     assert payload["summary"]["closed_trades"] == 1
+    assert payload["summary"]["confirmed_settlements"] == 1
     assert payload["summary"]["realized_pnl"] == 1.47
     assert payload["summary"]["failed_orders"] == 1
     assert payload["summary"]["available_funds"] == 197.13
@@ -195,8 +196,12 @@ def test_payload_separates_orders_positions_and_closed_trades() -> None:
 
 
 def test_payload_normalises_lay_matched_risk_and_risk_odds() -> None:
+    orders = live_orders()
+    lay = next(item for item in orders if item["order_id"] == "live#betfair-lay")
+    lay["closing_ev_per_risk"] = Decimal("-0.01")
+    lay["beat_closing_line"] = True
     payload = portfolio_payload(
-        FakeTable(live_orders()),
+        FakeTable(orders),
         now=datetime(2026, 9, 2, 18, tzinfo=timezone.utc),
     )
 
@@ -205,6 +210,8 @@ def test_payload_normalises_lay_matched_risk_and_risk_odds() -> None:
     assert betfair["matched_risk"] == 1.0
     assert betfair["risk_odds"] == 1.25
     assert betfair["risk_selection"] == "Not Manchester City"
+    assert betfair["clv"] == -0.01
+    assert betfair["beat_close"] is False
 
 
 def test_missing_accounts_are_exceptions_not_zero_balances() -> None:
@@ -239,6 +246,11 @@ def test_score_derived_settlement_is_not_counted_as_realized_pnl() -> None:
         item["title"] == "Settlement awaiting venue confirmation"
         for item in payload["exceptions"]
     )
+    closed = render_portfolio_html(payload, view="closed")
+    assert "Confirmed / estimated" in closed
+    assert "Estimated P&amp;L" in closed
+    assert "+£1.47" in closed
+    assert "Score-settled and exchange-confirmed" in closed
 
 
 def test_rendered_views_use_institutional_command_center_structure() -> None:

@@ -570,17 +570,19 @@ def update_live_closing_values(
                 "closing_reference_fair_odds = :closing_reference_fair_odds, "
                 "closing_edge = :closing_edge, "
                 "closing_ev_per_risk = :closing_ev_per_risk, "
-                "positive_closing_edge = :positive_closing_edge"
+                "positive_closing_edge = :positive_closing_edge, "
+                "closing_source = :closing_source"
             ),
             ExpressionAttributeValues={
                 ":checked_at": checked_at.isoformat(),
                 ":closing_target_odds": _decimal(closing_target_odds),
                 ":target_clv": _decimal(target_clv),
-                ":beat_closing_line": target_clv > 0,
+                ":beat_closing_line": closing_ev_per_risk > 0,
                 ":closing_reference_fair_odds": _decimal(closing_reference_fair_odds),
                 ":closing_edge": _decimal(closing_edge),
                 ":closing_ev_per_risk": _decimal(closing_ev_per_risk),
                 ":positive_closing_edge": closing_edge > 0,
+                ":closing_source": "live_strategy_scan",
             },
         )
         if response.get("ResponseMetadata", {}).get("HTTPStatusCode", 200) < 300:

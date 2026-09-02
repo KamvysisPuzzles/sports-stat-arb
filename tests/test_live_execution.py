@@ -940,6 +940,38 @@ def test_update_live_closing_values_records_risk_normalised_closing_ev() -> None
     assert item["beat_closing_line"] is True
 
 
+def test_update_live_closing_values_uses_risk_ev_for_beat_flag() -> None:
+    table = FakeLiveOrderTable()
+    table.items["live#lay"] = {
+        "order_id": "live#lay",
+        "event_id": "event-1",
+        "market": "h2h",
+        "outcome_name": "Arsenal",
+        "target_bookmaker": "Matchbook",
+        "bet_side": "lay",
+        "status": "matched",
+        "matched_size": Decimal("0.25"),
+        "avg_matched_odds": Decimal(5),
+    }
+
+    update_live_closing_values(
+        table,
+        [
+            signal(
+                bet_side="lay",
+                target_odds=5.2,
+                reference_fair_odds=1 / 0.21,
+                reference_probability=0.21,
+            )
+        ],
+    )
+
+    item = table.items["live#lay"]
+    assert item["target_clv"] > 0
+    assert item["closing_ev_per_risk"] < 0
+    assert item["beat_closing_line"] is False
+
+
 def test_settle_live_orders_marks_score_pnl_as_estimated() -> None:
     table = FakeLiveOrderTable()
     table.items["live#back"] = {

@@ -7,6 +7,8 @@ from exchange_scanner.live_venues import executors_from_env
 from exchange_scanner.portfolio_reconciliation import (
     account_refresh_dict,
     refresh_account_state,
+    refresh_order_settlements,
+    settlement_refresh_dict,
 )
 
 
@@ -18,7 +20,17 @@ def lambda_handler(event, context):
     table = _dynamodb_table(table_name, region=region)
     executors = executors_from_env()
     result = refresh_account_state(table, executors)
-    return _response(200, account_refresh_dict(result))
+    payload = account_refresh_dict(result)
+    live_order_table = os.getenv("LIVE_ORDER_TABLE", "")
+    if live_order_table:
+        settlements = refresh_order_settlements(
+            _dynamodb_table(live_order_table, region=region),
+            executors,
+        )
+        payload["settlements"] = settlement_refresh_dict(settlements)
+    else:
+        payload["settlements"] = {"status": "disabled", "reason": "missing_live_order_table"}
+    return _response(200, payload)
 
 
 def _dynamodb_table(name: str, *, region: str):

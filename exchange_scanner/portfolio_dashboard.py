@@ -127,7 +127,7 @@ def _overview_html(payload: dict[str, Any]) -> str:
             {_account_list(payload.get("accounts", []))}
           </section>
           <section class="panel">
-            <div class="panel-head"><h2>Performance</h2><span>Settled trades</span></div>
+            <div class="panel-head"><h2>Performance</h2><span>Confirmed and score-estimated</span></div>
             {_performance_snapshot(summary, payload.get("pnl_series", []))}
           </section>
         </div>
@@ -157,18 +157,18 @@ def _orders_html(rows: list[dict[str, Any]]) -> str:
 def _closed_html(rows: list[dict[str, Any]], summary: dict[str, Any]) -> str:
     return f"""<div class="compact-stats">
       {_compact_stat("Settled", len(rows))}
-      {_compact_stat("Won / lost", f"{summary['settled_won']} / {summary['settled_lost']}")}
-      {_compact_stat("Net P&L", _signed_money(summary['realized_pnl']), tone=_tone(summary['realized_pnl']))}
-      {_compact_stat("Risk ROI", _pct(summary['risk_roi']), tone=_tone(summary['risk_roi']))}
+      {_compact_stat("Confirmed / estimated", f"{summary['confirmed_settlements']} / {summary['estimated_settlements']}")}
+      {_compact_stat("Confirmed P&L", _signed_money(summary['realized_pnl']), tone=_tone(summary['realized_pnl']))}
+      {_compact_stat("Estimated P&L", _signed_money(summary['estimated_pnl']), tone=_tone(summary['estimated_pnl']))}
     </div>
-    <section class="panel"><div class="panel-head"><h2>Closed trades</h2><span>Exchange-confirmed settlements</span></div>{_closed_table(rows)}</section>"""
+    <section class="panel"><div class="panel-head"><h2>Closed trades</h2><span>Score-settled and exchange-confirmed</span></div>{_closed_table(rows)}</section>"""
 
 
 def _performance_html(payload: dict[str, Any]) -> str:
     summary = payload["summary"]
     return f"""{_kpi_strip(summary)}
     <div class="performance-grid">
-      <section class="panel"><div class="panel-head"><h2>Cumulative realized P&amp;L</h2><span>{summary['closed_trades']} settled trades</span></div>{_pnl_chart(payload.get('pnl_series', []), large=True)}</section>
+      <section class="panel"><div class="panel-head"><h2>Cumulative realized P&amp;L</h2><span>{summary['confirmed_settlements']} confirmed settlements</span></div>{_pnl_chart(payload.get('pnl_series', []), large=True)}</section>
       <section class="panel"><div class="panel-head"><h2>CLV quality</h2><span>Actual matched price vs close</span></div>{_clv_quality(summary)}</section>
     </div>
     <section class="panel lower-panel"><div class="panel-head"><h2>Performance by venue</h2><span>Net of recorded commission</span></div>{_venue_table(payload.get('venue_summary', []))}</section>"""
@@ -197,7 +197,8 @@ def _kpi_strip(summary: dict[str, Any]) -> str:
     return f"""<section class="kpi-strip">
       {_kpi("Available funds", available, available_note)}
       {_kpi("Open position risk", _money(summary['open_position_risk']), f"{summary['open_positions']} matched positions")}
-      {_kpi("Realized P&L", _signed_money(summary['realized_pnl']), f"{summary['closed_trades']} settled trades", _tone(summary['realized_pnl']))}
+      {_kpi("Realized P&L", _signed_money(summary['realized_pnl']), f"{summary['confirmed_settlements']} venue-confirmed", _tone(summary['realized_pnl']))}
+      {_kpi("Estimated P&L", _signed_money(summary['estimated_pnl']), f"{summary['estimated_settlements']} score-settled", _tone(summary['estimated_pnl']))}
       {_kpi("Closed CLV", clv_value, f"{_pct(summary['clv_beat_rate'])} beat close" if summary['clv_trades'] else "Awaiting closing prices", _tone(summary['average_clv']) if summary['clv_trades'] else "")}
       {_kpi("Execution quality", _pct(summary['fill_rate']), f"fill rate · {_money(summary['open_order_risk'])} open orders")}
     </section>"""
@@ -295,15 +296,16 @@ def _venue_table(rows: list[dict[str, Any]]) -> str:
         f"<tr><td>{_venue(item.get('venue'))}</td><td class='num'>{item['orders']}</td>"
         f"<td class='num'>{item['positions']}</td><td class='num'>{_money(item['matched_risk'])}</td>"
         f"<td class='num'>{item['closed_trades']}</td><td class='num {_tone(item['realized_pnl'])}'>{_signed_money(item['realized_pnl'])}</td>"
+        f"<td class='num {_tone(item['estimated_pnl'])}'>{_signed_money(item['estimated_pnl'])}</td>"
         f"<td class='num {_tone(item['average_clv'])}'>{_pct_or_pending(item['average_clv'] if item['clv_trades'] else None)}</td>"
         f"<td class='num'>{_pct(item['fill_rate'])}</td></tr>"
         for item in rows
     )
-    return f"<div class='table-wrap'><table><thead><tr><th>Venue</th><th class='num'>Orders</th><th class='num'>Positions</th><th class='num'>Matched risk</th><th class='num'>Settled</th><th class='num'>Net P&amp;L</th><th class='num'>Avg CLV</th><th class='num'>Fill rate</th></tr></thead><tbody>{body}</tbody></table></div>"
+    return f"<div class='table-wrap'><table><thead><tr><th>Venue</th><th class='num'>Orders</th><th class='num'>Positions</th><th class='num'>Matched risk</th><th class='num'>Settled</th><th class='num'>Realized P&amp;L</th><th class='num'>Estimated P&amp;L</th><th class='num'>Avg CLV</th><th class='num'>Fill rate</th></tr></thead><tbody>{body}</tbody></table></div>"
 
 
 def _performance_snapshot(summary: dict[str, Any], series: list[dict[str, Any]]) -> str:
-    return f"""<div class="performance-meta"><span>Realized P&amp;L<strong class="{_tone(summary['realized_pnl'])}">{_signed_money(summary['realized_pnl'])}</strong></span><span>Risk ROI<strong class="{_tone(summary['risk_roi'])}">{_pct(summary['risk_roi'])}</strong></span></div>{_pnl_chart(series)}"""
+    return f"""<div class="performance-meta"><span>Realized P&amp;L<strong class="{_tone(summary['realized_pnl'])}">{_signed_money(summary['realized_pnl'])}</strong></span><span>Estimated P&amp;L<strong class="{_tone(summary['estimated_pnl'])}">{_signed_money(summary['estimated_pnl'])}</strong></span></div>{_pnl_chart(series)}"""
 
 
 def _pnl_chart(series: list[dict[str, Any]], *, large: bool = False) -> str:
@@ -372,6 +374,7 @@ def _portfolio_summary(
         "open_orders": len(open_orders),
         "open_order_risk": sum(_float(item.get("remaining_risk")) for item in open_orders),
         "closed_trades": len(closed_trades),
+        "confirmed_settlements": len(confirmed),
         "settled_won": sum(1 for item in closed_trades if _float(item.get("net_profit")) > 0),
         "settled_lost": sum(1 for item in closed_trades if _float(item.get("net_profit")) < 0),
         "realized_pnl": pnl,
@@ -403,6 +406,7 @@ def _venue_summary(
         positions = [item for item in venue_orders if _is_open_position(item)]
         closed = [item for item in venue_orders if _is_closed_trade(item)]
         confirmed_closed = [item for item in closed if item.get("pnl_status") != "estimated"]
+        estimated_closed = [item for item in closed if item.get("pnl_status") == "estimated"]
         placed = [item for item in venue_orders if item.get("venue_order_id")]
         filled = [item for item in placed if _float(item.get("matched_size")) > 0]
         clv_values = [_float(item["clv"]) for item in closed if item.get("clv") is not None]
@@ -416,6 +420,9 @@ def _venue_summary(
                 "closed_trades": len(closed),
                 "realized_pnl": sum(
                     _float(item.get("net_profit")) for item in confirmed_closed
+                ),
+                "estimated_pnl": sum(
+                    _float(item.get("net_profit")) for item in estimated_closed
                 ),
                 "clv_trades": len(clv_values),
                 "average_clv": sum(clv_values) / len(clv_values) if clv_values else 0.0,
@@ -603,7 +610,7 @@ def _normalise_order(item: dict[str, Any]) -> dict[str, Any]:
         "risk_odds": _risk_odds(odds, bet_side=bet_side, commission_rate=commission_rate),
         "edge": _optional_float(row.get("edge")),
         "clv": clv,
-        "beat_close": bool(row.get("beat_closing_line")) if clv is not None else None,
+        "beat_close": clv > 0 if clv is not None else None,
         "gross_profit": gross_profit,
         "commission": commission,
         "net_profit": profit,

@@ -7,7 +7,7 @@ import os
 import re
 import textwrap
 from dataclasses import dataclass, replace
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
@@ -156,6 +156,46 @@ class MatchbookLiveExecutor:
             exposure=exposure,
         )
 
+    def fetch_order_settlement(self, order: dict[str, Any]) -> dict[str, Any] | None:
+        venue_order_id = str(order.get("venue_order_id") or "")
+        if not venue_order_id:
+            return None
+        params: dict[str, Any] = {"offset": 0, "per-page": 100}
+        commence = _parse_datetime(order.get("commence_time"))
+        if commence is not None:
+            params["after"] = _matchbook_datetime(commence - timedelta(days=1))
+            params["before"] = _matchbook_datetime(datetime.now(timezone.utc) + timedelta(days=1))
+        matched_bets: list[dict[str, Any]] = []
+        while params["offset"] < 1000:
+            response = self.http.get("/reports/v2/bets/settled", params=params)
+            response.raise_for_status()
+            payload = response.json()
+            matched_bets.extend(
+                _matchbook_offer_settlements(payload, offer_id=venue_order_id)
+            )
+            total = int(_float(payload.get("total")))
+            params["offset"] += int(_float(payload.get("per-page"))) or 100
+            if params["offset"] >= total:
+                break
+        if not matched_bets:
+            return None
+        gross_profit = sum(_float(item.get("profit-and-loss")) for item in matched_bets)
+        commission = sum(_float(item.get("commission")) for item in matched_bets)
+        net_profit = sum(_float(item.get("net-profit-and-loss")) for item in matched_bets)
+        settled_at = max(
+            (str(item.get("settled-time") or "") for item in matched_bets),
+            default="",
+        )
+        results = sorted({str(item.get("result") or "").upper() for item in matched_bets})
+        return _settlement_payload(
+            source="matchbook_settled_bets",
+            gross_profit=gross_profit,
+            commission=commission,
+            net_profit=net_profit,
+            venue_result=",".join(result for result in results if result),
+            settled_at=settled_at,
+        )
+
     def _cancel_unmatched_remainder(self, result: LiveOrderResult) -> LiveOrderResult:
         if not result.venue_order_id or not _has_unmatched_remainder(result):
             return result
@@ -216,6 +256,51 @@ class SmarketsLiveExecutor:
                 "available",
             ),
             exposure=_first_number(account, "exposure"),
+        )
+
+    def fetch_order_settlement(self, order: dict[str, Any]) -> dict[str, Any] | None:
+        venue_order_id = str(order.get("venue_order_id") or "")
+        if not venue_order_id:
+            return None
+        response = self.http.get(f"/orders/{venue_order_id}/")
+        response.raise_for_status()
+        payload = response.json()
+        venue_order = payload.get("order") or payload
+        if str(venue_order.get("state") or "").casefold() != "settled":
+            return None
+        response = self.http.get(
+            "/accounts/activity/",
+            params={"order_id": venue_order_id, "limit": 500, "sort": "-seq,-subseq"},
+        )
+        response.raise_for_status()
+        activity = [
+            item
+            for item in response.json().get("account_activity", [])
+            if str(item.get("order_id") or "") == venue_order_id
+        ]
+        settlement_rows = [item for item in activity if item.get("source") == "order.settle"]
+        if not settlement_rows:
+            settlement_rows = [
+                item
+                for item in activity
+                if str(item.get("source") or "").endswith(".settle")
+                and item.get("money_change") is not None
+            ]
+        if not settlement_rows:
+            return None
+        net_profit = sum(_float(item.get("money_change")) for item in settlement_rows)
+        commission = sum(abs(_float(item.get("commission"))) for item in settlement_rows)
+        settled_at = max(
+            (str(item.get("timestamp") or "") for item in settlement_rows),
+            default=str(venue_order.get("last_modified_datetime") or ""),
+        )
+        return _settlement_payload(
+            source="smarkets_account_activity",
+            gross_profit=net_profit + commission,
+            commission=commission,
+            net_profit=net_profit,
+            venue_result=str(venue_order.get("outcome") or "").upper(),
+            settled_at=settled_at,
         )
 
     def place_limit_order(self, intent: LiveOrderIntent) -> LiveOrderResult:
@@ -417,6 +502,52 @@ class BetfairLiveExecutor:
             available_funds=available,
             exposure=exposure,
             retained_commission=retained_commission,
+        )
+
+    def fetch_order_settlement(self, order: dict[str, Any]) -> dict[str, Any] | None:
+        venue_order_id = str(order.get("venue_order_id") or "")
+        if not venue_order_id:
+            return None
+        payload = self._rpc(
+            "SportsAPING/v1.0/listClearedOrders",
+            {
+                "betStatus": "SETTLED",
+                "betIds": [venue_order_id],
+                "groupBy": "BET",
+                "includeItemDescription": True,
+            },
+        )
+        cleared = next(
+            (
+                item
+                for item in payload.get("clearedOrders", [])
+                if str(item.get("betId") or "") == venue_order_id
+            ),
+            None,
+        )
+        if cleared is None:
+            return None
+        gross_profit = _float(cleared.get("profit"))
+        commission = _float(cleared.get("commission"))
+        market_id = str(cleared.get("marketId") or "")
+        if gross_profit > 0 and commission <= 0 and market_id:
+            market_payload = self._rpc(
+                "SportsAPING/v1.0/listClearedOrders",
+                {
+                    "betStatus": "SETTLED",
+                    "marketIds": [market_id],
+                    "groupBy": "MARKET",
+                },
+            )
+            market = _first(market_payload.get("clearedOrders")) or {}
+            commission = _float(market.get("commission"))
+        return _settlement_payload(
+            source="betfair_cleared_orders",
+            gross_profit=gross_profit,
+            commission=commission,
+            net_profit=gross_profit - commission,
+            venue_result=str(cleared.get("betOutcome") or "").upper(),
+            settled_at=str(cleared.get("settledDate") or ""),
         )
 
     def fetch_market_catalogue(
@@ -929,6 +1060,95 @@ def _first_present(data: dict[str, Any], keys: tuple[str, ...]) -> Any:
         if key in data and data[key] is not None:
             return data[key]
     return None
+
+
+def _matchbook_offer_settlements(
+    payload: dict[str, Any], *, offer_id: str
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for market in payload.get("markets", []):
+        market_bets = [
+            bet
+            for selection in market.get("selections", [])
+            for bet in selection.get("bets", [])
+            if isinstance(bet, dict)
+        ]
+        matched_bets = [
+            bet for bet in market_bets if str(bet.get("offer-id") or "") == offer_id
+        ]
+        if not matched_bets:
+            continue
+        gross_profit = sum(_float(bet.get("profit-and-loss")) for bet in matched_bets)
+        commission = sum(_float(bet.get("commission")) for bet in matched_bets)
+        market_commission = _float(market.get("commission"))
+        if market_commission > 0:
+            profit_by_offer: dict[str, float] = {}
+            for bet in market_bets:
+                bet_offer_id = str(bet.get("offer-id") or "")
+                profit_by_offer[bet_offer_id] = profit_by_offer.get(
+                    bet_offer_id, 0.0
+                ) + _float(bet.get("profit-and-loss"))
+            positive_profit = sum(max(0.0, value) for value in profit_by_offer.values())
+            if positive_profit > 0:
+                commission = market_commission * max(0.0, gross_profit) / positive_profit
+        results = sorted(
+            {str(bet.get("result") or "").upper() for bet in matched_bets}
+        )
+        settled_at = max(
+            (str(bet.get("settled-time") or "") for bet in matched_bets),
+            default=str(market.get("settled-time") or ""),
+        )
+        result.append(
+            {
+                "profit-and-loss": gross_profit,
+                "commission": commission,
+                "net-profit-and-loss": gross_profit - commission,
+                "result": ",".join(value for value in results if value),
+                "settled-time": settled_at,
+            }
+        )
+    return result
+
+
+def _settlement_payload(
+    *,
+    source: str,
+    gross_profit: float,
+    commission: float,
+    net_profit: float,
+    venue_result: str,
+    settled_at: str,
+) -> dict[str, Any]:
+    return {
+        "settlement_source": source,
+        "gross_profit": gross_profit,
+        "commission": commission,
+        "net_profit": net_profit,
+        "venue_result": venue_result,
+        "venue_settled_at": settled_at,
+    }
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _matchbook_datetime(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00", "Z"
+    )
 
 
 def _status_from_sizes(value: Any, matched: float, remaining: float) -> str:

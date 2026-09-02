@@ -366,14 +366,19 @@ lambda_functions/portfolio_reconciler/lambda_function.py
 
 It reuses `EXCHANGE_CREDENTIALS_SECRET_ID`, obtains the available balance and
 exposure from Betfair, Matchbook, and Smarkets, and writes one current snapshot
-per venue. Its role needs `dynamodb:GetItem` and `dynamodb:PutItem` on the
-account-state table, plus the existing Secrets Manager permissions used by live
-execution. A failed venue refresh preserves the last successful values and marks
-the snapshot as unavailable; it never replaces unavailable data with zero.
+per venue. Set `LIVE_ORDER_TABLE=sports-stat-arb-live-orders` on this Lambda to
+also replace score-estimated settlements with final venue results. Its role needs
+`dynamodb:GetItem` and `dynamodb:PutItem` on the account-state table,
+`dynamodb:Scan` and `dynamodb:UpdateItem` on the live-order table, plus the
+existing Secrets Manager permissions used by live execution. A failed venue
+refresh preserves the last successful values and marks the snapshot as
+unavailable; it never replaces unavailable data with zero.
 
 Score-derived live settlements are stored as estimated PnL. The portfolio
 console excludes them from realized PnL until a venue settlement reconciler
-marks the PnL as confirmed.
+marks the PnL as confirmed. Console CLV is closing expected value per unit of
+matched risk, using closing reference fair odds; positive values count as beating
+the close.
 
 ## Live Execution
 
