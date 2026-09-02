@@ -268,6 +268,8 @@ def test_rendered_views_use_institutional_command_center_structure() -> None:
     assert "Available funds" in overview
     assert "Open positions" in overview
     assert "Venue funds" in overview
+    assert "£1.00 reserved" in overview
+    assert "£-1.00 exposure" not in overview
     assert "Not Manchester City" in overview
     assert "Closed trades" in closed
     assert "+£1.47" in closed

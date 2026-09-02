@@ -72,8 +72,8 @@ def test_matchbook_executor_fetches_account_snapshot() -> None:
             json={
                 "currency": "GBP",
                 "balance": 50,
-                "available-balance": 46.5,
-                "exposure": -3.5,
+                "free-funds": 46.5,
+                "exposure": 3.5,
             },
         )
 
@@ -90,7 +90,7 @@ def test_matchbook_executor_fetches_account_snapshot() -> None:
         "currency": "GBP",
         "balance": 50.0,
         "available_funds": 46.5,
-        "exposure": -3.5,
+        "exposure": 3.5,
         "retained_commission": 0.0,
     }
 

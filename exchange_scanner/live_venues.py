@@ -140,6 +140,8 @@ class MatchbookLiveExecutor:
         balance = _first_number(payload, "balance", "account-balance", "account_balance")
         available = _first_number(
             payload,
+            "free-funds",
+            "free_funds",
             "available-balance",
             "available_balance",
             "available",

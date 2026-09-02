@@ -271,7 +271,7 @@ def _account_list(rows: list[dict[str, Any]]) -> str:
     return "".join(
         f"<div class='account-row'><span>{_venue(item.get('venue'))}</span>"
         f"<span class='account-values'><strong>{_money(item.get('balance'))} / {_money(item.get('available_funds'))}</strong>"
-        f"<small>{_money(item.get('exposure'))} exposure · {_escape(item.get('freshness'))}</small></span></div>"
+        f"<small>{_money(item.get('reserved_funds'))} reserved · {_escape(item.get('freshness'))}</small></span></div>"
         for item in rows
     )
 
@@ -281,12 +281,12 @@ def _account_table(rows: list[dict[str, Any]]) -> str:
         return _empty("No venue account snapshots are available.")
     body = "".join(
         f"<tr><td>{_venue(item.get('venue'))}</td><td class='num'>{_money(item.get('balance'))}</td>"
-        f"<td class='num'>{_money(item.get('available_funds'))}</td><td class='num'>{_money(item.get('exposure'))}</td>"
+        f"<td class='num'>{_money(item.get('available_funds'))}</td><td class='num'>{_money(item.get('reserved_funds'))}</td>"
         f"<td class='{_status_tone(item.get('status'))}'>{_escape(item.get('status'))}</td>"
         f"<td>{_short_datetime(item.get('checked_at'))}</td><td class='error'>{_escape(item.get('error'))}</td></tr>"
         for item in rows
     )
-    return f"<div class='table-wrap'><table><thead><tr><th>Venue</th><th class='num'>Balance</th><th class='num'>Available</th><th class='num'>Exposure</th><th>Status</th><th>Checked</th><th>Error</th></tr></thead><tbody>{body}</tbody></table></div>"
+    return f"<div class='table-wrap'><table><thead><tr><th>Venue</th><th class='num'>Balance</th><th class='num'>Available</th><th class='num'>Reserved</th><th>Status</th><th>Checked</th><th>Error</th></tr></thead><tbody>{body}</tbody></table></div>"
 
 
 def _venue_table(rows: list[dict[str, Any]]) -> str:
@@ -542,6 +542,7 @@ def _account_rows(table: Any | None, *, now: datetime) -> list[dict[str, Any]]:
         checked_at = _parse_datetime(item.get("checked_at") or item.get("updated_at"))
         stale = checked_at is None or now - checked_at > ACCOUNT_STALE_AFTER
         venue = _canonical_venue(item.get("venue") or item.get("bookmaker"))
+        exposure = _optional_float(item.get("exposure")) or 0.0
         rows.append(
             {
                 "venue": venue,
@@ -552,7 +553,8 @@ def _account_rows(table: Any | None, *, now: datetime) -> list[dict[str, Any]]:
                     if item.get("available_funds") is not None
                     else item.get("available_balance")
                 ),
-                "exposure": _optional_float(item.get("exposure")) or 0.0,
+                "exposure": exposure,
+                "reserved_funds": abs(exposure),
                 "status": str(item.get("status") or ("ok" if checked_at else "missing")).casefold(),
                 "checked_at": checked_at.isoformat() if checked_at else "",
                 "freshness": _freshness(checked_at, now=now),
