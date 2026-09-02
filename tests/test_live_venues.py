@@ -64,6 +64,102 @@ def intent(**overrides) -> LiveOrderIntent:
     return LiveOrderIntent(**values)
 
 
+def test_matchbook_executor_fetches_account_snapshot() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/account/balance"
+        return httpx.Response(
+            200,
+            json={
+                "currency": "GBP",
+                "balance": 50,
+                "available-balance": 46.5,
+                "exposure": -3.5,
+            },
+        )
+
+    executor = MatchbookLiveExecutor(session_token="token")
+    executor.http = httpx.Client(
+        base_url="https://api.matchbook.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    snapshot = executor.fetch_account_snapshot()
+
+    assert snapshot == {
+        "venue": "Matchbook",
+        "currency": "GBP",
+        "balance": 50.0,
+        "available_funds": 46.5,
+        "exposure": -3.5,
+        "retained_commission": 0.0,
+    }
+
+
+def test_smarkets_executor_fetches_account_snapshot() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/accounts/"
+        return httpx.Response(
+            200,
+            json={
+                "accounts": [
+                    {
+                        "currency": "GBP",
+                        "balance": "100.00",
+                        "available_balance": "91.77",
+                        "exposure": "-8.22",
+                    }
+                ]
+            },
+        )
+
+    executor = SmarketsLiveExecutor(session_token="token")
+    executor.http = httpx.Client(
+        base_url="https://api.smarkets.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    snapshot = executor.fetch_account_snapshot()
+
+    assert snapshot["venue"] == "Smarkets"
+    assert snapshot["balance"] == 100.0
+    assert snapshot["available_funds"] == 91.77
+    assert snapshot["exposure"] == -8.22
+
+
+def test_betfair_executor_fetches_account_snapshot() -> None:
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "result": {
+                    "availableToBetBalance": 49,
+                    "exposure": -1,
+                    "retainedCommission": 0,
+                },
+                "id": 1,
+            },
+        )
+
+    executor = BetfairLiveExecutor(app_key="app", session_token="token")
+    executor.http = httpx.Client(transport=httpx.MockTransport(handler))
+
+    snapshot = executor.fetch_account_snapshot()
+
+    assert requests[0].url == httpx.URL(
+        "https://api.betfair.com/exchange/account/json-rpc/v1"
+    )
+    payload = json.loads(requests[0].read().decode())
+    assert payload["method"] == "AccountAPING/v1.0/getAccountFunds"
+    assert snapshot["venue"] == "Betfair"
+    assert snapshot["balance"] == 50.0
+    assert snapshot["available_funds"] == 49.0
+    assert snapshot["exposure"] == -1.0
+
+
 def test_matchbook_executor_posts_limit_offer() -> None:
     requests = []
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from decimal import Decimal
 
+import pytest
+
 from exchange_scanner.live_execution import (
     LiveExecutionConfig,
     LiveOrderResult,
@@ -10,7 +12,9 @@ from exchange_scanner.live_execution import (
     execute_live_signals,
     live_filter_reject_reason,
     reconcile_live_orders,
+    settle_live_orders,
     size_live_order,
+    update_live_closing_values,
 )
 from exchange_scanner.the_odds_api import ValueSignal
 
@@ -898,3 +902,69 @@ def test_reconcile_live_orders_updates_partial_fill_status() -> None:
     assert item["status"] == "partially_matched"
     assert item["matched_size"] == Decimal("0.4")
     assert item["remaining_size"] == Decimal("0.6")
+
+
+def test_update_live_closing_values_records_risk_normalised_closing_ev() -> None:
+    table = FakeLiveOrderTable()
+    table.items["live#lay"] = {
+        "order_id": "live#lay",
+        "event_id": "event-1",
+        "market": "h2h",
+        "outcome_name": "Arsenal",
+        "target_bookmaker": "Matchbook",
+        "bet_side": "lay",
+        "status": "matched",
+        "matched_size": Decimal("0.25"),
+        "avg_matched_odds": Decimal(5),
+    }
+
+    result = update_live_closing_values(
+        table,
+        [
+            signal(
+                bet_side="lay",
+                target_odds=5.2,
+                reference_fair_odds=1 / 0.19,
+                reference_probability=0.19,
+            )
+        ],
+        checked_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+    )
+
+    assert result.open_orders == 1
+    assert result.updated == 1
+    item = table.items["live#lay"]
+    assert float(item["target_clv"]) == pytest.approx(0.04)
+    assert item["closing_ev_per_risk"] == item["closing_edge"]
+    assert item["closing_ev_per_risk"] > 0
+    assert item["beat_closing_line"] is True
+
+
+def test_settle_live_orders_marks_score_pnl_as_estimated() -> None:
+    table = FakeLiveOrderTable()
+    table.items["live#back"] = {
+        "order_id": "live#back",
+        "event_id": "event-1",
+        "outcome_name": "Arsenal",
+        "target_bookmaker": "Matchbook",
+        "bet_side": "back",
+        "status": "matched",
+        "matched_size": Decimal(1),
+        "avg_matched_odds": Decimal("2.5"),
+    }
+
+    result = settle_live_orders(
+        table,
+        {"event-1": "Arsenal"},
+        settled_at=datetime(2026, 8, 14, 18, tzinfo=timezone.utc),
+    )
+
+    assert result.settled == 1
+    item = table.items["live#back"]
+    assert item["status"] == "settled"
+    assert item["gross_profit"] == Decimal("1.5")
+    assert item["commission"] == Decimal("0.03")
+    assert item["net_profit"] == Decimal("1.47")
+    assert item["settlement_source"] == "score_feed"
+    assert item["pnl_status"] == "estimated"
+    assert item["settled_at"] == "2026-08-14T18:00:00+00:00"

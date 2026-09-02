@@ -51,6 +51,8 @@ from exchange_scanner.live_execution import (
     execute_live_signals,
     monitor_result_dict,
     reconcile_live_orders,
+    settle_live_orders,
+    update_live_closing_values,
 )
 from exchange_scanner.live_execution import (
     result_dict as live_execution_result_dict,
@@ -476,15 +478,24 @@ def run_paper_log(
         closing_signals,
         checked_at=now,
     )
-    settlement = (
-        _settle_finished_trades(
+    live_table = live_order_table
+    live_closing_update = DynamoClosingUpdateResult(open_trades=0, matched=0, updated=0)
+    live_settlement = DynamoSettlementResult(open_trades=0, matched_results=0, settled=0)
+    if config.live_execution_enabled:
+        live_table = live_table or _dynamodb_named_table(config.live_order_table_name, config.aws_region)
+        live_closing_update = update_live_closing_values(
+            live_table,
+            closing_signals,
+            checked_at=now,
+        )
+    settlement = DynamoSettlementResult(open_trades=0, matched_results=0, settled=0)
+    if config.settle_finished_trades:
+        settlement, live_settlement = _settle_finished_positions(
             config,
             odds_client=odds_client,
-            table=table,
+            paper_table=table,
+            live_table=live_table if config.live_execution_enabled else None,
         )
-        if config.settle_finished_trades
-        else DynamoSettlementResult(open_trades=0, matched_results=0, settled=0)
-    )
     trading_control = trading_control_state(table)
     if trading_control["paused"]:
         result = {
@@ -494,6 +505,8 @@ def run_paper_log(
             "snapshot": snapshot,
             "closing_update": _closing_result_dict(closing_update),
             "settlement": _settlement_result_dict(settlement),
+            "live_closing_update": _live_closing_result_dict(live_closing_update),
+            "live_settlement": _live_settlement_result_dict(live_settlement),
             "smarkets_keepalive": smarkets_keepalive,
             "trading_control": trading_control,
             "candidate_signals": 0,
@@ -547,7 +560,7 @@ def run_paper_log(
         executable_signals,
         logged_at=now,
         liquidity_by_key=live_liquidity_by_key,
-        live_order_table=live_order_table,
+        live_order_table=live_table,
         live_executors=live_executors,
     )
     result = {
@@ -557,6 +570,8 @@ def run_paper_log(
         "snapshot": snapshot,
         "closing_update": _closing_result_dict(closing_update),
         "settlement": _settlement_result_dict(settlement),
+        "live_closing_update": _live_closing_result_dict(live_closing_update),
+        "live_settlement": _live_settlement_result_dict(live_settlement),
         "smarkets_keepalive": smarkets_keepalive,
         "trading_control": trading_control,
         "candidate_signals": len(signals),
@@ -634,7 +649,18 @@ def run_combined_paper_log(
         if config.enable_matchbook_discovery
         else _empty_branch_result()
     )
-    settlement = _settle_finished_trades(config, odds_client=odds_client, table=table)
+    combined_live_table = live_order_table
+    if config.live_execution_enabled:
+        combined_live_table = combined_live_table or _dynamodb_named_table(
+            config.live_order_table_name,
+            config.aws_region,
+        )
+    settlement, live_settlement = _settle_finished_positions(
+        config,
+        odds_client=odds_client,
+        paper_table=table,
+        live_table=combined_live_table if config.live_execution_enabled else None,
+    )
     portfolio_summary = build_portfolio_summary(table, generated_at=now)
     result = {
         "mode": config.mode,
@@ -673,6 +699,7 @@ def run_combined_paper_log(
             discovery_result["live_execution"],
         ),
         "settlement": _settlement_result_dict(settlement),
+        "live_settlement": _live_settlement_result_dict(live_settlement),
         "portfolio_summary": portfolio_summary,
     }
     result["summary"] = _write_latest_combined_summary(
@@ -1183,16 +1210,89 @@ def _settle_finished_trades(
 ) -> DynamoSettlementResult:
     open_trades = list_open_trades(table)
     sports = sorted({str(item["sport_key"]) for item in open_trades})
+    winners = _finished_event_winners(config, odds_client=odds_client, sports=sports)
+    return _settle_paper_trades(table, open_trades=open_trades, winners=winners)
+
+
+def _settle_finished_positions(
+    config: StrategyRunnerConfig,
+    *,
+    odds_client: Any,
+    paper_table: Any,
+    live_table: Any | None,
+) -> tuple[DynamoSettlementResult, DynamoSettlementResult]:
+    open_trades = list_open_trades(paper_table)
+    live_orders = _finished_live_orders(live_table) if live_table is not None else []
+    sports = sorted(
+        {str(item["sport_key"]) for item in open_trades}
+        | {str(item["sport_key"]) for item in live_orders}
+    )
+    winners = _finished_event_winners(config, odds_client=odds_client, sports=sports)
+    paper_result = _settle_paper_trades(
+        paper_table,
+        open_trades=open_trades,
+        winners=winners,
+    )
+    live_result = (
+        _settle_live_positions(live_table, live_orders=live_orders, winners=winners)
+        if live_table is not None
+        else DynamoSettlementResult(open_trades=0, matched_results=0, settled=0)
+    )
+    return paper_result, live_result
+
+
+def _finished_event_winners(
+    config: StrategyRunnerConfig,
+    *,
+    odds_client: Any,
+    sports: list[str],
+) -> dict[str, str]:
     if not sports:
-        return DynamoSettlementResult(open_trades=0, matched_results=0, settled=0)
+        return {}
     scores_payloads = [
         odds_client.fetch_scores(sport=sport, days_from=config.scores_days_from)
         for sport in sports
     ]
-    winners = h2h_winners_from_scores(scores_payloads)
+    return h2h_winners_from_scores(scores_payloads)
+
+
+def _settle_paper_trades(
+    table: Any,
+    *,
+    open_trades: list[dict[str, Any]],
+    winners: dict[str, str],
+) -> DynamoSettlementResult:
+    if not open_trades:
+        return DynamoSettlementResult(open_trades=0, matched_results=0, settled=0)
     result = settle_results_in_dynamodb(table, winners)
     return DynamoSettlementResult(
         open_trades=len(open_trades),
+        matched_results=result.matched_results,
+        settled=result.settled,
+    )
+
+
+def _finished_live_orders(table: Any) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in list_all_trades(table)
+        if str(item.get("status") or "").casefold()
+        in {"matched", "partially_matched", "partially_matched_cancelled"}
+        and _float(item.get("matched_size")) > 0
+    ]
+
+
+def _settle_live_positions(
+    table: Any,
+    *,
+    live_orders: list[dict[str, Any]],
+    winners: dict[str, str],
+) -> DynamoSettlementResult:
+    if not live_orders:
+        return DynamoSettlementResult(open_trades=0, matched_results=0, settled=0)
+    result = settle_live_orders(table, winners)
+    return DynamoSettlementResult(
+        open_trades=result.open_orders,
         matched_results=result.matched_results,
         settled=result.settled,
     )
@@ -1723,6 +1823,22 @@ def _closing_result_dict(result: DynamoClosingUpdateResult) -> dict[str, int]:
 def _settlement_result_dict(result: DynamoSettlementResult) -> dict[str, int]:
     return {
         "open_trades": result.open_trades,
+        "matched_results": result.matched_results,
+        "settled": result.settled,
+    }
+
+
+def _live_closing_result_dict(result: Any) -> dict[str, int]:
+    return {
+        "open_orders": getattr(result, "open_orders", getattr(result, "open_trades", 0)),
+        "matched": result.matched,
+        "updated": result.updated,
+    }
+
+
+def _live_settlement_result_dict(result: Any) -> dict[str, int]:
+    return {
+        "open_orders": getattr(result, "open_orders", getattr(result, "open_trades", 0)),
         "matched_results": result.matched_results,
         "settled": result.settled,
     }

@@ -26,6 +26,7 @@ from exchange_scanner.smarkets_liquidity import SMARKETS_API_BASE
 
 MATCHBOOK_LOGIN_URL = "https://api.matchbook.com/bpapi/rest/security/session"
 MATCHBOOK_OFFERS_PATH = "/v2/offers"
+BETFAIR_ACCOUNT_API_URL = "https://api.betfair.com/exchange/account/json-rpc/v1"
 MIN_REMAINDER_TO_CANCEL = 0.01
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,29 @@ class MatchbookLiveExecutor:
             remaining_size=remaining,
         )
 
+    def fetch_account_snapshot(self) -> dict[str, Any]:
+        response = self.http.get("/account/balance")
+        response.raise_for_status()
+        payload = response.json()
+        balance = _first_number(payload, "balance", "account-balance", "account_balance")
+        available = _first_number(
+            payload,
+            "available-balance",
+            "available_balance",
+            "available",
+            "balance",
+        )
+        exposure = _first_number(payload, "exposure", "current-exposure", "current_exposure")
+        if exposure is None and balance is not None and available is not None:
+            exposure = available - balance
+        return _account_snapshot(
+            venue="Matchbook",
+            payload=payload,
+            balance=balance,
+            available_funds=available,
+            exposure=exposure,
+        )
+
     def _cancel_unmatched_remainder(self, result: LiveOrderResult) -> LiveOrderResult:
         if not result.venue_order_id or not _has_unmatched_remainder(result):
             return result
@@ -177,6 +201,22 @@ class SmarketsLiveExecutor:
         response = self.http.get("/accounts/")
         response.raise_for_status()
         return response.json()
+
+    def fetch_account_snapshot(self) -> dict[str, Any]:
+        payload = self.keep_alive()
+        account = _first(payload.get("accounts")) or payload.get("account") or payload
+        return _account_snapshot(
+            venue="Smarkets",
+            payload=account,
+            balance=_first_number(account, "balance"),
+            available_funds=_first_number(
+                account,
+                "available_balance",
+                "available-balance",
+                "available",
+            ),
+            exposure=_first_number(account, "exposure"),
+        )
 
     def place_limit_order(self, intent: LiveOrderIntent) -> LiveOrderResult:
         market_id = _required(intent.venue_metadata.get("market_id"), "smarkets_market_id")
@@ -358,6 +398,27 @@ class BetfairLiveExecutor:
             remaining_size=size_remaining,
         )
 
+    def fetch_account_snapshot(self) -> dict[str, Any]:
+        payload = self._rpc_at(
+            BETFAIR_ACCOUNT_API_URL,
+            "AccountAPING/v1.0/getAccountFunds",
+            {},
+        )
+        available = _first_number(payload, "availableToBetBalance")
+        exposure = _first_number(payload, "exposure")
+        retained_commission = _first_number(payload, "retainedCommission") or 0.0
+        balance = None
+        if available is not None:
+            balance = available - (exposure or 0.0) + retained_commission
+        return _account_snapshot(
+            venue="Betfair",
+            payload=payload,
+            balance=balance,
+            available_funds=available,
+            exposure=exposure,
+            retained_commission=retained_commission,
+        )
+
     def fetch_market_catalogue(
         self,
         *,
@@ -412,8 +473,11 @@ class BetfairLiveExecutor:
         }
 
     def _rpc(self, method: str, params: dict[str, Any]) -> Any:
+        return self._rpc_at(BETFAIR_BETTING_API_URL, method, params)
+
+    def _rpc_at(self, url: str, method: str, params: dict[str, Any]) -> Any:
         response = self.http.post(
-            BETFAIR_BETTING_API_URL,
+            url,
             json={"jsonrpc": "2.0", "method": method, "params": params, "id": 1},
         )
         response.raise_for_status()
@@ -780,6 +844,44 @@ def _float(value: Any) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _first_number(payload: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        value = payload.get(key)
+        if value in {None, ""}:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _account_snapshot(
+    *,
+    venue: str,
+    payload: dict[str, Any],
+    balance: float | None,
+    available_funds: float | None,
+    exposure: float | None,
+    retained_commission: float = 0.0,
+) -> dict[str, Any]:
+    if available_funds is None:
+        raise RuntimeError(f"{venue} account response is missing available funds")
+    return {
+        "venue": venue,
+        "currency": str(
+            payload.get("currency")
+            or payload.get("currency_code")
+            or payload.get("currency-code")
+            or "GBP"
+        ).upper(),
+        "balance": balance if balance is not None else available_funds,
+        "available_funds": available_funds,
+        "exposure": exposure or 0.0,
+        "retained_commission": retained_commission,
+    }
 
 
 def _normal_status(value: Any) -> str:

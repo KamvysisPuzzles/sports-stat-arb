@@ -9,7 +9,12 @@ from typing import Any, Protocol
 import httpx
 
 from exchange_scanner.dynamodb_paper import _filter_stacked_positive_exposure_signals, signal_key
-from exchange_scanner.the_odds_api import ValueSignal
+from exchange_scanner.the_odds_api import (
+    MATCHBOOK_COMMISSION_RATE,
+    ValueSignal,
+    effective_decimal_odds,
+    lay_edge_per_liability,
+)
 from exchange_scanner.trading_control import is_control_item
 
 
@@ -466,6 +471,20 @@ class LiveOrderMonitorResult:
     skipped: dict[str, int]
 
 
+@dataclass(frozen=True)
+class LiveClosingUpdateResult:
+    open_orders: int
+    matched: int
+    updated: int
+
+
+@dataclass(frozen=True)
+class LiveSettlementResult:
+    open_orders: int
+    matched_results: int
+    settled: int
+
+
 def reconcile_live_orders(
     table: Any,
     *,
@@ -500,6 +519,139 @@ def reconcile_live_orders(
         if update_live_order_status(table, order_status, checked_at=checked_at):
             updated += 1
     return LiveOrderMonitorResult(monitored=monitored, updated=updated, skipped=skipped)
+
+
+def update_live_closing_values(
+    table: Any,
+    signals: list[ValueSignal],
+    *,
+    checked_at: datetime | None = None,
+) -> LiveClosingUpdateResult:
+    checked_at = checked_at or datetime.now(timezone.utc)
+    by_key = {signal_key(signal): signal for signal in signals}
+    open_orders = _live_position_orders(table)
+    matched = 0
+    updated = 0
+    for item in open_orders:
+        signal = by_key.get(_live_item_key(item))
+        if signal is None:
+            continue
+        matched += 1
+        booked_odds = _float(item.get("avg_matched_odds")) or _float(
+            item.get("target_odds") or item.get("limit_odds")
+        )
+        if booked_odds <= 1:
+            continue
+        closing_target_odds = signal.target_odds
+        closing_reference_fair_odds = signal.reference_fair_odds
+        commission_rate = _commission_rate_for_bookmaker(str(item.get("target_bookmaker") or ""))
+        bet_side = str(item.get("bet_side") or "back").casefold()
+        if bet_side == "lay":
+            closing_edge = lay_edge_per_liability(
+                lay_odds=booked_odds,
+                fair_probability=signal.reference_probability,
+                commission_rate=commission_rate,
+            )
+            target_clv = (closing_target_odds / booked_odds) - 1
+        else:
+            closing_edge = (
+                effective_decimal_odds(booked_odds, commission_rate)
+                / closing_reference_fair_odds
+            ) - 1
+            target_clv = (booked_odds / closing_target_odds) - 1
+        closing_ev_per_risk = closing_edge
+        response = table.update_item(
+            Key={"order_id": item["order_id"]},
+            UpdateExpression=(
+                "SET closing_checked_at = :checked_at, "
+                "closing_target_odds = :closing_target_odds, "
+                "target_clv = :target_clv, "
+                "beat_closing_line = :beat_closing_line, "
+                "closing_reference_fair_odds = :closing_reference_fair_odds, "
+                "closing_edge = :closing_edge, "
+                "closing_ev_per_risk = :closing_ev_per_risk, "
+                "positive_closing_edge = :positive_closing_edge"
+            ),
+            ExpressionAttributeValues={
+                ":checked_at": checked_at.isoformat(),
+                ":closing_target_odds": _decimal(closing_target_odds),
+                ":target_clv": _decimal(target_clv),
+                ":beat_closing_line": target_clv > 0,
+                ":closing_reference_fair_odds": _decimal(closing_reference_fair_odds),
+                ":closing_edge": _decimal(closing_edge),
+                ":closing_ev_per_risk": _decimal(closing_ev_per_risk),
+                ":positive_closing_edge": closing_edge > 0,
+            },
+        )
+        if response.get("ResponseMetadata", {}).get("HTTPStatusCode", 200) < 300:
+            updated += 1
+    return LiveClosingUpdateResult(
+        open_orders=len(open_orders),
+        matched=matched,
+        updated=updated,
+    )
+
+
+def settle_live_orders(
+    table: Any,
+    winners: dict[str, str],
+    *,
+    settled_at: datetime | None = None,
+) -> LiveSettlementResult:
+    settled_at = settled_at or datetime.now(timezone.utc)
+    open_orders = _live_position_orders(table)
+    matched_results = 0
+    settled = 0
+    for item in open_orders:
+        winner = winners.get(str(item.get("event_id") or ""))
+        if winner is None:
+            continue
+        matched_results += 1
+        bet_side = str(item.get("bet_side") or "back").casefold()
+        selection_won = winner.casefold() == str(item.get("outcome_name") or "").casefold()
+        won = not selection_won if bet_side == "lay" else selection_won
+        odds = _float(item.get("avg_matched_odds")) or _float(
+            item.get("target_odds") or item.get("limit_odds")
+        )
+        stake = _float(item.get("matched_size"))
+        commission_rate = _commission_rate_for_bookmaker(str(item.get("target_bookmaker") or ""))
+        if bet_side == "lay":
+            gross_profit = stake if won else -(stake * max(0.0, odds - 1))
+        else:
+            gross_profit = stake * max(0.0, odds - 1) if won else -stake
+        commission = gross_profit * commission_rate if gross_profit > 0 else 0.0
+        net_profit = gross_profit - commission
+        response = table.update_item(
+            Key={"order_id": item["order_id"]},
+            UpdateExpression=(
+                "SET #status = :settled, #result = :result, "
+                "gross_profit = :gross_profit, commission = :commission, "
+                "net_profit = :net_profit, profit = :net_profit, "
+                "settled_at = :settled_at, settlement_source = :settlement_source, "
+                "pnl_status = :pnl_status"
+            ),
+            ExpressionAttributeNames={
+                "#status": "status",
+                "#result": "result",
+            },
+            ExpressionAttributeValues={
+                ":settled": "settled",
+                ":result": winner,
+                ":gross_profit": _decimal(gross_profit),
+                ":commission": _decimal(commission),
+                ":net_profit": _decimal(net_profit),
+                ":settled_at": settled_at.isoformat(),
+                ":settlement_source": "score_feed",
+                ":pnl_status": "estimated",
+            },
+        )
+        if response.get("ResponseMetadata", {}).get("HTTPStatusCode", 200) < 300:
+            settled += 1
+    return LiveSettlementResult(
+        open_orders=len(open_orders),
+        matched_results=matched_results,
+        settled=settled,
+    )
 
 
 def update_live_order_status(
@@ -647,6 +799,32 @@ def _live_order_result_blocks_retry(result: LiveOrderResult, *, dry_run: bool) -
     if (result.matched_size or 0) > 0:
         return True
     return dry_run or status in {"submitted", "open", "partially_matched"}
+
+
+def _live_position_orders(table: Any) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in list_live_orders(table)
+        if str(item.get("status") or "").casefold()
+        in {"matched", "partially_matched", "partially_matched_cancelled"}
+        and _float(item.get("matched_size")) > 0
+    ]
+
+
+def _live_item_key(item: dict[str, Any]) -> tuple[str, str, str, str, str]:
+    return (
+        str(item.get("event_id") or "").casefold(),
+        str(item.get("market") or item.get("market_key") or "h2h").casefold(),
+        str(item.get("outcome_name") or "").casefold(),
+        str(item.get("target_bookmaker") or "").casefold(),
+        str(item.get("bet_side") or "back").casefold(),
+    )
+
+
+def _commission_rate_for_bookmaker(bookmaker: str) -> float:
+    if bookmaker.casefold() in {"matchbook", "smarkets", "betfair", "betfair_ex_uk", "betfair_ex_eu"}:
+        return MATCHBOOK_COMMISSION_RATE
+    return 0.0
 
 
 def _paper_trade_id(signal: ValueSignal) -> str:

@@ -263,6 +263,27 @@ class FakeLiveOrderTable:
     def scan(self, **kwargs):
         return {"Items": list(self.items.values())}
 
+    def update_item(self, *, Key, UpdateExpression, ExpressionAttributeValues, **kwargs):
+        item = self.items[Key["order_id"]]
+        if "closing_checked_at" in UpdateExpression:
+            item["closing_checked_at"] = ExpressionAttributeValues[":checked_at"]
+            item["closing_target_odds"] = ExpressionAttributeValues[":closing_target_odds"]
+            item["target_clv"] = ExpressionAttributeValues[":target_clv"]
+            item["closing_reference_fair_odds"] = ExpressionAttributeValues[
+                ":closing_reference_fair_odds"
+            ]
+            item["closing_edge"] = ExpressionAttributeValues[":closing_edge"]
+            item["closing_ev_per_risk"] = ExpressionAttributeValues[":closing_ev_per_risk"]
+        else:
+            item["status"] = ExpressionAttributeValues[":settled"]
+            item["result"] = ExpressionAttributeValues[":result"]
+            item["gross_profit"] = ExpressionAttributeValues[":gross_profit"]
+            item["commission"] = ExpressionAttributeValues[":commission"]
+            item["net_profit"] = ExpressionAttributeValues[":net_profit"]
+            item["profit"] = ExpressionAttributeValues[":net_profit"]
+            item["pnl_status"] = ExpressionAttributeValues[":pnl_status"]
+        return {"ResponseMetadata": {"HTTPStatusCode": 200}}
+
 
 def test_run_paper_log_archives_snapshot_and_logs_liquidity_confirmed_trade(monkeypatch) -> None:
     monkeypatch.setitem(strategy_runner.SPORT_PROFILES, "test-profile", ["soccer_epl"])
@@ -804,6 +825,58 @@ def test_run_paper_log_updates_and_settles_existing_open_trade(monkeypatch) -> N
     item = next(iter(table.items.values()))
     assert item["status"] == "settled"
     assert item["result"] == "Arsenal"
+
+
+def test_run_paper_log_reuses_score_request_for_paper_and_live_settlement(monkeypatch) -> None:
+    monkeypatch.setitem(strategy_runner.SPORT_PROFILES, "test-profile", ["soccer_epl"])
+    paper_table = FakeTable()
+    live_table = FakeLiveOrderTable()
+    config = StrategyRunnerConfig(
+        mode="paper-log",
+        odds_api_key="test-key",
+        dynamodb_table_name="paper-trades",
+        odds_s3_bucket="odds-bucket",
+        sports_profile="test-profile",
+        max_api_requests=1,
+        min_reference_books=2,
+        use_betfair_lambda=False,
+        live_execution_enabled=True,
+        live_execution_dry_run=True,
+        live_bankroll=1000,
+        live_kelly_fraction=0.25,
+        live_max_order_risk_pct=0.01,
+        live_max_order_risk=20,
+    )
+    run_paper_log(
+        config,
+        odds_client=FakeOddsClient(),
+        matchbook_client=FakeMatchbookClient(),
+        dynamodb_table=paper_table,
+        live_order_table=live_table,
+        s3_client=FakeS3Client(),
+        now=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+    )
+    live_order = next(iter(live_table.items.values()))
+    live_order["status"] = "matched"
+    live_order["matched_size"] = 1
+    live_order["avg_matched_odds"] = live_order["limit_odds"]
+
+    odds_client = FakeOddsClient()
+    result = run_paper_log(
+        config,
+        odds_client=odds_client,
+        matchbook_client=FakeMatchbookClient(),
+        dynamodb_table=paper_table,
+        live_order_table=live_table,
+        s3_client=FakeS3Client(),
+        now=datetime(2026, 8, 14, 12, 2, tzinfo=timezone.utc),
+    )
+
+    assert odds_client.score_calls == [("soccer_epl", 3)]
+    assert result["settlement"]["settled"] == 1
+    assert result["live_settlement"]["settled"] == 1
+    assert live_order["status"] == "settled"
+    assert live_order["pnl_status"] == "estimated"
 
 
 def test_run_paper_log_does_not_log_exchange_clv_longshots(monkeypatch) -> None:

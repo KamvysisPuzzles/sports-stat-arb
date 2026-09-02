@@ -320,6 +320,61 @@ IAM:
   dynamodb:Scan on the live order table
 ```
 
+## Live Portfolio Console
+
+The institutional live portfolio console is separate from the paper/live debug
+dashboard. It treats venue orders, matched positions, and settled trades as
+different records of state so failed and zero-fill orders never contribute
+portfolio risk.
+
+The console Lambda handler is:
+
+```text
+lambda_functions/portfolio_dashboard/lambda_function.py
+```
+
+Required configuration:
+
+```text
+Handler: lambda_function.lambda_handler
+Runtime: python3.11
+Environment:
+  PORTFOLIO_DASHBOARD_TOKEN=<unguessable shared token>
+  LIVE_ORDER_TABLE=sports-stat-arb-live-orders
+  LIVE_ACCOUNT_STATE_TABLE=sports-stat-arb-live-account-state
+IAM:
+  dynamodb:Scan on both tables
+```
+
+The account-state table has a string partition key named `venue`. A minimal
+on-demand table can be created with:
+
+```bash
+aws dynamodb create-table \
+  --region eu-west-2 \
+  --table-name sports-stat-arb-live-account-state \
+  --attribute-definitions AttributeName=venue,AttributeType=S \
+  --key-schema AttributeName=venue,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST
+```
+
+The separate account reconciler is intended to run every one or two minutes:
+
+```text
+lambda_functions/portfolio_reconciler/lambda_function.py
+```
+
+It reuses `EXCHANGE_CREDENTIALS_SECRET_ID`, obtains the available balance and
+exposure from Betfair, Matchbook, and Smarkets, and writes one current snapshot
+per venue. Its role needs `dynamodb:GetItem` and `dynamodb:PutItem` on the
+account-state table, plus the existing Secrets Manager permissions used by live
+execution. A failed venue refresh preserves the last successful values and marks
+the snapshot as unavailable; it never replaces unavailable data with zero.
+
+Score-derived live settlements are stored as estimated PnL. The portfolio
+console excludes them from realized PnL until a venue settlement reconciler
+marks the PnL as confirmed.
+
 ## Live Execution
 
 The strategy runner can keep broad paper logging enabled while sending a narrower
