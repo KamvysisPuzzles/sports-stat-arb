@@ -89,6 +89,9 @@ class ValueSignal:
     reference_disagreement_pct: float | None = None
     reference_max_spread_pct: float | None = None
     reference_avg_spread_pct: float | None = None
+    strategy_name: str = "exchange-clv"
+    strategy_version: str = "exchange_midpoint_reference_v2"
+    strategy_diagnostics: tuple[tuple[str, float | str], ...] = ()
 
     @property
     def effective_odds(self) -> float:
@@ -137,6 +140,9 @@ class ValueSignal:
                 if self.reference_avg_spread_pct is not None
                 else ""
             ),
+            "strategy_name": self.strategy_name,
+            "strategy_version": self.strategy_version,
+            "strategy_diagnostics": _json_diagnostic(self.strategy_diagnostics),
             "target_bookmaker_url": bookmaker_url(self.target_bookmaker),
             "event_search_url": bookmaker_event_search_url(self.target_bookmaker, self.event_name),
             "copy_search": f"{self.event_name} {self.outcome_name}",

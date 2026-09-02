@@ -277,7 +277,9 @@ def paper_item(
         "reference_fair_odds": _decimal(signal.reference_fair_odds),
         "reference_probability": _decimal(signal.reference_probability),
         "edge": _decimal(signal.edge),
-        "strategy_reference_version": STRATEGY_REFERENCE_VERSION,
+        "strategy_name": signal.strategy_name,
+        "strategy_reference_version": signal.strategy_version,
+        "strategy_diagnostics": _json_diagnostic(signal.strategy_diagnostics),
         "reference_bookmakers": list(signal.reference_bookmakers),
         "reference_bookmakers_text": ", ".join(signal.reference_bookmakers),
         "betfair_fair_odds": _decimal(signal.betfair_fair_odds)
@@ -334,6 +336,8 @@ def trade_id(signal: ValueSignal) -> str:
         )
     if signal.target_bookmaker.casefold() in {"betfair", "betfair_ex_uk", "betfair_ex_eu"}:
         key = f"{key}|{signal.target_bookmaker.casefold()}"
+    if signal.strategy_name != "exchange-clv":
+        key = f"{key}|{signal.strategy_name.casefold()}"
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:24]
     return f"paper#{digest}"
 

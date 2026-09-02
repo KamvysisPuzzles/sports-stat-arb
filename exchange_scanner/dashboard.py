@@ -465,6 +465,7 @@ def _paper_trades_table_html(rows: list[dict[str, Any]]) -> str:
           <tr>
             <th>Logged</th>
             <th>Status</th>
+            <th>Model</th>
             <th>Book</th>
             <th>Event</th>
             <th>Bet</th>
@@ -490,11 +491,12 @@ def _paper_trades_table_html(rows: list[dict[str, Any]]) -> str:
 
 def _trade_rows_html(rows: list[dict[str, Any]]) -> str:
     if not rows:
-        return '<tr><td colspan="18">No trades match the current filters.</td></tr>'
+        return '<tr><td colspan="19">No trades match the current filters.</td></tr>'
     return "\n".join(
         "<tr>"
         f"<td>{_short_time(row.get('logged_at'))}</td>"
         f"<td>{_escape(row.get('status', ''))}</td>"
+        f"<td>{_escape(row.get('strategy_name', 'exchange-clv'))}</td>"
         f"<td>{_escape(row.get('target_bookmaker', ''))}</td>"
         f"<td>{_escape(row.get('event_name', ''))}</td>"
         f"<td>{_escape(row.get('risk_selection', ''))}</td>"

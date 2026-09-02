@@ -132,6 +132,23 @@ def test_paper_item_logs_reference_diagnostics() -> None:
     assert item["reference_avg_spread_pct"] == Decimal("0.02")
 
 
+def test_paper_item_logs_strategy_identity_and_uses_it_for_deduplication() -> None:
+    logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
+    static_signal = signal()
+    lead_lag_signal = signal(
+        strategy_name="tennis-lead-lag-v1",
+        strategy_version="tennis_lead_lag_v1",
+        strategy_diagnostics=(("pinnacle_move_probability", 0.02),),
+    )
+
+    item = paper_item(lead_lag_signal, stake=1, logged_at=logged_at)
+
+    assert item["strategy_name"] == "tennis-lead-lag-v1"
+    assert item["strategy_reference_version"] == "tennis_lead_lag_v1"
+    assert item["strategy_diagnostics"] == '{"pinnacle_move_probability":0.02}'
+    assert trade_id(lead_lag_signal) != trade_id(static_signal)
+
+
 def test_log_signals_to_dynamodb_returns_inserted_trade_ids_and_signal_keys() -> None:
     table = FakeTable()
     logged_at = datetime(2026, 8, 14, 12, tzinfo=timezone.utc)
