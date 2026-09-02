@@ -4,6 +4,8 @@ import json
 from datetime import datetime, timezone
 from decimal import Decimal
 
+import pytest
+
 from exchange_scanner.portfolio_dashboard import (
     portfolio_payload,
     render_portfolio_html,
@@ -46,6 +48,9 @@ def live_orders():
             "avg_matched_odds": Decimal("5.0"),
             "remaining_size": Decimal(0),
             "target_clv": Decimal("0.02"),
+            "mark_to_market_clv": Decimal("0.00945945945945946"),
+            "closing_target_odds": Decimal("5.2"),
+            "closing_checked_at": "2026-09-02T17:59:00+00:00",
         },
         {
             **common,
@@ -184,6 +189,8 @@ def test_payload_separates_orders_positions_and_closed_trades() -> None:
     assert payload["summary"]["orders"] == 5
     assert payload["summary"]["open_positions"] == 2
     assert payload["summary"]["open_position_risk"] == 1.4
+    assert payload["summary"]["open_position_mtm_clv"] == pytest.approx(0.00945945945945946)
+    assert payload["summary"]["open_position_mtm_clv_positions"] == 1
     assert payload["summary"]["open_orders"] == 1
     assert payload["summary"]["open_order_risk"] == 0.6
     assert payload["summary"]["closed_trades"] == 1
@@ -212,6 +219,9 @@ def test_payload_normalises_lay_matched_risk_and_risk_odds() -> None:
     assert betfair["risk_selection"] == "Not Manchester City"
     assert betfair["clv"] == -0.01
     assert betfair["beat_close"] is False
+    assert betfair["mark_to_market_clv"] == pytest.approx(0.00945945945945946)
+    assert betfair["mark_to_market_odds"] == 5.2
+    assert betfair["current_fair_edge"] == -0.01
 
 
 def test_missing_accounts_are_exceptions_not_zero_balances() -> None:
@@ -271,6 +281,10 @@ def test_rendered_views_use_institutional_command_center_structure() -> None:
     assert "£1.00 reserved" in overview
     assert "£-1.00 exposure" not in overview
     assert "Not Manchester City" in overview
+    assert "MTM CLV" in overview
+    assert "Current fair edge" in overview
+    assert "0.95%" in overview
+    assert "Current market odds 5.20; priced 02 Sep 17:59 UTC" in overview
     assert "Closed trades" in closed
     assert "+£1.47" in closed
     assert "Reconciliation exceptions" in reconciliation

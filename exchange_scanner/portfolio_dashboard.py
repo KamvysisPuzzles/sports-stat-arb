@@ -140,11 +140,12 @@ def _overview_html(payload: dict[str, Any]) -> str:
 
 def _positions_html(rows: list[dict[str, Any]]) -> str:
     risk = sum(_float(item.get("matched_risk")) for item in rows)
+    mtm_rows = [item for item in rows if item.get("mark_to_market_clv") is not None]
     return f"""<div class="compact-stats">
       {_compact_stat("Positions", len(rows))}
       {_compact_stat("Matched risk", _money(risk))}
-      {_compact_stat("CLV measured", sum(1 for item in rows if item.get('clv') is not None))}
-      {_compact_stat("Starting today", sum(1 for item in rows if _starts_today(item)))}
+      {_compact_stat("Avg MTM CLV", _pct(_risk_weighted_mtm_clv(mtm_rows)) if mtm_rows else "Pending", tone=_tone(_risk_weighted_mtm_clv(mtm_rows)) if mtm_rows else "")}
+      {_compact_stat("MTM measured", f"{len(mtm_rows)} / {len(rows)}")}
     </div>
     <section class="panel"><div class="panel-head"><h2>Matched, unsettled exposure</h2><span>Failed and unmatched orders excluded</span></div>{_positions_table(rows)}</section>"""
 
@@ -216,11 +217,23 @@ def _positions_table(rows: list[dict[str, Any]], *, compact: bool = False) -> st
         f"<td class='num'>{_money(item.get('matched_risk'))}</td>"
         f"<td class='num'>{_number(item.get('risk_odds'))}</td>"
         f"<td class='num {_tone(item.get('edge'))}'>{_pct(item.get('edge'))}</td>"
-        f"<td class='num {_tone(item.get('clv'))}'>{_pct_or_pending(item.get('clv'))}</td>"
+        f"{_position_mtm_cell(item)}"
+        f"<td class='num {_tone(item.get('current_fair_edge'))}'>{_pct_or_pending(item.get('current_fair_edge'))}</td>"
         f"<td>{_escape(item.get('status'))}</td></tr>"
         for item in visible
     )
-    return f"""<div class="table-wrap"><table><thead><tr><th>Starts</th><th>Venue</th><th>Event / selection</th><th>Side</th><th class="num">Matched risk</th><th class="num">Risk odds</th><th class="num">Entry edge</th><th class="num">CLV</th><th>Status</th></tr></thead><tbody>{body}</tbody></table></div>"""
+    return f"""<div class="table-wrap"><table><thead><tr><th>Starts</th><th>Venue</th><th>Event / selection</th><th>Side</th><th class="num">Matched risk</th><th class="num">Risk odds</th><th class="num">Entry edge</th><th class="num">MTM CLV</th><th class="num">Current fair edge</th><th>Status</th></tr></thead><tbody>{body}</tbody></table></div>"""
+
+
+def _position_mtm_cell(item: dict[str, Any]) -> str:
+    value = item.get("mark_to_market_clv")
+    checked_at = _short_datetime(item.get("mark_to_market_checked_at"))
+    market_odds = _number(item.get("mark_to_market_odds"))
+    detail = f"Current market odds {market_odds}; priced {checked_at} UTC"
+    return (
+        f"<td class='num {_tone(value)}' title='{_escape_attr(detail)}'>"
+        f"{_pct_or_pending(value)}</td>"
+    )
 
 
 def _orders_table(rows: list[dict[str, Any]], *, compact: bool = False) -> str:
@@ -360,6 +373,7 @@ def _portfolio_summary(
     misses = sum(1 for value in clv_values if value < 0)
     placed = [item for item in orders if item.get("venue_order_id")]
     filled = [item for item in placed if _float(item.get("matched_size")) > 0]
+    mtm_positions = [item for item in positions if item.get("mark_to_market_clv") is not None]
     return {
         "total_balance": sum(_float(item.get("balance")) for item in accounts if item["status"] == "ok"),
         "available_funds": sum(
@@ -371,6 +385,8 @@ def _portfolio_summary(
         "account_venues": sum(1 for item in accounts if item["status"] == "ok"),
         "open_positions": len(positions),
         "open_position_risk": sum(_float(item.get("matched_risk")) for item in positions),
+        "open_position_mtm_clv": _risk_weighted_mtm_clv(mtm_positions),
+        "open_position_mtm_clv_positions": len(mtm_positions),
         "open_orders": len(open_orders),
         "open_order_risk": sum(_float(item.get("remaining_risk")) for item in open_orders),
         "closed_trades": len(closed_trades),
@@ -594,6 +610,11 @@ def _normalise_order(item: dict[str, Any]) -> dict[str, Any]:
         if row.get("closing_ev_per_risk") is not None
         else row.get("target_clv")
     )
+    mark_to_market_clv = _optional_float(
+        row.get("mark_to_market_clv")
+        if row.get("mark_to_market_clv") is not None
+        else row.get("target_clv")
+    )
     status = str(row.get("status") or "unknown").casefold()
     return {
         **row,
@@ -613,6 +634,10 @@ def _normalise_order(item: dict[str, Any]) -> dict[str, Any]:
         "edge": _optional_float(row.get("edge")),
         "clv": clv,
         "beat_close": clv > 0 if clv is not None else None,
+        "mark_to_market_clv": mark_to_market_clv,
+        "mark_to_market_odds": _optional_float(row.get("closing_target_odds")),
+        "mark_to_market_checked_at": str(row.get("closing_checked_at") or ""),
+        "current_fair_edge": _optional_float(row.get("closing_ev_per_risk")),
         "gross_profit": gross_profit,
         "commission": commission,
         "net_profit": profit,
@@ -664,6 +689,16 @@ def _risk_from_stake(stake: float, *, odds: float, bet_side: str) -> float:
     if bet_side == "lay":
         return stake * max(0.0, odds - 1.0)
     return stake
+
+
+def _risk_weighted_mtm_clv(rows: list[dict[str, Any]]) -> float:
+    total_risk = sum(_float(item.get("matched_risk")) for item in rows)
+    if total_risk <= 0:
+        return 0.0
+    return sum(
+        _float(item.get("mark_to_market_clv")) * _float(item.get("matched_risk"))
+        for item in rows
+    ) / total_risk
 
 
 def _risk_odds(odds: float, *, bet_side: str, commission_rate: float) -> float:

@@ -935,9 +935,36 @@ def test_update_live_closing_values_records_risk_normalised_closing_ev() -> None
     assert result.updated == 1
     item = table.items["live#lay"]
     assert float(item["target_clv"]) == pytest.approx(0.04)
+    assert float(item["mark_to_market_clv"]) == pytest.approx(
+        (1 + (0.98 / 4)) / (1 + (0.98 / 4.2)) - 1
+    )
     assert item["closing_ev_per_risk"] == item["closing_edge"]
     assert item["closing_ev_per_risk"] > 0
     assert item["beat_closing_line"] is True
+
+
+def test_update_live_closing_values_records_back_mtm_clv_in_risk_odds() -> None:
+    table = FakeLiveOrderTable()
+    table.items["live#back"] = {
+        "order_id": "live#back",
+        "event_id": "event-1",
+        "market": "h2h",
+        "outcome_name": "Arsenal",
+        "target_bookmaker": "Matchbook",
+        "bet_side": "back",
+        "status": "matched",
+        "matched_size": Decimal(1),
+        "avg_matched_odds": Decimal("4.2"),
+    }
+
+    update_live_closing_values(
+        table,
+        [signal(target_odds=4.0, target_effective_odds=3.94)],
+        checked_at=datetime(2026, 8, 14, 12, tzinfo=timezone.utc),
+    )
+
+    item = table.items["live#back"]
+    assert float(item["mark_to_market_clv"]) == pytest.approx(4.136 / 3.94 - 1)
 
 
 def test_update_live_closing_values_uses_risk_ev_for_beat_flag() -> None:

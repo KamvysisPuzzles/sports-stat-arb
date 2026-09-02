@@ -559,6 +559,17 @@ def update_live_closing_values(
                 / closing_reference_fair_odds
             ) - 1
             target_clv = (booked_odds / closing_target_odds) - 1
+        booked_risk_odds = _risk_decimal_odds(
+            booked_odds,
+            bet_side=bet_side,
+            commission_rate=commission_rate,
+        )
+        current_risk_odds = _risk_decimal_odds(
+            closing_target_odds,
+            bet_side=bet_side,
+            commission_rate=commission_rate,
+        )
+        mark_to_market_clv = (booked_risk_odds / current_risk_odds) - 1
         closing_ev_per_risk = closing_edge
         response = table.update_item(
             Key={"order_id": item["order_id"]},
@@ -570,6 +581,7 @@ def update_live_closing_values(
                 "closing_reference_fair_odds = :closing_reference_fair_odds, "
                 "closing_edge = :closing_edge, "
                 "closing_ev_per_risk = :closing_ev_per_risk, "
+                "mark_to_market_clv = :mark_to_market_clv, "
                 "positive_closing_edge = :positive_closing_edge, "
                 "closing_source = :closing_source"
             ),
@@ -581,6 +593,7 @@ def update_live_closing_values(
                 ":closing_reference_fair_odds": _decimal(closing_reference_fair_odds),
                 ":closing_edge": _decimal(closing_edge),
                 ":closing_ev_per_risk": _decimal(closing_ev_per_risk),
+                ":mark_to_market_clv": _decimal(mark_to_market_clv),
                 ":positive_closing_edge": closing_edge > 0,
                 ":closing_source": "live_strategy_scan",
             },
@@ -592,6 +605,17 @@ def update_live_closing_values(
         matched=matched,
         updated=updated,
     )
+
+
+def _risk_decimal_odds(
+    odds: float,
+    *,
+    bet_side: str,
+    commission_rate: float,
+) -> float:
+    if bet_side == "lay":
+        return 1 + ((1 - commission_rate) / (odds - 1))
+    return effective_decimal_odds(odds, commission_rate)
 
 
 def settle_live_orders(
