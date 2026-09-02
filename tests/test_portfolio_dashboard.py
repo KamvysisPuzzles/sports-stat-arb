@@ -221,7 +221,6 @@ def test_payload_normalises_lay_matched_risk_and_risk_odds() -> None:
     assert betfair["beat_close"] is False
     assert betfair["mark_to_market_clv"] == pytest.approx(0.00945945945945946)
     assert betfair["mark_to_market_odds"] == 5.2
-    assert betfair["current_fair_edge"] == -0.01
 
 
 def test_missing_accounts_are_exceptions_not_zero_balances() -> None:
@@ -282,7 +281,7 @@ def test_rendered_views_use_institutional_command_center_structure() -> None:
     assert "£-1.00 exposure" not in overview
     assert "Not Manchester City" in overview
     assert "MTM CLV" in overview
-    assert "Current fair edge" in overview
+    assert "Current fair edge" not in overview
     assert "0.95%" in overview
     assert "Current market odds 5.20; priced 02 Sep 17:59 UTC" in overview
     assert "Closed trades" in closed

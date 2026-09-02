@@ -218,11 +218,10 @@ def _positions_table(rows: list[dict[str, Any]], *, compact: bool = False) -> st
         f"<td class='num'>{_number(item.get('risk_odds'))}</td>"
         f"<td class='num {_tone(item.get('edge'))}'>{_pct(item.get('edge'))}</td>"
         f"{_position_mtm_cell(item)}"
-        f"<td class='num {_tone(item.get('current_fair_edge'))}'>{_pct_or_pending(item.get('current_fair_edge'))}</td>"
         f"<td>{_escape(item.get('status'))}</td></tr>"
         for item in visible
     )
-    return f"""<div class="table-wrap"><table><thead><tr><th>Starts</th><th>Venue</th><th>Event / selection</th><th>Side</th><th class="num">Matched risk</th><th class="num">Risk odds</th><th class="num">Entry edge</th><th class="num">MTM CLV</th><th class="num">Current fair edge</th><th>Status</th></tr></thead><tbody>{body}</tbody></table></div>"""
+    return f"""<div class="table-wrap"><table><thead><tr><th>Starts</th><th>Venue</th><th>Event / selection</th><th>Side</th><th class="num">Matched risk</th><th class="num">Risk odds</th><th class="num">Entry edge</th><th class="num">MTM CLV</th><th>Status</th></tr></thead><tbody>{body}</tbody></table></div>"""
 
 
 def _position_mtm_cell(item: dict[str, Any]) -> str:
@@ -637,7 +636,6 @@ def _normalise_order(item: dict[str, Any]) -> dict[str, Any]:
         "mark_to_market_clv": mark_to_market_clv,
         "mark_to_market_odds": _optional_float(row.get("closing_target_odds")),
         "mark_to_market_checked_at": str(row.get("closing_checked_at") or ""),
-        "current_fair_edge": _optional_float(row.get("closing_ev_per_risk")),
         "gross_profit": gross_profit,
         "commission": commission,
         "net_profit": profit,
