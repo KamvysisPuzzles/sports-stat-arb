@@ -274,19 +274,6 @@ targets and require at least 8 same-line reference books rather than a sharp
 same-line reference. H2h remains available across Matchbook, Smarkets, and
 Betfair targets.
 
-The deployed strategy runner also maintains a paper-only tennis experiment named
-`tennis-lead-lag-v1`. For ATP/WTA h2h markets it keeps twelve minutes of compact
-price history in control records in the existing paper DynamoDB table. A paper
-trade requires a recent Pinnacle probability move, an independent exchange
-moving in the same direction, and Betfair or Matchbook still offering 1% to 3%
-net edge. Smarkets can confirm a move but is not a v1 target because its direct
-liquidity mapper currently supports football events only. Entries are back-only,
-limited to odds from 1.35 to 3.50 and matches within six hours of starting. These
-signals have strategy-specific trade ids and are explicitly excluded from live
-execution. The paper dashboard's `Model` column separates them from the static
-`exchange-clv` cohort. No additional environment variables, DynamoDB tables, or
-IAM permissions are required.
-
 Export the paper log:
 
 ```bash

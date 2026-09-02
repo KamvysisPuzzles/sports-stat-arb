@@ -7,8 +7,6 @@ from types import SimpleNamespace
 
 from exchange_scanner import strategy_runner
 from exchange_scanner.strategy_runner import StrategyRunnerConfig, run_paper_log
-from exchange_scanner.tennis_lead_lag import TENNIS_LEAD_LAG_STRATEGY
-from exchange_scanner.the_odds_api import ValueSignal
 
 
 class FakeOddsClient:
@@ -89,27 +87,6 @@ class FakeOddsClient:
                 ],
             }
         ]
-
-
-def test_tennis_lead_lag_signals_are_never_promoted_to_live_execution() -> None:
-    base = {
-        "sport_key": "tennis_atp_us_open",
-        "event_id": "event-1",
-        "event_name": "Player A v Player B",
-        "commence_time": datetime(2026, 9, 2, 15, tzinfo=timezone.utc),
-        "market_key": "h2h",
-        "outcome_name": "Player A",
-        "target_bookmaker": "Matchbook",
-        "target_odds": 2.02,
-        "reference_fair_odds": 1.95,
-        "reference_probability": 1 / 1.95,
-        "edge": 0.02,
-        "reference_bookmakers": ("Pinnacle", "Betfair"),
-    }
-    classic = ValueSignal(**base)
-    lead_lag = ValueSignal(**base, strategy_name=TENNIS_LEAD_LAG_STRATEGY)
-
-    assert strategy_runner._live_eligible_strategy_signals([classic, lead_lag]) == [classic]
 
 
 class FakeLongshotOddsClient(FakeOddsClient):

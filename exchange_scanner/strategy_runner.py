@@ -74,11 +74,6 @@ from exchange_scanner.smarkets_liquidity import match_liquidity as match_smarket
 from exchange_scanner.smarkets_liquidity import (
     unavailable_liquidity as unavailable_smarkets_liquidity,
 )
-from exchange_scanner.tennis_lead_lag import (
-    TENNIS_LEAD_LAG_STRATEGY,
-    TennisLeadLagRun,
-    evaluate_and_record_tennis_lead_lag,
-)
 from exchange_scanner.the_odds_api import (
     TheOddsApiClient,
     ValueSignal,
@@ -477,7 +472,6 @@ def run_paper_log(
     prices = normalise_odds_api_events(events)
     snapshot = _archive_odds_snapshot(config, prices, s3_client=s3_client, snapshot_time=now)
     table = dynamodb_table or _dynamodb_table(config)
-    tennis_lead_lag = _run_tennis_lead_lag(config, table=table, prices=prices, now=now)
     closing_signals = _find_closing_signals(config, prices, now=now)
     closing_update = update_closing_values_in_dynamodb(
         table,
@@ -514,7 +508,6 @@ def run_paper_log(
             "live_closing_update": _live_closing_result_dict(live_closing_update),
             "live_settlement": _live_settlement_result_dict(live_settlement),
             "smarkets_keepalive": smarkets_keepalive,
-            "tennis_lead_lag": _tennis_lead_lag_result_dict(tennis_lead_lag),
             "trading_control": trading_control,
             "candidate_signals": 0,
             "paper_eligible_signals": 0,
@@ -532,10 +525,9 @@ def run_paper_log(
         )
         return result
 
-    classic_signals = _find_signals(config, prices, now=now)
-    classic_signals = _filter_execution_signals_by_strategy_limits(config, classic_signals)
-    paper_signals = [*classic_signals, *tennis_lead_lag.signals]
-    rows = _signal_rows(paper_signals)
+    signals = _find_signals(config, prices, now=now)
+    signals = _filter_execution_signals_by_strategy_limits(config, signals)
+    rows = _signal_rows(signals)
     rows = _enrich_matchbook_rows(config, rows, matchbook_client=matchbook_client, now=now)
     rows = _enrich_smarkets_rows(config, rows, smarkets_client=smarkets_client, now=now)
     rows = _enrich_betfair_rows(config, rows, lambda_client=lambda_client)
@@ -547,7 +539,7 @@ def run_paper_log(
     executable_rows = [row for row in rows if _paper_loggable_row(row)]
     executable_keys = {_row_key(row) for row in executable_rows}
     executable_signals = [
-        signal for signal in paper_signals if signal_key(signal) in executable_keys
+        signal for signal in signals if signal_key(signal) in executable_keys
     ]
     liquidity_confirmed_rows = [
         row for row in executable_rows if row.get("liquidity_status") == "available"
@@ -565,7 +557,7 @@ def run_paper_log(
     )
     live_result = _execute_live_signals(
         config,
-        _live_eligible_strategy_signals(executable_signals),
+        executable_signals,
         logged_at=now,
         liquidity_by_key=live_liquidity_by_key,
         live_order_table=live_table,
@@ -581,10 +573,8 @@ def run_paper_log(
         "live_closing_update": _live_closing_result_dict(live_closing_update),
         "live_settlement": _live_settlement_result_dict(live_settlement),
         "smarkets_keepalive": smarkets_keepalive,
-        "tennis_lead_lag": _tennis_lead_lag_result_dict(tennis_lead_lag),
         "trading_control": trading_control,
-        "candidate_signals": len(paper_signals),
-        "classic_candidate_signals": len(classic_signals),
+        "candidate_signals": len(signals),
         "paper_eligible_signals": len(executable_signals),
         "liquidity_confirmed_signals": len(liquidity_confirmed_rows),
         "paper_log": _log_result_dict(log_result),
@@ -1027,39 +1017,7 @@ def _find_signals(
         max_target_odds=max_target_odds,
     )
     signals = _filter_signals_by_max_edge(signals, max_edge=config.max_edge)
-    return [
-        replace(signal, strategy_name=config.strategy)
-        for signal in _unique_bet_signals(signals)
-    ]
-
-
-def _run_tennis_lead_lag(
-    config: StrategyRunnerConfig,
-    *,
-    table: Any,
-    prices,
-    now: datetime,
-) -> TennisLeadLagRun:
-    if config.strategy != "exchange-clv":
-        return TennisLeadLagRun(
-            signals=(),
-            sports_with_prices=0,
-            sports_with_history=0,
-            state_updates=0,
-        )
-    return evaluate_and_record_tennis_lead_lag(table, prices, now=now)
-
-
-def _tennis_lead_lag_result_dict(result: TennisLeadLagRun) -> dict[str, Any]:
-    return {
-        "strategy": TENNIS_LEAD_LAG_STRATEGY,
-        "paper_only": True,
-        "candidate_signals": len(result.signals),
-        "sports_with_prices": result.sports_with_prices,
-        "sports_with_history": result.sports_with_history,
-        "state_updates": result.state_updates,
-        "state_errors": list(result.state_errors),
-    }
+    return _unique_bet_signals(signals)
 
 
 def _find_closing_signals(
@@ -1635,9 +1593,6 @@ def _signal_row(signal: ValueSignal) -> dict[str, str]:
         "reference_disagreement_pct": _format_optional(signal.reference_disagreement_pct),
         "reference_max_spread_pct": _format_optional(signal.reference_max_spread_pct),
         "reference_avg_spread_pct": _format_optional(signal.reference_avg_spread_pct),
-        "strategy_name": signal.strategy_name,
-        "strategy_version": signal.strategy_version,
-        "strategy_diagnostics": signal_dict["strategy_diagnostics"],
     }
 
 
@@ -1708,14 +1663,6 @@ def _execute_live_signals(
         executors=live_executors,
     )
     return live_execution_result_dict(result)
-
-
-def _live_eligible_strategy_signals(signals: list[ValueSignal]) -> list[ValueSignal]:
-    return [
-        signal
-        for signal in signals
-        if signal.strategy_name != TENNIS_LEAD_LAG_STRATEGY
-    ]
 
 
 def _live_execution_config(config: StrategyRunnerConfig) -> LiveExecutionConfig:
