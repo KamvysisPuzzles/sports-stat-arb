@@ -195,7 +195,63 @@ def test_betfair_catalogue_lookup_is_restricted_to_soccer() -> None:
 def test_name_score_handles_token_subset_variants_without_overmatching() -> None:
     assert _name_score("FC Schalke 04", "Schalke") >= 0.95
     assert _name_score("Real Madrid CF", "Real Madrid") >= 0.95
+    assert _name_score("Saint Etienne", "St Etienne") == 1.0
     assert _name_score("Manchester United", "Manchester City") < 0.70
+
+
+def test_match_liquidity_retries_with_individual_team_text_queries() -> None:
+    class TeamQueryClient(FakeBetfairClient):
+        def __init__(self) -> None:
+            self.queries = []
+
+        def fetch_market_catalogue(self, **kwargs):
+            self.queries.append(kwargs)
+            if kwargs["event_name"] != "Montpellier":
+                return []
+            return [
+                {
+                    "marketId": "1.262",
+                    "event": {"name": "St Etienne v Montpellier HSC"},
+                    "runners": [
+                        {"selectionId": 501, "runnerName": "St Etienne"},
+                        {"selectionId": 502, "runnerName": "Montpellier HSC"},
+                        {"selectionId": 503, "runnerName": "The Draw"},
+                    ],
+                }
+            ]
+
+        def fetch_market_books(self, market_ids):
+            return [
+                {
+                    "marketId": market_ids[0],
+                    "runners": [
+                        {
+                            "selectionId": 501,
+                            "ex": {
+                                "availableToBack": [{"price": 2.4, "size": 25.0}],
+                                "availableToLay": [{"price": 2.42, "size": 20.0}],
+                            },
+                        }
+                    ],
+                }
+            ]
+
+    client = TeamQueryClient()
+    match = match_liquidity(
+        client,
+        event_name="Saint Etienne v Montpellier",
+        commence_time=datetime(2026, 9, 5, 18, tzinfo=timezone.utc),
+        market_key="h2h",
+        outcome_name="Saint Etienne",
+        target_odds=2.4,
+    )
+
+    assert match.betfair_market_id == "1.262"
+    assert match.betfair_selection_id == 501
+    assert [call["event_name"] for call in client.queries] == [
+        "Saint Etienne v Montpellier",
+        "Montpellier",
+    ]
 
 
 def test_match_liquidity_maps_half_goal_total_to_betfair_market_type() -> None:

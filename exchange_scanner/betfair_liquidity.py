@@ -247,11 +247,26 @@ def resolve_market_runner(
         outcome_name=outcome_name,
     )
     if best_catalogue is None:
+        for text_query in _event_text_queries(event_name):
+            catalogues = client.fetch_market_catalogue(
+                event_name=text_query,
+                commence_time=commence_time,
+                market_key=market_type,
+                max_results=50,
+            )
+            best_catalogue = _best_catalogue_match(
+                catalogues,
+                event_name=event_name,
+                outcome_name=outcome_name,
+            )
+            if best_catalogue is not None:
+                break
+    if best_catalogue is None:
         catalogues = client.fetch_market_catalogue(
             event_name=event_name,
             commence_time=commence_time,
             market_key=market_type,
-            max_results=200,
+            max_results=1000,
             use_text_query=False,
         )
         best_catalogue = _best_catalogue_match(
@@ -371,6 +386,11 @@ def _runner_score(outcome_name: str, runner_name: str) -> float:
     return _name_score(outcome_name, runner_name)
 
 
+def _event_text_queries(event_name: str) -> tuple[str, ...]:
+    parts = re.split(r"\s+(?:v|vs|@)\.?\s+", event_name, maxsplit=1, flags=re.IGNORECASE)
+    return tuple(dict.fromkeys(part.strip() for part in reversed(parts) if part.strip()))
+
+
 def _name_score(left: str, right: str) -> float:
     left_normalised = _normalise_name(left)
     right_normalised = _normalise_name(right)
@@ -410,6 +430,7 @@ def _normalise_name(value: str) -> str:
         .replace("-", " ")
         .strip()
     )
+    normalised = re.sub(r"\bsaint\b", "st", normalised)
     return re.sub(r"\s+city\b", "", normalised).strip()
 
 
