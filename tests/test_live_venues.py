@@ -230,21 +230,46 @@ def test_smarkets_executor_confirms_settlement_from_account_activity() -> None:
                 },
             )
         assert request.url.path == "/accounts/activity/"
+        if request.url.params.get("order_id"):
+            return httpx.Response(
+                200,
+                json={
+                    "account_activity": [
+                        {
+                            "order_id": "order-1",
+                            "market_id": "market-1",
+                            "source": "order.settle",
+                            "amount": "1.62",
+                            "extra": "winner",
+                            "timestamp": "2026-09-02T20:00:01Z",
+                        },
+                        {
+                            "order_id": "order-1",
+                            "market_id": "market-1",
+                            "source": "order.execute",
+                            "amount": "-1.00",
+                        },
+                    ]
+                },
+            )
         return httpx.Response(
             200,
             json={
                 "account_activity": [
                     {
-                        "order_id": "order-1",
-                        "source": "order.settle",
+                        "market_id": "market-1",
+                        "source": "market.settle",
                         "money_change": "1.58",
-                        "commission": "0.04",
+                        "commission": "-0.04",
                         "timestamp": "2026-09-02T20:00:01Z",
                     },
                     {
                         "order_id": "order-1",
-                        "source": "order.execute",
-                        "money_change": None,
+                        "market_id": "market-1",
+                        "source": "order.settle",
+                        "amount": "1.62",
+                        "extra": "winner",
+                        "timestamp": "2026-09-02T20:00:01Z",
                     },
                 ]
             },
@@ -259,7 +284,7 @@ def test_smarkets_executor_confirms_settlement_from_account_activity() -> None:
     settlement = executor.fetch_order_settlement({"venue_order_id": "order-1"})
 
     assert settlement == {
-        "settlement_source": "smarkets_account_activity",
+        "settlement_source": "smarkets_market_activity",
         "gross_profit": pytest.approx(1.62),
         "commission": pytest.approx(0.04),
         "net_profit": pytest.approx(1.58),
@@ -268,6 +293,37 @@ def test_smarkets_executor_confirms_settlement_from_account_activity() -> None:
     }
     assert requests[1].url.params["order_id"] == "order-1"
     assert requests[1].url.params["sort"] == "-seq,-subseq"
+    assert requests[2].url.params["market_id"] == "market-1"
+
+
+def test_smarkets_executor_does_not_confirm_without_market_money_change() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/orders/order-1/":
+            return httpx.Response(200, json={"id": "order-1", "state": "settled"})
+        if request.url.params.get("order_id"):
+            return httpx.Response(
+                200,
+                json={
+                    "account_activity": [
+                        {
+                            "order_id": "order-1",
+                            "market_id": "market-1",
+                            "source": "order.settle",
+                            "amount": "-1.00",
+                            "extra": "loser",
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(200, json={"account_activity": []})
+
+    executor = SmarketsLiveExecutor(session_token="token")
+    executor.http = httpx.Client(
+        base_url="https://api.smarkets.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert executor.fetch_order_settlement({"venue_order_id": "order-1"}) is None
 
 
 def test_betfair_executor_fetches_cleared_order_settlement() -> None:

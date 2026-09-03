@@ -198,6 +198,49 @@ def test_refresh_order_settlements_promotes_only_venue_confirmed_rows() -> None:
     assert table.items["live#pending"]["pnl_status"] == "estimated"
 
 
+def test_refresh_order_settlements_repairs_legacy_zero_smarkets_pnl() -> None:
+    table = FakeOrderTable(
+        [
+            {
+                "order_id": "live#smarkets-zero",
+                "execution_mode": "live",
+                "target_bookmaker": "Smarkets",
+                "venue_order_id": "order-1",
+                "status": "settled",
+                "pnl_status": "confirmed",
+                "settlement_source": "smarkets_account_activity",
+                "matched_size": Decimal(1),
+                "gross_profit": Decimal(0),
+                "commission": Decimal(0),
+                "net_profit": Decimal(0),
+            }
+        ]
+    )
+
+    result = refresh_order_settlements(
+        table,
+        {
+            "smarkets": FakeSettlementExecutor(
+                {
+                    "settlement_source": "smarkets_market_activity",
+                    "gross_profit": -1,
+                    "commission": 0,
+                    "net_profit": -1,
+                    "venue_result": "LOSER",
+                    "venue_settled_at": "2026-09-02T19:00:00Z",
+                }
+            )
+        },
+        checked_at=datetime(2026, 9, 3, 8, tzinfo=timezone.utc),
+    )
+
+    assert result.checked == 1
+    assert result.confirmed == 1
+    repaired = table.items["live#smarkets-zero"]
+    assert repaired["settlement_source"] == "smarkets_market_activity"
+    assert repaired["net_profit"] == Decimal("-1")
+
+
 def test_reconciler_lambda_refreshes_accounts_and_settlements(monkeypatch) -> None:
     account_table = FakeTable()
     order_table = FakeOrderTable(

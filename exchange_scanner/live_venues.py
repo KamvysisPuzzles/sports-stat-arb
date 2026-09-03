@@ -280,28 +280,80 @@ class SmarketsLiveExecutor:
             for item in response.json().get("account_activity", [])
             if str(item.get("order_id") or "") == venue_order_id
         ]
-        settlement_rows = [item for item in activity if item.get("source") == "order.settle"]
-        if not settlement_rows:
-            settlement_rows = [
-                item
-                for item in activity
-                if str(item.get("source") or "").endswith(".settle")
-                and item.get("money_change") is not None
-            ]
+        settlement_rows = [
+            item
+            for item in activity
+            if item.get("source") == "order.settle" and item.get("amount") is not None
+        ]
         if not settlement_rows:
             return None
-        net_profit = sum(_float(item.get("money_change")) for item in settlement_rows)
-        commission = sum(abs(_float(item.get("commission"))) for item in settlement_rows)
+
+        market_ids = {
+            str(item.get("market_id"))
+            for item in settlement_rows
+            if item.get("market_id") not in {None, ""}
+        }
+        if len(market_ids) != 1:
+            return None
+        market_id = next(iter(market_ids))
+        response = self.http.get(
+            "/accounts/activity/",
+            params={"market_id": market_id, "limit": 500, "sort": "-seq,-subseq"},
+        )
+        response.raise_for_status()
+        market_activity = [
+            item
+            for item in response.json().get("account_activity", [])
+            if str(item.get("market_id") or "") == market_id
+        ]
+        market_settlement = next(
+            (
+                item
+                for item in market_activity
+                if item.get("source") == "market.settle"
+                and item.get("money_change") is not None
+            ),
+            None,
+        )
+        if market_settlement is None:
+            return None
+
+        gross_profit = sum(_float(item.get("amount")) for item in settlement_rows)
+        market_gross_profit = sum(
+            _float(item.get("amount"))
+            for item in market_activity
+            if item.get("source") == "order.settle"
+            and item.get("amount") is not None
+        )
+        market_net_profit = _float(market_settlement.get("money_change"))
+        market_commission = max(0.0, market_gross_profit - market_net_profit)
+        positive_market_profit = sum(
+            _float(item.get("amount"))
+            for item in market_activity
+            if item.get("source") == "order.settle"
+            and item.get("amount") is not None
+            and _float(item.get("amount")) > 0
+        )
+        commission = 0.0
+        if gross_profit > 0 and positive_market_profit > 0:
+            commission = market_commission * gross_profit / positive_market_profit
+        gross_profit = _money(gross_profit)
+        commission = _money(commission)
+        net_profit = _money(gross_profit - commission)
         settled_at = max(
             (str(item.get("timestamp") or "") for item in settlement_rows),
-            default=str(venue_order.get("last_modified_datetime") or ""),
+            default=str(market_settlement.get("timestamp") or ""),
+        )
+        venue_results = sorted(
+            {str(item.get("extra") or "").upper() for item in settlement_rows}
         )
         return _settlement_payload(
-            source="smarkets_account_activity",
-            gross_profit=net_profit + commission,
+            source="smarkets_market_activity",
+            gross_profit=gross_profit,
             commission=commission,
             net_profit=net_profit,
-            venue_result=str(venue_order.get("outcome") or "").upper(),
+            venue_result=",".join(result for result in venue_results if result)
+            or str(venue_order.get("outcome") or "").upper(),
             settled_at=settled_at,
         )
 

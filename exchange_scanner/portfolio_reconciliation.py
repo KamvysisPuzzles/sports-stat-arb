@@ -81,7 +81,10 @@ def refresh_order_settlements(
         for item in list_all_trades(table)
         if str(item.get("execution_mode") or "live").casefold() == "live"
         and str(item.get("status") or "").casefold() == "settled"
-        and str(item.get("pnl_status") or "").casefold() == "estimated"
+        and (
+            str(item.get("pnl_status") or "").casefold() == "estimated"
+            or _needs_smarkets_settlement_repair(item)
+        )
         and _float(item.get("matched_size")) > 0
     ]
     confirmed = 0
@@ -165,6 +168,17 @@ def _executor_key(value: Any) -> str:
     if key.startswith("betfair"):
         return "betfair"
     return key
+
+
+def _needs_smarkets_settlement_repair(item: dict[str, Any]) -> bool:
+    return (
+        str(item.get("target_bookmaker") or "").casefold() == "smarkets"
+        and str(item.get("settlement_source") or "").casefold()
+        == "smarkets_account_activity"
+        and _float(item.get("gross_profit")) == 0
+        and _float(item.get("commission")) == 0
+        and _float(item.get("net_profit")) == 0
+    )
 
 
 def _record_account_snapshot(
