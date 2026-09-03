@@ -145,7 +145,7 @@ def _positions_html(rows: list[dict[str, Any]]) -> str:
       {_compact_stat("Positions", len(rows))}
       {_compact_stat("Matched risk", _money(risk))}
       {_compact_stat("Avg MTM CLV", _pct(_risk_weighted_mtm_clv(mtm_rows)) if mtm_rows else "Pending", tone=_tone(_risk_weighted_mtm_clv(mtm_rows)) if mtm_rows else "")}
-      {_compact_stat("MTM measured", f"{len(mtm_rows)} / {len(rows)}")}
+      {_compact_stat("Settling today", sum(1 for item in rows if _starts_today(item)))}
     </div>
     <section class="panel"><div class="panel-head"><h2>Matched, unsettled exposure</h2><span>Failed and unmatched orders excluded</span></div>{_positions_table(rows)}</section>"""
 

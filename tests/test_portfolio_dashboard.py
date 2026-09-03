@@ -270,6 +270,7 @@ def test_rendered_views_use_institutional_command_center_structure() -> None:
     )
 
     overview = render_portfolio_html(payload, token="secret")
+    positions = render_portfolio_html(payload, view="positions", token="secret")
     closed = render_portfolio_html(payload, view="closed", token="secret")
     reconciliation = render_portfolio_html(payload, view="reconciliation", token="secret")
 
@@ -282,6 +283,8 @@ def test_rendered_views_use_institutional_command_center_structure() -> None:
     assert "Not Manchester City" in overview
     assert "MTM CLV" in overview
     assert "Current fair edge" not in overview
+    assert "Settling today" in positions
+    assert "MTM measured" not in positions
     assert "0.95%" in overview
     assert "Current market odds 5.20; priced 02 Sep 17:59 UTC" in overview
     assert "Closed trades" in closed
