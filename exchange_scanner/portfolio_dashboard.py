@@ -604,15 +604,11 @@ def _normalise_order(item: dict[str, Any]) -> dict[str, Any]:
     commission = _optional_float(row.get("commission")) or 0.0
     if gross_profit is None and profit is not None:
         gross_profit = profit + commission
-    clv = _optional_float(
-        row.get("closing_ev_per_risk")
-        if row.get("closing_ev_per_risk") is not None
-        else row.get("target_clv")
-    )
-    mark_to_market_clv = _optional_float(
-        row.get("mark_to_market_clv")
-        if row.get("mark_to_market_clv") is not None
-        else row.get("target_clv")
+    closing_edge = _optional_float(row.get("closing_ev_per_risk"))
+    mark_to_market_clv = _risk_normalized_price_clv(
+        row,
+        booked_odds=odds,
+        bet_side=bet_side,
     )
     status = str(row.get("status") or "unknown").casefold()
     return {
@@ -631,11 +627,12 @@ def _normalise_order(item: dict[str, Any]) -> dict[str, Any]:
         "remaining_risk": remaining_risk,
         "risk_odds": _risk_odds(odds, bet_side=bet_side, commission_rate=commission_rate),
         "edge": _optional_float(row.get("edge")),
-        "clv": clv,
-        "beat_close": clv > 0 if clv is not None else None,
+        "clv": mark_to_market_clv,
+        "beat_close": mark_to_market_clv > 0 if mark_to_market_clv is not None else None,
         "mark_to_market_clv": mark_to_market_clv,
         "mark_to_market_odds": _optional_float(row.get("closing_target_odds")),
         "mark_to_market_checked_at": str(row.get("closing_checked_at") or ""),
+        "closing_edge": closing_edge,
         "gross_profit": gross_profit,
         "commission": commission,
         "net_profit": profit,
@@ -697,6 +694,36 @@ def _risk_weighted_mtm_clv(rows: list[dict[str, Any]]) -> float:
         _float(item.get("mark_to_market_clv")) * _float(item.get("matched_risk"))
         for item in rows
     ) / total_risk
+
+
+def _risk_normalized_price_clv(
+    row: dict[str, Any],
+    *,
+    booked_odds: float,
+    bet_side: str,
+) -> float | None:
+    stored = _optional_float(row.get("mark_to_market_clv"))
+    if stored is not None:
+        return stored
+    closing_odds = _optional_float(row.get("closing_target_odds"))
+    if booked_odds <= 1 or closing_odds is None or closing_odds <= 1:
+        return None
+    commission_rate = _optional_float(row.get("commission_rate"))
+    if commission_rate is None:
+        commission_rate = 0.02
+    booked_risk_odds = _risk_odds(
+        booked_odds,
+        bet_side=bet_side,
+        commission_rate=commission_rate,
+    )
+    closing_risk_odds = _risk_odds(
+        closing_odds,
+        bet_side=bet_side,
+        commission_rate=commission_rate,
+    )
+    if closing_risk_odds <= 0:
+        return None
+    return (booked_risk_odds / closing_risk_odds) - 1
 
 
 def _risk_odds(odds: float, *, bet_side: str, commission_rate: float) -> float:

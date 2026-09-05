@@ -107,6 +107,7 @@ def live_orders():
             "commission": Decimal("0.03"),
             "net_profit": Decimal("1.47"),
             "target_clv": Decimal("0.04"),
+            "mark_to_market_clv": Decimal("0.04"),
             "result": "Arsenal",
             "settled_at": "2026-09-01T19:00:00+00:00",
         },
@@ -217,10 +218,11 @@ def test_payload_normalises_lay_matched_risk_and_risk_odds() -> None:
     assert betfair["matched_risk"] == 1.0
     assert betfair["risk_odds"] == 1.25
     assert betfair["risk_selection"] == "Not Manchester City"
-    assert betfair["clv"] == -0.01
-    assert betfair["beat_close"] is False
+    assert betfair["clv"] == pytest.approx(0.00945945945945946)
+    assert betfair["beat_close"] is True
     assert betfair["mark_to_market_clv"] == pytest.approx(0.00945945945945946)
     assert betfair["mark_to_market_odds"] == 5.2
+    assert betfair["closing_edge"] == -0.01
 
 
 def test_missing_accounts_are_exceptions_not_zero_balances() -> None:
